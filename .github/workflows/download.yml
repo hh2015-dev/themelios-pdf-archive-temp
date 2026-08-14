@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  THEMELIOS_LIMIT: "3"
+  THEMELIOS_LIMIT: "0"
 
 jobs:
   download:
