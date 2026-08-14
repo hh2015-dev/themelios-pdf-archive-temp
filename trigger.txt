@@ -1,1 +1,1 @@
-smoke-test-1
+full-archive-1
