@@ -1,0 +1,115 @@
+name: Download Themelios PDFs
+
+on:
+  push:
+    paths:
+      - trigger.txt
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  THEMELIOS_LIMIT: "3"
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Download and validate official issue PDFs
+        run: python download_themelios.py
+
+      - name: Upload manifest and batch 00
+        uses: actions/upload-artifact@v4
+        with:
+          name: themelios-batch-00
+          path: |
+            output/manifest.csv
+            output/batch-00/*.pdf
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Upload batch 01
+        uses: actions/upload-artifact@v4
+        with:
+          name: themelios-batch-01
+          path: output/batch-01/*.pdf
+          if-no-files-found: ignore
+          retention-days: 1
+
+      - name: Upload batch 02
+        uses: actions/upload-artifact@v4
+        with:
+          name: themelios-batch-02
+          path: output/batch-02/*.pdf
+          if-no-files-found: ignore
+          retention-days: 1
+
+      - name: Upload batch 03
+        uses: actions/upload-artifact@v4
+        with:
+          name: themelios-batch-03
+          path: output/batch-03/*.pdf
+          if-no-files-found: ignore
+          retention-days: 1
+
+      - name: Upload batch 04
+        uses: actions/upload-artifact@v4
+        with:
+          name: themelios-batch-04
+          path: output/batch-04/*.pdf
+          if-no-files-found: ignore
+          retention-days: 1
+
+      - name: Upload batch 05
+        uses: actions/upload-artifact@v4
+        with:
+          name: themelios-batch-05
+          path: output/batch-05/*.pdf
+          if-no-files-found: ignore
+          retention-days: 1
+
+      - name: Upload batch 06
+        uses: actions/upload-artifact@v4
+        with:
+          name: themelios-batch-06
+          path: output/batch-06/*.pdf
+          if-no-files-found: ignore
+          retention-days: 1
+
+      - name: Upload batch 07
+        uses: actions/upload-artifact@v4
+        with:
+          name: themelios-batch-07
+          path: output/batch-07/*.pdf
+          if-no-files-found: ignore
+          retention-days: 1
+
+      - name: Upload batch 08
+        uses: actions/upload-artifact@v4
+        with:
+          name: themelios-batch-08
+          path: output/batch-08/*.pdf
+          if-no-files-found: ignore
+          retention-days: 1
+
+      - name: Upload batch 09
+        uses: actions/upload-artifact@v4
+        with:
+          name: themelios-batch-09
+          path: output/batch-09/*.pdf
+          if-no-files-found: ignore
+          retention-days: 1
