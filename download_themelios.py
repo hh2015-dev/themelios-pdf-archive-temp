@@ -1,4 +1,5 @@
 import csv
+import os
 import re
 import shutil
 from pathlib import Path
@@ -10,6 +11,7 @@ from bs4 import BeautifulSoup
 ARCHIVE_URL = "https://www.thegospelcoalition.org/themelios/issues/"
 OUT = Path("output")
 BATCH_SIZE = 15
+LIMIT = int(os.environ.get("THEMELIOS_LIMIT", "0"))
 MONTHS = "January February March April May June July August September October November December".split()
 DATE_RE = re.compile(r"(" + "|".join(MONTHS) + r")\s+(19|20)\d{2}")
 VOL_RE = re.compile(r"\bVolume\s+(\d+)\b", re.I)
@@ -37,7 +39,7 @@ def main():
     r.raise_for_status()
     soup = BeautifulSoup(r.text, "html.parser")
 
-    issues = []
+    discovered = []
     seen = set()
     for a in soup.find_all("a", href=True):
         if a.get_text(" ", strip=True).upper() != "PDF":
@@ -54,11 +56,14 @@ def main():
             continue
         seen.add(key)
         filename = f"Themelios Vol {vol} No {issue} {year} {month}.pdf"
-        issues.append({"volume": vol, "issue": issue, "year": year, "month": month, "url": href, "filename": filename})
+        discovered.append({"volume": vol, "issue": issue, "year": year, "month": month, "url": href, "filename": filename})
 
-    issues.sort(key=lambda x: (x["volume"], x["issue"]))
-    if len(issues) < 140:
-        raise RuntimeError(f"Archive discovery unexpectedly found only {len(issues)} PDF issues")
+    if len(discovered) < 140:
+        raise RuntimeError(f"Archive discovery unexpectedly found only {len(discovered)} PDF issues")
+
+    discovered.sort(key=lambda x: (x["volume"], x["issue"]), reverse=True)
+    selected = discovered[:LIMIT] if LIMIT else discovered
+    selected.sort(key=lambda x: (x["volume"], x["issue"]))
 
     if OUT.exists():
         shutil.rmtree(OUT)
@@ -67,16 +72,16 @@ def main():
     with (OUT / "manifest.csv").open("w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=["volume", "issue", "year", "month", "filename", "url"])
         w.writeheader()
-        w.writerows(issues)
+        w.writerows(selected)
 
     session = requests.Session()
     session.headers.update({"User-Agent": "Mozilla/5.0"})
-    for idx, item in enumerate(issues):
+    for idx, item in enumerate(selected):
         batch = idx // BATCH_SIZE
         d = OUT / f"batch-{batch:02d}"
         d.mkdir(exist_ok=True)
         dest = d / item["filename"]
-        print(f"[{idx+1}/{len(issues)}] {item['filename']}", flush=True)
+        print(f"[{idx+1}/{len(selected)}] {item['filename']}", flush=True)
         with session.get(item["url"], timeout=120, stream=True, allow_redirects=True) as resp:
             resp.raise_for_status()
             with dest.open("wb") as out:
@@ -90,7 +95,8 @@ def main():
             if f.read(5) != b"%PDF-":
                 raise RuntimeError(f"Not a PDF: {dest}")
 
-    print(f"DONE: {len(issues)} issues in {(len(issues)+BATCH_SIZE-1)//BATCH_SIZE} batches")
+    print(f"DISCOVERED: {len(discovered)} official PDF issues")
+    print(f"DOWNLOADED: {len(selected)} issues in {(len(selected)+BATCH_SIZE-1)//BATCH_SIZE} batches")
 
 
 if __name__ == "__main__":
