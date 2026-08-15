@@ -1,0 +1,32 @@
+name: BSUK AJPS Volumes 15-20 Transfer
+
+on:
+  push:
+    branches:
+      - ajps-vol15-20-transfer
+    paths:
+      - 'bsuk_worker/ajps_vol15_20_transfer.py'
+      - '.github/workflows/bsuk-ajps-vol15-20-transfer.yml'
+  workflow_dispatch:
+
+jobs:
+  transfer:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: pip install requests beautifulsoup4
+      - name: Discover and download AJPS Volumes 15-20 PDFs from linked sources
+        run: python bsuk_worker/ajps_vol15_20_transfer.py
+      - name: Upload PDFs artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bsuk-ajps-v15-20
+          path: out_ajps_15_20/
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
