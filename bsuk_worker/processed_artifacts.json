@@ -1,0 +1,13 @@
+{
+  "processed_artifacts": [
+    {
+      "artifact_id": 9244737484,
+      "name": "bsuk-abtapl-v2-v9",
+      "workflow_run_id": 31875948740,
+      "processed_at_utc": "2026-08-15T09:14:00Z",
+      "pdf_count": 44,
+      "drive_root_folder_id": "1K7KIC-kK5MsFRZv2f2DlGTRAG99tKsGf",
+      "status": "validated_and_uploaded"
+    }
+  ]
+}
