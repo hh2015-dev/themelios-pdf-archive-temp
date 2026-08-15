@@ -1,0 +1,31 @@
+name: BSUK Anvil Repair
+
+on:
+  push:
+    paths:
+      - 'bsuk_worker/repair_anvil_missing.py'
+      - '.github/workflows/bsuk-anvil-repair.yml'
+  workflow_dispatch:
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: pip install requests beautifulsoup4
+      - name: Repair unresolved Anvil PDFs
+        run: python bsuk_worker/repair_anvil_missing.py
+      - name: Upload repair artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bsuk-anvil-repair
+          path: out_anvil_repair/
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 6
