@@ -1,0 +1,10 @@
+Status: COMPLETE_NO_HOSTED_PDFS
+Publication: Acta Patristica et Byzantina
+Coverage checked: Volumes 1-21 (1990-2010)
+Source pages:
+- https://www.biblicalstudies.org.uk/articles_apb_01.php
+- https://www.biblicalstudies.org.uk/articles_apb_02.php
+Verification date: 2026-08-15
+Result: The journal pages contain bibliographic article listings but no downloadable PDF links. Direct .pdf and /pdf/ link discovery returned zero. Expanded HTML attribute inspection likewise found no PDF/download target attached to the listed articles. Representative article rows contain only the article icon and citation text, not downloadable anchors.
+Archived files: 0
+Unresolved exception: Direct unlinked server files, if any exist outside the site's published links, cannot be asserted or enumerated from the public pages. For the approved archival scope of PDFs exposed by the site, there is nothing to upload.
