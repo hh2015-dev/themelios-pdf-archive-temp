@@ -1,0 +1,29 @@
+name: BSUK ABTAPL v2-v9
+
+on:
+  push:
+    paths:
+      - 'bsuk_worker/download_abtapl_v2_v9.py'
+      - '.github/workflows/bsuk-abtapl-v2-v9.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install requests
+      - run: python bsuk_worker/download_abtapl_v2_v9.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bsuk-abtapl-v2-v9
+          path: bsuk_output/abtapl/**
+          if-no-files-found: error
+          retention-days: 1
