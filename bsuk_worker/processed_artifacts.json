@@ -8,6 +8,42 @@
       "pdf_count": 44,
       "drive_root_folder_id": "1K7KIC-kK5MsFRZv2f2DlGTRAG99tKsGf",
       "status": "validated_and_uploaded"
+    },
+    {
+      "artifact_id": 9245347747,
+      "name": "bsuk-ajet-batch-1",
+      "workflow_run_id": 31878354587,
+      "processed_at_utc": "2026-08-15T10:16:00Z",
+      "pdf_count": 15,
+      "drive_root_folder_id": "12vet87hes6IuvXf26eGPka84kH9NtVw0",
+      "status": "validated_and_uploaded"
+    },
+    {
+      "artifact_id": 9245348612,
+      "name": "bsuk-ajet-batch-2",
+      "workflow_run_id": 31878354587,
+      "processed_at_utc": "2026-08-15T10:16:00Z",
+      "pdf_count": 24,
+      "drive_root_folder_id": "12vet87hes6IuvXf26eGPka84kH9NtVw0",
+      "status": "validated_and_uploaded"
+    },
+    {
+      "artifact_id": 9245348657,
+      "name": "bsuk-ajet-batch-3",
+      "workflow_run_id": 31878354587,
+      "processed_at_utc": "2026-08-15T10:16:00Z",
+      "pdf_count": 20,
+      "drive_root_folder_id": "12vet87hes6IuvXf26eGPka84kH9NtVw0",
+      "status": "validated_and_uploaded"
+    },
+    {
+      "artifact_id": 9245348474,
+      "name": "bsuk-ajet-batch-4",
+      "workflow_run_id": 31878354587,
+      "processed_at_utc": "2026-08-15T10:16:00Z",
+      "pdf_count": 8,
+      "drive_root_folder_id": "12vet87hes6IuvXf26eGPka84kH9NtVw0",
+      "status": "validated_and_uploaded"
     }
   ]
 }
