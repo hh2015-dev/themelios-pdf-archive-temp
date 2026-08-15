@@ -1,0 +1,32 @@
+name: BSUK AJET complete issues
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'bsuk_worker/download_ajet_complete_issues.py'
+      - '.github/workflows/bsuk-ajet.yml'
+
+jobs:
+  download:
+    strategy:
+      fail-fast: false
+      matrix:
+        batch: ['1', '2', '3', '4']
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: python -m pip install --disable-pip-version-check requests beautifulsoup4
+      - name: Download complete issues
+        run: python bsuk_worker/download_ajet_complete_issues.py ${{ matrix.batch }}
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bsuk-ajet-batch-${{ matrix.batch }}
+          path: bsuk_output/ajet/batch-${{ matrix.batch }}/
+          retention-days: 1
+          if-no-files-found: error
