@@ -1,0 +1,30 @@
+name: BSUK African Christian Theology
+
+on:
+  push:
+    paths:
+      - 'bsuk_worker/download_african_christian_theology.py'
+      - '.github/workflows/bsuk-african-christian-theology.yml'
+  workflow_dispatch:
+
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: pip install requests beautifulsoup4
+      - name: Discover and download complete issues
+        run: python bsuk_worker/download_african_christian_theology.py
+      - name: Upload artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bsuk-african-christian-theology
+          path: out_african_christian_theology/
+          if-no-files-found: error
+          retention-days: 1
