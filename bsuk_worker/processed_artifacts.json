@@ -44,6 +44,15 @@
       "pdf_count": 8,
       "drive_root_folder_id": "12vet87hes6IuvXf26eGPka84kH9NtVw0",
       "status": "validated_and_uploaded"
+    },
+    {
+      "artifact_id": 9245619188,
+      "name": "bsuk-african-christian-theology",
+      "workflow_run_id": 31879356845,
+      "processed_at_utc": "2026-08-15T10:34:00Z",
+      "pdf_count": 37,
+      "drive_root_folder_id": "1s7DcHhfVmn85YBF1QKcToQDl6yCG74i7",
+      "status": "validated_and_uploaded"
     }
   ]
 }
