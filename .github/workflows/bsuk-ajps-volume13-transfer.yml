@@ -1,0 +1,32 @@
+name: BSUK AJPS Volume 13 Transfer Probe
+
+on:
+  push:
+    branches:
+      - ajps-volume-13-transfer
+    paths:
+      - 'bsuk_worker/ajps_volume13_transfer.py'
+      - '.github/workflows/bsuk-ajps-volume13-transfer.yml'
+  workflow_dispatch:
+
+jobs:
+  transfer:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependency
+        run: pip install requests
+      - name: Download one AJPS PDF from BSUK
+        run: python bsuk_worker/ajps_volume13_transfer.py
+      - name: Upload PDF artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bsuk-ajps-v13-probe
+          path: out_ajps13/ajps-13-1_003.pdf
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
