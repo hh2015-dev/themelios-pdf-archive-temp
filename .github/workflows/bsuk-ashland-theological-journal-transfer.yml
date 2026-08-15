@@ -1,0 +1,32 @@
+name: BSUK Ashland Theological Journal Transfer
+
+on:
+  push:
+    branches:
+      - ashland-theological-journal-transfer
+    paths:
+      - 'bsuk_worker/ashland_theological_journal_transfer.py'
+      - '.github/workflows/bsuk-ashland-theological-journal-transfer.yml'
+  workflow_dispatch:
+
+jobs:
+  transfer:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: pip install requests beautifulsoup4
+      - name: Discover and download Ashland Theological Journal PDFs from current BSUK pages
+        run: python bsuk_worker/ashland_theological_journal_transfer.py
+      - name: Upload PDFs artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bsuk-ashland-theological-journal
+          path: out_ashland_theological_journal/
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
