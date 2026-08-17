@@ -1,4 +1,4 @@
-name: BSUK Ashland final accessible-volume measurement
+name: BSUK Ashland build upload PDFs
 
 on:
   push:
@@ -20,5 +20,13 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install requests pymupdf
-      - name: Measure complete Ashland volume PDFs
+      - name: Build complete Ashland volume PDFs
         run: python bsuk_worker/ashland_final_measure_v8.py
+      - name: Upload Ashland PDFs artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ashland-drive-upload
+          path: out_ashland_upload/
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
