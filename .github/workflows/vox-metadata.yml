@@ -1,0 +1,52 @@
+name: Vox Evangelica metadata
+
+on:
+  push:
+    paths:
+      - '.github/workflows/vox-metadata.yml'
+  workflow_dispatch:
+
+jobs:
+  metadata:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install requests beautifulsoup4
+      - name: Build filename metadata from official TOC
+        run: |
+          python - <<'PY'
+          import json,re,pathlib,requests
+          from bs4 import BeautifulSoup
+          from urllib.parse import urlparse, unquote
+          u='https://biblicalstudies.gospelstudies.org.uk/articles_vox_evangelica.php'
+          r=requests.get(u,timeout=30,headers={'User-Agent':'Mozilla/5.0'}); r.raise_for_status()
+          s=BeautifulSoup(r.text,'html.parser')
+          rows=[]
+          for a in s.find_all('a',href=True):
+              p=urlparse(a['href'])
+              m=re.search(r'/pdf/vox/vol(\d{1,2})/([^/?#]+\.pdf)$',p.path,re.I)
+              if not m: continue
+              vol=int(m.group(1)); base=unquote(m.group(2)); text=' '.join(a.get_text(' ',strip=True).split())
+              year=None; pages=None; author=None; title=None
+              cm=re.search(r'^(.*?),\s*[“\"](.+?)[”\"]\s*,?\s*Vox Evangelica\s+(\d+)\s*\((\d{4})\)\s*:\s*([0-9]+(?:-[0-9]+)?)',text,re.I)
+              if cm:
+                  author=cm.group(1).strip(); title=cm.group(2).strip(); year=int(cm.group(4)); pages=cm.group(5)
+              else:
+                  cm=re.search(r'^(.*?)\s*,\s*[“\"](.+?)[”\"].*?Vox Evangelica\s+(\d+)\s*\((\d{4})\).*?([0-9]+(?:-[0-9]+)?)',text,re.I)
+                  if cm:
+                      author=cm.group(1).strip(); title=cm.group(2).strip(); year=int(cm.group(4)); pages=cm.group(5)
+              rows.append({'volume':vol,'source_file':base,'citation':text,'author':author,'title':title,'year':year,'pages':pages})
+          rows.sort(key=lambda x:(x['volume'],x['source_file'].lower()))
+          pathlib.Path('vox_metadata').mkdir(exist_ok=True)
+          pathlib.Path('vox_metadata/metadata.json').write_text(json.dumps(rows,ensure_ascii=False,indent=2),encoding='utf-8')
+          bad=[x for x in rows if not all([x['author'],x['title'],x['year'],x['pages']])]
+          print('TOTAL',len(rows),'PARSED',len(rows)-len(bad),'UNPARSED',len(bad))
+          for x in bad: print('UNPARSED',x['volume'],x['source_file'],x['citation'])
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vox-evangelica-metadata
+          path: vox_metadata/metadata.json
+          retention-days: 1
