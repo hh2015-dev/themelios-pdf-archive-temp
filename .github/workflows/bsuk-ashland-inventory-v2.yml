@@ -1,0 +1,32 @@
+name: BSUK Ashland complete-volume inventory v2
+
+on:
+  push:
+    paths:
+      - 'bsuk_worker/ashland_inventory_v2.py'
+      - '.github/workflows/bsuk-ashland-inventory-v2.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install requests pymupdf
+      - name: Measure final Ashland split-volume PDFs
+        run: python bsuk_worker/ashland_inventory_v2.py
+      - name: Upload manifest only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ashland-inventory-v2-manifest
+          path: ashland_inventory_v2/
+          retention-days: 1
+          if-no-files-found: warn
