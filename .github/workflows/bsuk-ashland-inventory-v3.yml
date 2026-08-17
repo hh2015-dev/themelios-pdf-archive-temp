@@ -1,9 +1,9 @@
-name: BSUK Ashland build upload PDFs
+name: BSUK Ashland vol11 inspection
 
 on:
   push:
     paths:
-      - 'bsuk_worker/ashland_final_measure_v8.py'
+      - 'bsuk_worker/inspect_ashland_vol11.py'
       - '.github/workflows/bsuk-ashland-inventory-v3.yml'
   workflow_dispatch:
 
@@ -11,22 +11,22 @@ permissions:
   contents: read
 
 jobs:
-  inventory:
+  inspect:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - run: pip install requests pymupdf
-      - name: Build complete Ashland volume PDFs
-        run: python bsuk_worker/ashland_final_measure_v8.py
-      - name: Upload Ashland PDFs artifact
+      - name: Inspect suspected Volume 11 pages
+        run: python bsuk_worker/inspect_ashland_vol11.py
+      - name: Upload inspection artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ashland-drive-upload
-          path: out_ashland_upload/
+          name: ashland-vol11-check
+          path: ashland_vol11_check/
           retention-days: 1
           compression-level: 0
           if-no-files-found: error
