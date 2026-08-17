@@ -1,0 +1,32 @@
+name: Vox bridge probe
+
+on:
+  push:
+    paths:
+      - '.github/workflows/vox-bridge-probe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download one Vox PDF
+        run: |
+          mkdir -p bridge_vox
+          curl -L --fail --retry 3 --retry-delay 2 \
+            -A 'Mozilla/5.0' \
+            'https://www.biblicalstudies.org.uk/pdf/vox/vol06/education_jackson.pdf' \
+            -o bridge_vox/education_jackson.pdf
+          file bridge_vox/education_jackson.pdf
+          ls -lh bridge_vox/education_jackson.pdf
+      - name: Commit probe PDF
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add bridge_vox/education_jackson.pdf
+          git commit -m 'Add Vox bridge probe PDF' || exit 0
+          git push
