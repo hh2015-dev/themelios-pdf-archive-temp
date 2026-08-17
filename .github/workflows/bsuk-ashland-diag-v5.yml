@@ -1,0 +1,20 @@
+name: BSUK Ashland unresolved diagnostic v5
+on:
+  push:
+    paths:
+      - 'bsuk_worker/ashland_diag_v5.py'
+      - '.github/workflows/bsuk-ashland-diag-v5.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install requests pymupdf
+      - run: python bsuk_worker/ashland_diag_v5.py
