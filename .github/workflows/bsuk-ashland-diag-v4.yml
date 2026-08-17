@@ -1,0 +1,20 @@
+name: BSUK Ashland targeted diagnostic v4
+on:
+  push:
+    paths:
+      - 'bsuk_worker/ashland_diag_v4.py'
+      - '.github/workflows/bsuk-ashland-diag-v4.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install requests pymupdf
+      - run: python bsuk_worker/ashland_diag_v4.py
