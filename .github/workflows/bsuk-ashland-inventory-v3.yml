@@ -1,9 +1,9 @@
-name: BSUK Ashland complete-volume inventory v3
+name: BSUK Ashland final accessible-volume measurement
 
 on:
   push:
     paths:
-      - 'bsuk_worker/ashland_inventory_v3.py'
+      - 'bsuk_worker/ashland_final_measure_v8.py'
       - '.github/workflows/bsuk-ashland-inventory-v3.yml'
   workflow_dispatch:
 
@@ -13,20 +13,12 @@ permissions:
 jobs:
   inventory:
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - run: pip install requests pymupdf
-      - name: Measure final Ashland volume PDFs
-        run: python bsuk_worker/ashland_inventory_v3.py
-      - name: Upload manifest only
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ashland-inventory-v3-manifest
-          path: ashland_inventory_v3/
-          retention-days: 1
-          if-no-files-found: warn
+      - name: Measure complete Ashland volume PDFs
+        run: python bsuk_worker/ashland_final_measure_v8.py
