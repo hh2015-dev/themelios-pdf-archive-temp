@@ -1,0 +1,108 @@
+name: Vox Evangelica bulk bridge
+
+on:
+  push:
+    paths:
+      - '.github/workflows/vox-bulk-bridge.yml'
+  workflow_dispatch:
+
+jobs:
+  download:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: pip install requests beautifulsoup4
+      - name: Discover and download all Vox Evangelica PDFs
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os, re, json, time, pathlib, concurrent.futures
+          import requests
+          from bs4 import BeautifulSoup
+          from urllib.parse import urljoin, urlparse
+
+          pages = [
+              'https://www.biblicalstudies.org.uk/articles_vox_evangelica.php',
+              'https://biblicalstudies.org.uk/articles_vox_evangelica.php',
+              'https://biblicalstudies.gospelstudies.org.uk/articles_vox_evangelica.php',
+          ]
+          session = requests.Session()
+          session.headers.update({'User-Agent':'Mozilla/5.0 BSUK-Vox-Archiver/1.0'})
+          html = None
+          page_url = None
+          for u in pages:
+              try:
+                  r = session.get(u, timeout=30, allow_redirects=True)
+                  print('TOC', u, r.status_code, r.url)
+                  if r.ok and 'Vox Evangelica' in r.text:
+                      html = r.text
+                      page_url = r.url
+                      break
+              except Exception as e:
+                  print('TOC ERROR', u, repr(e))
+          if not html:
+              raise SystemExit('Could not fetch Vox Evangelica TOC')
+
+          soup = BeautifulSoup(html, 'html.parser')
+          found = {}
+          for a in soup.find_all('a', href=True):
+              full = urljoin(page_url, a['href'])
+              p = urlparse(full)
+              m = re.search(r'/pdf/vox/vol(\d{1,2})/([^/?#]+\.pdf)$', p.path, re.I)
+              if not m:
+                  continue
+              vol = int(m.group(1))
+              if not 1 <= vol <= 27:
+                  continue
+              full = f'https://www.biblicalstudies.org.uk{p.path}'
+              found[full] = (vol, m.group(2))
+
+          items = [(u,)+found[u] for u in sorted(found)]
+          print('DISCOVERED', len(items))
+          per = {}
+          for _,v,_ in items: per[v]=per.get(v,0)+1
+          print('PER_VOLUME', json.dumps(per, sort_keys=True))
+          pathlib.Path('vox_out').mkdir(exist_ok=True)
+
+          def one(item):
+              url, vol, base = item
+              d = pathlib.Path('vox_out') / f'vol{vol:02d}'
+              d.mkdir(parents=True, exist_ok=True)
+              out = d / base
+              last = None
+              for candidate in [url, url.replace('https://www.biblicalstudies.org.uk','https://biblicalstudies.org.uk'), url.replace('https://www.biblicalstudies.org.uk','https://biblicalstudies.gospelstudies.org.uk')]:
+                  try:
+                      rr = session.get(candidate, timeout=60, allow_redirects=True)
+                      if rr.ok and rr.content.startswith(b'%PDF'):
+                          out.write_bytes(rr.content)
+                          return {'volume':vol,'file':base,'url':candidate,'size':len(rr.content),'ok':True}
+                      last = f'HTTP {rr.status_code} type={rr.headers.get("content-type")} size={len(rr.content)}'
+                  except Exception as e:
+                      last = repr(e)
+              return {'volume':vol,'file':base,'url':url,'ok':False,'error':last}
+
+          results=[]
+          with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
+              for res in ex.map(one, items):
+                  results.append(res)
+                  print('OK' if res['ok'] else 'FAIL', res['volume'], res['file'], res.get('size',''), res.get('error',''))
+          pathlib.Path('vox_out/manifest.json').write_text(json.dumps(results, indent=2), encoding='utf-8')
+          ok=sum(r['ok'] for r in results); fail=len(results)-ok
+          print('SUMMARY', json.dumps({'discovered':len(items),'downloaded':ok,'failed':fail,'per_volume':per}, sort_keys=True))
+          if fail:
+              raise SystemExit(f'{fail} downloads failed')
+          PY
+      - name: Upload Vox bulk artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vox-evangelica-bulk
+          path: vox_out/
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
