@@ -19,13 +19,14 @@ jobs:
           python - <<'PY'
           import json,re,pathlib,requests
           from bs4 import BeautifulSoup
-          from urllib.parse import urlparse, unquote
+          from urllib.parse import urlparse, unquote, urljoin
           u='https://biblicalstudies.gospelstudies.org.uk/articles_vox_evangelica.php'
           r=requests.get(u,timeout=30,headers={'User-Agent':'Mozilla/5.0'}); r.raise_for_status()
           s=BeautifulSoup(r.text,'html.parser')
           rows=[]
           for a in s.find_all('a',href=True):
-              p=urlparse(a['href'])
+              full=urljoin(r.url,a['href'])
+              p=urlparse(full)
               m=re.search(r'/pdf/vox/vol(\d{1,2})/([^/?#]+\.pdf)$',p.path,re.I)
               if not m: continue
               vol=int(m.group(1)); base=unquote(m.group(2)); text=' '.join(a.get_text(' ',strip=True).split())
