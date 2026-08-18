@@ -1,0 +1,86 @@
+name: Midwestern final transfer
+on:
+  pull_request:
+    paths:
+      - 'midwestern-transfer-trigger.txt'
+  workflow_dispatch:
+
+jobs:
+  transfer:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download linked complete issues and probe missing issues
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out/historical out/probes out/wp
+          python - <<'PY'
+          import urllib.request,urllib.parse,pathlib,re,html as H,csv,subprocess,os
+          UA={'User-Agent':'Mozilla/5.0'}
+          def get(u,t=120):
+              req=urllib.request.Request(u,headers=UA)
+              with urllib.request.urlopen(req,timeout=t) as r:return r.read(),r.geturl(),dict(r.headers)
+          page='https://biblicalstudies.gospelstudies.org.uk/articles_midwestern-journal-of-theology_01.php'
+          b,fu,hh=get(page); t=b.decode('utf-8','replace'); pathlib.Path('out/source.html').write_bytes(b)
+          links=[]
+          for m in re.finditer(r'<a\b[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>',t,re.I|re.S):
+              href=H.unescape(m.group(1)); label=' '.join(H.unescape(re.sub('<[^>]+>',' ',m.group(2))).split()); u=urllib.parse.urljoin(fu,href)
+              if '/pdf/midwestern-journal-theology/vols/' in u.lower() and u.lower().endswith('.pdf'):
+                  links.append((label,u))
+          # dedup in source order
+          uniq=[];seen=set()
+          for r in links:
+              if r[1] not in seen:seen.add(r[1]);uniq.append(r)
+          results=[]
+          for i,(label,u) in enumerate(uniq,1):
+              fn=pathlib.Path(f'out/historical/{i:02d}.pdf')
+              try:b,final,h=get(u)
+              except Exception as e:results.append((i,'ERROR',0,'',label,u,repr(e)));continue
+              if not b.startswith(b'%PDF-'):results.append((i,'NOTPDF',len(b),'',label,u,''));continue
+              fn.write_bytes(b)
+              try:
+                  info=subprocess.check_output(['pdfinfo',str(fn)],text=True,stderr=subprocess.DEVNULL)
+                  pages=re.search(r'^Pages:\s*(\d+)',info,re.M); pages=pages.group(1) if pages else '?'
+                  txt=subprocess.check_output(['pdftotext','-f','1','-l','2',str(fn),'-'],text=True,stderr=subprocess.DEVNULL)[:1200].replace('\t',' ').replace('\n',' | ')
+              except Exception:pages='?';txt=''
+              results.append((i,'PDF',len(b),pages,label,u,txt))
+          with open('out/historical-manifest.tsv','w',newline='') as f:
+              w=csv.writer(f,delimiter='\t');w.writerow(['n','status','bytes','pages','anchor','url','first_text']);w.writerows(results)
+          print('LINKED_COMPLETE',len(uniq),'OK',sum(r[1]=='PDF' for r in results))
+          for r in results:print('HIST',*r[:6],sep='\t')
+          # Probe plausible same-source files for source rows whose Download Complete Volume text has no href, plus v18.
+          base='https://biblicalstudies.gospelstudies.org.uk/pdf/midwestern-journal-theology/vols/'
+          probes=['12-1.pdf','12-2.pdf','18-1.pdf','18-2.pdf']
+          pres=[]
+          for name in probes:
+              u=base+name
+              try:b,final,h=get(u,60); status='PDF' if b.startswith(b'%PDF-') else 'NOTPDF'
+              except Exception as e:pres.append((name,'ERROR',0,'','',repr(e)));continue
+              pages='';text=''
+              if status=='PDF':
+                  fn=pathlib.Path('out/probes')/name;fn.write_bytes(b)
+                  try:
+                      info=subprocess.check_output(['pdfinfo',str(fn)],text=True,stderr=subprocess.DEVNULL);m=re.search(r'^Pages:\s*(\d+)',info,re.M);pages=m.group(1) if m else '?'
+                      text=subprocess.check_output(['pdftotext','-f','1','-l','2',str(fn),'-'],text=True,stderr=subprocess.DEVNULL)[:1000].replace('\t',' ').replace('\n',' | ')
+                  except:pass
+              pres.append((name,status,len(b),pages,text,''))
+          with open('out/probe-results.tsv','w',newline='') as f:
+              w=csv.writer(f,delimiter='\t');w.writerow(['name','status','bytes','pages','first_text','error']);w.writerows(pres)
+          for r in pres:print('PROBE',*r[:4],sep='\t')
+          PY
+          # Probe public WordPress media through Jina reader for Spring 2021 clues.
+          for u in \
+            'https://www.mbts.edu/wp-json/wp/v2/media?search=SP21&per_page=100' \
+            'https://www.mbts.edu/wp-json/wp/v2/media?search=Spring%202021&per_page=100' \
+            'https://www.mbts.edu/wp-json/wp/v2/media?search=MJT&per_page=100&page=1'; do
+            key=$(echo "$u" | md5sum | cut -c1-8)
+            curl -L --max-time 60 --retry 1 -A 'Mozilla/5.0' "https://r.jina.ai/$u" -o "out/wp/$key.txt" || true
+          done
+          grep -RoiE 'https?://[^ "<>]+\.pdf[^ "<>]*|[^ /"<>]*(SP21|sp21)[^ /"<>]*' out/wp > out/wp-clues.txt || true
+          cat out/wp-clues.txt || true
+      - name: Upload final Midwestern transfer
+        uses: actions/upload-artifact@v4
+        with:
+          name: midwestern-final-transfer
+          path: out/
+          retention-days: 1
