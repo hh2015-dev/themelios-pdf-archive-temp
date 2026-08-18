@@ -1,0 +1,68 @@
+name: Trinity Journal source manifest
+on:
+  pull_request:
+    paths:
+      - 'trinity-journal-trigger.txt'
+  workflow_dispatch:
+
+jobs:
+  manifest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch source pages and build link manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          curl -L --fail --retry 3 'https://biblicalstudies.gospelstudies.org.uk/articles_trinity-journal_01.php' -o out/page01.html
+          curl -L --fail --retry 3 'https://biblicalstudies.gospelstudies.org.uk/articles_trinity-journal_02.php' -o out/page02.html
+          python - <<'PY'
+          from html.parser import HTMLParser
+          from urllib.parse import urljoin
+          from pathlib import Path
+          import csv,re
+          base='https://biblicalstudies.gospelstudies.org.uk/'
+          class P(HTMLParser):
+              def __init__(self): super().__init__(); self.links=[]; self.href=None; self.buf=[]
+              def handle_starttag(self,tag,attrs):
+                  if tag.lower()=='a': self.href=dict(attrs).get('href'); self.buf=[]
+              def handle_data(self,data):
+                  if self.href is not None: self.buf.append(data)
+              def handle_endtag(self,tag):
+                  if tag.lower()=='a' and self.href is not None:
+                      self.links.append((self.href,' '.join(''.join(self.buf).split())))
+                      self.href=None; self.buf=[]
+          allrows=[]
+          for page in ('page01','page02'):
+              html=Path(f'out/{page}.html').read_text(errors='replace')
+              p=P(); p.feed(html)
+              for href,text in p.links:
+                  allrows.append((page,text,urljoin(base,href),href))
+          seen=set(); rows=[]
+          for r in allrows:
+              k=(r[0],r[1],r[2])
+              if k not in seen: seen.add(k); rows.append(r)
+          with open('out/all-links.tsv','w',newline='') as f:
+              w=csv.writer(f,delimiter='\t'); w.writerow(['page','anchor_text','absolute_url','raw_href']); w.writerows(rows)
+          pdf=[]
+          for r in rows:
+              t=r[1].lower(); u=r[2].lower()
+              if '.pdf' in u or t=='pdf' or t.endswith(' pdf') or '[pdf' in t:
+                  pdf.append(r)
+          with open('out/pdf-links.tsv','w',newline='') as f:
+              w=csv.writer(f,delimiter='\t'); w.writerow(['page','anchor_text','absolute_url','raw_href']); w.writerows(pdf)
+          with open('out/summary.txt','w') as f:
+              f.write(f'all_links={len(rows)}\npdf_candidate_links={len(pdf)}\n')
+              for page in ('page01','page02'):
+                  html=Path(f'out/{page}.html').read_text(errors='replace')
+                  txt=re.sub(r'<[^>]+>',' ',html)
+                  vols=sorted(set(map(int,re.findall(r'Volume\s+(\d+)',txt,re.I))))
+                  f.write(f'{page}_volumes={vols}\n')
+          print(Path('out/summary.txt').read_text())
+          PY
+      - name: Upload manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: trinity-journal-source-manifest
+          path: out/
+          retention-days: 1
