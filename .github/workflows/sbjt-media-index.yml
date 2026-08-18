@@ -1,0 +1,50 @@
+name: SBJT official media index
+on:
+  pull_request:
+    paths:
+      - 'sbjt-media-trigger.txt'
+  workflow_dispatch:
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Scan official WordPress media for SBJT PDFs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          python - <<'PY'
+          import urllib.request,urllib.parse,pathlib,json,csv,re
+          UA={'User-Agent':'Mozilla/5.0'}
+          def get(u,t=60):
+              req=urllib.request.Request(u,headers=UA)
+              with urllib.request.urlopen(req,timeout=t) as r:return r.read()
+          rows=[]
+          for page in range(1,15):
+              api=f'https://equip.sbts.edu/wp-json/wp/v2/media?search=SBJT&per_page=100&page={page}'
+              try:
+                  b=get('https://r.jina.ai/'+api);t=b.decode('utf-8','replace'); raw=t.split('Markdown Content:',1)[-1].strip(); arr=json.loads(raw)
+              except Exception as e:
+                  pathlib.Path(f'out/page-{page}.err').write_text(repr(e));break
+              pathlib.Path(f'out/page-{page}.json').write_text(json.dumps(arr))
+              if not arr:break
+              for d in arr:
+                  title=d.get('title',{}).get('rendered','');src=d.get('source_url','');mime=d.get('mime_type','');date=d.get('date','')
+                  if mime=='application/pdf' or '.pdf' in src.lower():rows.append((d.get('id',''),title,src,date,mime))
+              if len(arr)<100:break
+          # dedup
+          uniq=[];seen=set()
+          for r in rows:
+              if r[2] not in seen:seen.add(r[2]);uniq.append(r)
+          with open('out/media-pdfs.tsv','w',newline='') as f:
+              w=csv.writer(f,delimiter='\t');w.writerow(['id','title','source_url','date','mime']);w.writerows(uniq)
+          print('PDF_MEDIA',len(uniq))
+          for r in uniq:print(*r,sep='\t')
+          PY
+      - name: Upload media scan
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbjt-media-index
+          path: out/
+          retention-days: 1
