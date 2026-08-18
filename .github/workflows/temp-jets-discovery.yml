@@ -1,5 +1,7 @@
 name: Temporary JETS Discovery
 on:
+  push:
+    branches: [ temp-jets-archive ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:
