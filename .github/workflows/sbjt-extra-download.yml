@@ -19,9 +19,9 @@ jobs:
       - name: Download and validate candidates
         shell: bash
         run: |
-          set -euo pipefail
+          set -u
           mkdir -p out/pdfs
-          printf 'volume\tissue\tstatus\tbytes\tpages\ttitle\turl\n' > out/report.tsv
+          printf 'volume\tissue\tstatus\tbytes\ttitle\turl\n' > out/report.tsv
           tail -n +2 sbjt-extra-manifest.tsv | while IFS=$'\t' read -r volume issue title url; do
             fn=$(printf 'out/pdfs/%02d-%d.pdf' "$volume" "$issue")
             tmp="$fn.tmp"
@@ -30,20 +30,19 @@ jobs:
               magic=$(head -c 5 "$tmp" || true)
               if [ "$magic" = '%PDF-' ]; then
                 mv "$tmp" "$fn"
-                pages=$(pdfinfo "$fn" 2>/dev/null | awk '/^Pages:/ {print $2; exit}')
-                pages=${pages:-0}
-                printf '%s\t%s\tPDF\t%s\t%s\t%s\t%s\n' "$volume" "$issue" "$bytes" "$pages" "$title" "$url" >> out/report.tsv
+                printf '%s\t%s\tPDF\t%s\t%s\t%s\n' "$volume" "$issue" "$bytes" "$title" "$url" >> out/report.tsv
               else
                 rm -f "$tmp"
-                printf '%s\t%s\tNOTPDF\t%s\t0\t%s\t%s\n' "$volume" "$issue" "$bytes" "$title" "$url" >> out/report.tsv
+                printf '%s\t%s\tNOTPDF\t%s\t%s\t%s\n' "$volume" "$issue" "$bytes" "$title" "$url" >> out/report.tsv
               fi
             else
               rm -f "$tmp"
-              printf '%s\t%s\tERROR\t0\t0\t%s\t%s\n' "$volume" "$issue" "$title" "$url" >> out/report.tsv
+              printf '%s\t%s\tERROR\t0\t%s\t%s\n' "$volume" "$issue" "$title" "$url" >> out/report.tsv
             fi
           done
           cat out/report.tsv
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: sbjt-extra-complete-issues
           path: out/
