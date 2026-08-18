@@ -9,58 +9,69 @@ jobs:
   archive:
     runs-on: ubuntu-latest
     steps:
-      - name: Discover official Midwestern Journal PDFs
+      - name: Search historical Midwestern Journal sources
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p out/pdfs
-          # MBTS blocks generic datacenter page requests. Read its public page through a text reader,
-          # preserving the official URLs shown on that public page.
-          curl -L --fail --retry 3 -A 'Mozilla/5.0' 'https://r.jina.ai/https://www.mbts.edu/resources/journal/' -o out/journal.txt
+          mkdir -p out/search
+          # Wayback CDX queries for historical official MBTS PDF URLs and journal pages.
           python - <<'PY'
-          import re,csv,pathlib,urllib.request,urllib.parse,subprocess
-          text=pathlib.Path('out/journal.txt').read_text(errors='replace')
-          # Markdown links plus any bare URLs.
-          rows=[]
-          for m in re.finditer(r'\[([^\]]*)\]\((https?://[^)]+)\)',text):
-              rows.append((m.group(1).strip(),m.group(2).strip()))
-          for u in re.findall(r'https?://[^\s<>\])]+',text):
-              rows.append(('',u.strip()))
-          # Dedup and retain context window around each URL.
-          uniq=[]; seen=set()
-          for label,u in rows:
-              u=u.rstrip('.,')
-              if u in seen: continue
-              seen.add(u)
-              pos=text.find(u); context=' '.join(text[max(0,pos-500):pos+250].split()) if pos>=0 else ''
-              uniq.append((label,u,context))
-          with open('out/all-links.tsv','w',newline='') as f:
-              w=csv.writer(f,delimiter='\t'); w.writerow(['anchor','url','context']); w.writerows(uniq)
-          pdf=[r for r in uniq if '.pdf' in r[1].lower()]
-          with open('out/pdf-links.tsv','w',newline='') as f:
-              w=csv.writer(f,delimiter='\t'); w.writerow(['anchor','url','context']); w.writerows(pdf)
-          print('ALL_LINKS',len(uniq),'PDF_LINKS',len(pdf))
-          # Try direct public PDF downloads with browser-like headers. Do not bypass auth/paywalls.
-          results=[]
-          for i,(label,u,context) in enumerate(pdf,1):
-              fn=f'out/pdfs/{i:03d}.bin'
-              cmd=['curl','-L','--retry','2','--connect-timeout','20','--max-time','120','-A','Mozilla/5.0 (Windows NT 10.0; Win64; x64)','-H','Accept: application/pdf,text/html;q=0.9,*/*;q=0.8','-o',fn,'-w','%{http_code}\t%{url_effective}\t%{content_type}',u]
+          import urllib.request, urllib.parse, pathlib, json, re, csv, time
+          UA={'User-Agent':'Mozilla/5.0'}
+          def fetch(u,timeout=60):
+              req=urllib.request.Request(u,headers=UA)
+              with urllib.request.urlopen(req,timeout=timeout) as r: return r.read()
+          cdx_patterns=[
+            'www.mbts.edu/wp-content/uploads/*mjt*.pdf',
+            'mbts.edu/wp-content/uploads/*mjt*.pdf',
+            'www.mbts.edu/*mjt*.pdf',
+            'www.mbts.edu/*journal*.pdf',
+            'www.mbts.edu/resources/journal/',
+            'mbts.edu/resources/journal/'
+          ]
+          all_cdx=[]
+          for i,p in enumerate(cdx_patterns):
+              q='https://web.archive.org/cdx/search/cdx?url='+urllib.parse.quote(p,safe='*/:.')+'&output=json&fl=timestamp,original,statuscode,mimetype&filter=statuscode:200&collapse=urlkey&from=2000&to=2026'
               try:
-                  meta=subprocess.check_output(cmd,text=True,stderr=subprocess.DEVNULL).strip()
+                  b=fetch(q); pathlib.Path(f'out/search/cdx-{i}.json').write_bytes(b)
+                  j=json.loads(b)
+                  if j:
+                      for row in j[1:]: all_cdx.append(row)
               except Exception as e:
-                  results.append((i,'ERROR',0,label,u,'',repr(e)[:160],context)); continue
-              b=pathlib.Path(fn).read_bytes() if pathlib.Path(fn).exists() else b''
-              status='PDF' if b.startswith(b'%PDF-') else 'NOTPDF'
-              if status=='PDF': pathlib.Path(fn).rename(f'out/pdfs/{i:03d}.pdf')
-              results.append((i,status,len(b),label,u,meta,'',context))
-              print(i,status,len(b),label,u)
-          with open('out/pdf-manifest.tsv','w',newline='') as f:
-              w=csv.writer(f,delimiter='\t'); w.writerow(['n','status','bytes','anchor','url','curl_meta','error','context']); w.writerows(results)
-          print('PDF_OK',sum(r[1]=='PDF' for r in results))
+                  pathlib.Path(f'out/search/cdx-{i}.err').write_text(repr(e))
+          # Jina public search queries for indexed copies / old official PDF URLs.
+          queries=[]
+          for y in range(2002,2020):
+              queries += [
+                f'"Midwestern Journal of Theology" "{y}" PDF',
+                f'site:mbts.edu "Midwestern Journal of Theology" "{y}" pdf',
+              ]
+          queries += [
+            '"Midwestern Journal of Theology" "Spring 2021" PDF',
+            'site:mbts.edu/wp-content/uploads "SP21" "MJT" pdf',
+            'site:mbts.edu/wp-content/uploads "Midwestern Journal" pdf'
+          ]
+          found=[]
+          for i,q in enumerate(queries):
+              u='https://s.jina.ai/'+urllib.parse.quote(q,safe='')
+              try:
+                  b=fetch(u,60); t=b.decode('utf-8','replace'); pathlib.Path(f'out/search/q-{i:02d}.txt').write_text(t)
+                  for url in re.findall(r'https?://[^\s<>\])]+',t):
+                      url=url.rstrip('.,')
+                      if any(k in url.lower() for k in ['mbts.edu','biblicalstudies','archive.org','galaxie.com']): found.append((q,url))
+              except Exception as e:
+                  pathlib.Path(f'out/search/q-{i:02d}.err').write_text(repr(e))
+          with open('out/cdx-all.tsv','w',newline='') as f:
+              w=csv.writer(f,delimiter='\t'); w.writerow(['timestamp','original','statuscode','mimetype']); w.writerows(all_cdx)
+          with open('out/search-found.tsv','w',newline='') as f:
+              w=csv.writer(f,delimiter='\t'); w.writerow(['query','url']); w.writerows(found)
+          print('CDX_ROWS',len(all_cdx),'SEARCH_URLS',len(found))
+          for r in all_cdx[:100]: print('CDX',*r,sep='\t')
+          for r in found[:150]: print('SEARCH',*r,sep='\t')
           PY
-      - name: Upload Midwestern discovery
+      - name: Upload historical discovery
         uses: actions/upload-artifact@v4
         with:
-          name: midwestern-journal-discovery
+          name: midwestern-historical-discovery
           path: out/
           retention-days: 1
