@@ -1,0 +1,76 @@
+name: Midwestern gap search
+on:
+  pull_request:
+    paths:
+      - 'midwestern-gap-trigger.txt'
+  workflow_dispatch:
+
+jobs:
+  search:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Search public scholarly and archive indexes
+        shell: bash
+        run: |
+          set -u
+          mkdir -p out
+          python - <<'PY'
+          import urllib.request,urllib.parse,json,pathlib,re,csv,subprocess
+          UA={'User-Agent':'Mozilla/5.0 (compatible; research-archive/1.0)'}
+          queries=[
+            'Midwestern Journal of Theology 12.1 2013',
+            'Midwestern Journal of Theology 12.2 2013',
+            'Midwestern Journal of Theology 18.1 2019',
+            'Midwestern Journal of Theology 20.1 Spring 2021'
+          ]
+          rows=[]
+          def get(u,t=40):
+              req=urllib.request.Request(u,headers=UA)
+              with urllib.request.urlopen(req,timeout=t) as r:return r.read(),r.geturl(),dict(r.headers)
+          for qi,q in enumerate(queries):
+              # Internet Archive advanced search
+              ia='https://archive.org/advancedsearch.php?q='+urllib.parse.quote('"'+q+'"')+'&fl%5B%5D=identifier&fl%5B%5D=title&fl%5B%5D=year&fl%5B%5D=description&rows=100&page=1&output=json'
+              try:
+                  b,fu,h=get(ia); pathlib.Path(f'out/ia-{qi}.json').write_bytes(b)
+                  j=json.loads(b)
+                  for d in j.get('response',{}).get('docs',[]): rows.append((qi,q,'internet_archive',d.get('identifier',''),d.get('title',''),str(d.get('year','')),''))
+              except Exception as e: pathlib.Path(f'out/ia-{qi}.err').write_text(repr(e))
+              # OpenAlex works search
+              oa='https://api.openalex.org/works?search='+urllib.parse.quote(q)+'&per-page=50&select=id,display_name,publication_year,primary_location,open_access,locations'
+              try:
+                  b,fu,h=get(oa); pathlib.Path(f'out/openalex-{qi}.json').write_bytes(b)
+                  j=json.loads(b)
+                  for d in j.get('results',[]):
+                      locs=d.get('locations') or []
+                      urls=[]
+                      for loc in locs:
+                          if loc and (loc.get('pdf_url') or loc.get('landing_page_url')): urls.append(loc.get('pdf_url') or loc.get('landing_page_url'))
+                      rows.append((qi,q,'openalex',d.get('id',''),d.get('display_name',''),str(d.get('publication_year','')),' | '.join(urls)))
+              except Exception as e: pathlib.Path(f'out/openalex-{qi}.err').write_text(repr(e))
+              # Google Scholar public result page; collect visible external hrefs only. No login/circumvention.
+              gs='https://scholar.google.com/scholar?q='+urllib.parse.quote_plus('"'+q+'"')
+              try:
+                  b,fu,h=get(gs); pathlib.Path(f'out/scholar-{qi}.html').write_bytes(b); t=b.decode('utf-8','replace')
+                  for u in re.findall(r'href=["\'](https?://[^"\']+)',t,re.I):
+                      if 'google.' not in urllib.parse.urlparse(u).netloc:
+                          rows.append((qi,q,'google_scholar',u,'','',''))
+              except Exception as e: pathlib.Path(f'out/scholar-{qi}.err').write_text(repr(e))
+          # Also query IA broadly for journal title alone.
+          ia='https://archive.org/advancedsearch.php?q='+urllib.parse.quote('title:("Midwestern Journal of Theology") OR description:("Midwestern Journal of Theology")')+'&fl%5B%5D=identifier&fl%5B%5D=title&fl%5B%5D=year&rows=200&page=1&output=json'
+          try:
+              b,fu,h=get(ia); pathlib.Path('out/ia-broad.json').write_bytes(b);j=json.loads(b)
+              for d in j.get('response',{}).get('docs',[]):rows.append((99,'journal broad','internet_archive',d.get('identifier',''),d.get('title',''),str(d.get('year','')),''))
+          except Exception as e:pathlib.Path('out/ia-broad.err').write_text(repr(e))
+          with open('out/results.tsv','w',newline='') as f:
+              w=csv.writer(f,delimiter='\t');w.writerow(['q_n','query','source','id_or_url','title','year','locations']);w.writerows(rows)
+          print('ROWS',len(rows))
+          for r in rows:
+              s=' '.join(map(str,r)).lower()
+              if any(x in s for x in ['midwestern journal','theology','mbts','pdf','archive.org']):print(*r,sep='\t')
+          PY
+      - name: Upload gap search
+        uses: actions/upload-artifact@v4
+        with:
+          name: midwestern-gap-search
+          path: out/
+          retention-days: 1
