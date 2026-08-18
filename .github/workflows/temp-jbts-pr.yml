@@ -16,10 +16,15 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install requests beautifulsoup4 pypdf
-      - run: python jbts_worker.py
+      - name: Run seven official full issues
+        shell: bash
+        run: |
+          sed -i "s/(10,1),(10,2)/(10,1)/" jbts_worker.py
+          sed -i "s/len(manifest)!=8/len(manifest)!=7/" jbts_worker.py
+          python jbts_worker.py
       - uses: actions/upload-artifact@v4
         with:
-          name: jbts-official-remaining
+          name: jbts-official-remaining-seven
           path: jbts_out/
           if-no-files-found: error
           retention-days: 1
