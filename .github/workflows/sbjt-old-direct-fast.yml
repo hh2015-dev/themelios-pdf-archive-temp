@@ -1,0 +1,117 @@
+name: SBJT old direct fast archive
+on:
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/sbjt-old-direct-fast.yml']
+  workflow_dispatch:
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch old issue TOCs and official article PDFs directly
+        shell: bash
+        run: |
+          set -u
+          mkdir -p out/pdfs out/issues out/articles
+          python - <<'PY'
+          import urllib.request,urllib.error,urllib.parse,pathlib,re,time,concurrent.futures,csv,html as H
+          UA={'User-Agent':'Mozilla/5.0'}
+          seasons={1:'spring',2:'summer',3:'fall',4:'winter'}
+          targets=[(v,i,1996+v) for v in range(1,9) for i in range(1,5)] + [(9,1,2005),(9,2,2005)]
+          def fetch(u, tries=4, timeout=60):
+              last=None
+              for n in range(tries):
+                  try:
+                      req=urllib.request.Request(u,headers=UA)
+                      with urllib.request.urlopen(req,timeout=timeout) as r:
+                          return r.read(),r.geturl()
+                  except Exception as e:
+                      last=e; time.sleep(1.5*(n+1))
+              raise last
+          def anchors(raw,base):
+              txt=raw.decode('utf-8','replace'); out=[]
+              for m in re.finditer(r'<a\b[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>',txt,re.I|re.S):
+                  href=H.unescape(m.group(1)); label=' '.join(H.unescape(re.sub('<[^>]+>',' ',m.group(2))).split())
+                  out.append((label,urllib.parse.urljoin(base,href),m.start()))
+              return txt,out
+          def scan_issue(item):
+              v,i,y=item; season=seasons[i]; slug=f'sbjt-{v}{i}-{season}-{y}'
+              page=f'https://equip.sbts.edu/category/publications/journals/journal-of-theology/{slug}/'
+              try: raw,final=fetch(page)
+              except Exception as e: return (v,i,y,page,[],f'FETCH:{type(e).__name__}:{e}')
+              pathlib.Path(f'out/issues/{v:02d}-{i}.html').write_bytes(raw)
+              txt,aa=anchors(raw,final)
+              # Prefer article links whose URL path carries the issue slug. Older pages use this consistently.
+              cand=[]
+              for label,u,pos in aa:
+                  lu=u.lower()
+                  if slug not in lu: continue
+                  if '/category/' in lu: continue
+                  if u.rstrip('/')==page.rstrip('/'): continue
+                  if not label or label.lower() in {'read more','continue reading'}: continue
+                  cand.append((label,u,pos))
+              # Fallback: journal article URLs occurring inside the main issue content, excluding nav/category links.
+              if not cand:
+                  for label,u,pos in aa:
+                      lu=u.lower()
+                      if '/publications/journals/journal-of-theology/' not in lu: continue
+                      if '/category/' in lu or u.rstrip('/')==page.rstrip('/'): continue
+                      if not label or label.lower() in {'read more','continue reading'}: continue
+                      cand.append((label,u,pos))
+              # Deduplicate URLs, preserving page order.
+              seen=set(); uniq=[]
+              for label,u,pos in cand:
+                  if u in seen: continue
+                  seen.add(u); uniq.append((label,u,pos))
+              return (v,i,y,page,uniq,'')
+          scans=[]
+          with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
+              scans=list(ex.map(scan_issue,targets))
+          tasks=[]
+          for v,i,y,page,links,err in scans:
+              for ordinal,(title,u,pos) in enumerate(links,1): tasks.append((v,i,y,ordinal,title,u))
+          def scan_article(t):
+              v,i,y,ordinal,title,u=t
+              try: raw,final=fetch(u)
+              except Exception as e: return (*t,'','ARTICLE_FETCH_ERROR',0,'',f'{type(e).__name__}:{e}')
+              pathlib.Path(f'out/articles/{v:02d}-{i}-{ordinal:02d}.html').write_bytes(raw)
+              txt,aa=anchors(raw,final)
+              pdfs=[]
+              for label,pu,pos in aa:
+                  l=(label or '').lower(); plu=pu.lower()
+                  if '.pdf' not in plu: continue
+                  if ('download' in l or 'pdf' in l or 'sbjt' in plu) and ('sbts.edu' in plu or 'equip.sbts.edu' in plu):
+                      pdfs.append((0 if 'download' in l else 1,pu,label))
+              if not pdfs:
+                  for pu in re.findall(r'https?://[^\s"\'<>]+\.pdf(?:\?[^\s"\'<>]*)?',txt,re.I):
+                      if 'sbts.edu' in pu.lower(): pdfs.append((2,H.unescape(pu),''))
+              if not pdfs: return (*t,'','NO_PDF',0,'','')
+              pdfs.sort(key=lambda x:x[0]); pu=pdfs[0][1]
+              try: data,pfinal=fetch(pu,tries=4,timeout=120)
+              except Exception as e: return (*t,pu,'PDF_FETCH_ERROR',0,'',f'{type(e).__name__}:{e}')
+              if not data.startswith(b'%PDF-'): return (*t,pu,'NOT_PDF',len(data),'','')
+              safe=re.sub(r'[^A-Za-z0-9._-]+','_',title).strip('_')[:110] or f'article_{ordinal}'
+              fn=pathlib.Path(f'out/pdfs/{v:02d}-{i}--{ordinal:02d}--{safe}.pdf')
+              fn.write_bytes(data)
+              return (*t,pu,'PDF',len(data),str(fn),'')
+          results=[]
+          with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:
+              results=list(ex.map(scan_article,tasks))
+          with open('out/articles.tsv','w',newline='',encoding='utf-8') as f:
+              w=csv.writer(f,delimiter='\t'); w.writerow(['volume','issue','year','ordinal','title','article_url','pdf_url','status','bytes','local_file','error']); w.writerows(results)
+          with open('out/issues.tsv','w',newline='',encoding='utf-8') as f:
+              w=csv.writer(f,delimiter='\t'); w.writerow(['volume','issue','year','toc_links','pdf_ok','no_pdf','errors','issue_url','issue_error'])
+              for v,i,y,page,links,issue_err in scans:
+                  rr=[r for r in results if r[0]==v and r[1]==i]
+                  ok=sum(r[7]=='PDF' for r in rr); no=sum(r[7]=='NO_PDF' for r in rr); er=len(rr)-ok-no
+                  w.writerow([v,i,y,len(links),ok,no,er,page,issue_err])
+                  print(f'ISSUE\t{v}\t{i}\t{y}\tTOC={len(links)}\tPDF={ok}\tNO_PDF={no}\tERR={er}\t{issue_err}')
+          print('TOTAL_TOC',len(tasks),'TOTAL_PDF',sum(r[7]=='PDF' for r in results))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sbjt-old-direct-fast
+          path: out/
+          retention-days: 1
+          compression-level: 6
