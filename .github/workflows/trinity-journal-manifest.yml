@@ -9,18 +9,25 @@ jobs:
   manifest:
     runs-on: ubuntu-latest
     steps:
-      - name: Fetch source pages and build link manifest
+      - name: Fetch source pages, follow linked article pages, and probe official site
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p out
+          mkdir -p out/followed
           curl -L --fail --retry 3 'https://biblicalstudies.gospelstudies.org.uk/articles_trinity-journal_01.php' -o out/page01.html
           curl -L --fail --retry 3 'https://biblicalstudies.gospelstudies.org.uk/articles_trinity-journal_02.php' -o out/page02.html
+          {
+            echo '=== trinj.com HTTPS ==='
+            curl -L -I --connect-timeout 15 --max-time 30 'https://www.trinj.com/' || true
+            echo '=== trinj.com HTTP ==='
+            curl -L -I --connect-timeout 15 --max-time 30 'http://www.trinj.com/' || true
+          } > out/trinj-probe.txt 2>&1
           python - <<'PY'
           from html.parser import HTMLParser
-          from urllib.parse import urljoin
+          from urllib.parse import urljoin,urlparse
+          from urllib.request import Request,urlopen
           from pathlib import Path
-          import csv,re
+          import csv,re,ssl
           base='https://biblicalstudies.gospelstudies.org.uk/'
           class P(HTMLParser):
               def __init__(self): super().__init__(); self.links=[]; self.href=None; self.buf=[]
@@ -44,15 +51,43 @@ jobs:
               if k not in seen: seen.add(k); rows.append(r)
           with open('out/all-links.tsv','w',newline='') as f:
               w=csv.writer(f,delimiter='\t'); w.writerow(['page','anchor_text','absolute_url','raw_href']); w.writerows(rows)
-          pdf=[]
+          direct_pdf=[]
           for r in rows:
               t=r[1].lower(); u=r[2].lower()
               if '.pdf' in u or t=='pdf' or t.endswith(' pdf') or '[pdf' in t:
-                  pdf.append(r)
+                  direct_pdf.append(r)
           with open('out/pdf-links.tsv','w',newline='') as f:
-              w=csv.writer(f,delimiter='\t'); w.writerow(['page','anchor_text','absolute_url','raw_href']); w.writerows(pdf)
+              w=csv.writer(f,delimiter='\t'); w.writerow(['page','anchor_text','absolute_url','raw_href']); w.writerows(direct_pdf)
+          # Follow one level of article pages directly linked from the two Trinity index pages.
+          allowed={'theologicalstudies.org.uk','www.theologicalstudies.org.uk','earlychurch.org.uk','www.earlychurch.org.uk','biblicalstudies.org.uk','www.biblicalstudies.org.uk','biblicalstudies.gospelstudies.org.uk'}
+          followed=[]; discovered=[]
+          ctx=ssl.create_default_context()
+          for i,r in enumerate(rows):
+              u=r[2]; p=urlparse(u)
+              if p.hostname not in allowed or not p.path.lower().endswith('.html') or 'article_' not in p.path.lower():
+                  continue
+              try:
+                  req=Request(u,headers={'User-Agent':'Mozilla/5.0'})
+                  with urlopen(req,timeout=25,context=ctx) as resp:
+                      raw=resp.read()
+                      final=resp.geturl()
+                  text=raw.decode('utf-8','replace')
+                  pp=P(); pp.feed(text)
+                  found=0
+                  for href,anchor in pp.links:
+                      a=urljoin(final,href)
+                      if '.pdf' in a.lower():
+                          discovered.append((r[0],r[1],u,anchor,a)); found+=1
+                  followed.append((u,'OK',str(len(raw)),str(found)))
+                  Path(f'out/followed/{i:03d}.html').write_bytes(raw)
+              except Exception as e:
+                  followed.append((u,'ERROR',type(e).__name__,str(e)[:180]))
+          with open('out/followed-pages.tsv','w',newline='') as f:
+              w=csv.writer(f,delimiter='\t'); w.writerow(['source_url','status','bytes_or_error','pdfs_found']); w.writerows(followed)
+          with open('out/discovered-pdf-links.tsv','w',newline='') as f:
+              w=csv.writer(f,delimiter='\t'); w.writerow(['index_page','index_anchor','article_page','pdf_anchor','pdf_url']); w.writerows(discovered)
           with open('out/summary.txt','w') as f:
-              f.write(f'all_links={len(rows)}\npdf_candidate_links={len(pdf)}\n')
+              f.write(f'all_links={len(rows)}\ndirect_pdf_candidate_links={len(direct_pdf)}\nfollowed_article_pages={len(followed)}\ndiscovered_pdfs_inside_article_pages={len(discovered)}\n')
               for page in ('page01','page02'):
                   html=Path(f'out/{page}.html').read_text(errors='replace')
                   txt=re.sub(r'<[^>]+>',' ',html)
