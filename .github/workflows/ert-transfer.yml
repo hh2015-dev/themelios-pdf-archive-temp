@@ -1,0 +1,24 @@
+name: ERT transfer test
+on:
+  push:
+    paths:
+      - '.github/workflows/ert-transfer.yml'
+  workflow_dispatch:
+
+jobs:
+  stage:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download ERT 1.1
+        shell: bash
+        run: |
+          mkdir -p out
+          curl -L --fail --retry 3 'https://theology.worldea.org/wp-content/uploads/2020/12/ERT-01-1.pdf' -o 'out/ERT-01-1.pdf'
+          test -s 'out/ERT-01-1.pdf'
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ert-transfer-test
+          path: out/ERT-01-1.pdf
+          compression-level: 0
+          retention-days: 1
