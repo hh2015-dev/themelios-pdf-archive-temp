@@ -1,7 +1,7 @@
 name: Temporary JETS Build
 on:
-  push:
-    branches: [ temp-jets-archive ]
+  pull_request:
+    branches: [ main ]
   workflow_dispatch:
 jobs:
   build:
