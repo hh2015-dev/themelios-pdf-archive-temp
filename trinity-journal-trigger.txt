@@ -1,1 +1,1 @@
-trigger Trinity Journal source manifest
+trigger Trinity Journal source manifest v2
