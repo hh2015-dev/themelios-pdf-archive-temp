@@ -1,0 +1,129 @@
+name: SBJT discovery
+on:
+  pull_request:
+    paths:
+      - 'sbjt-trigger.txt'
+  workflow_dispatch:
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Discover SBJT official and BiblicalStudies sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out/official out/biblicalstudies
+          python - <<'PY'
+          import urllib.request,urllib.parse,pathlib,re,html as H,csv,json,time
+          UA={'User-Agent':'Mozilla/5.0'}
+          def get(u,t=60):
+              req=urllib.request.Request(u,headers=UA)
+              with urllib.request.urlopen(req,timeout=t) as r:return r.read(),r.geturl(),dict(r.headers)
+          def extract_links(text,base):
+              rows=[]
+              for m in re.finditer(r'<a\b[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>',text,re.I|re.S):
+                  href=H.unescape(m.group(1)); label=' '.join(H.unescape(re.sub('<[^>]+>',' ',m.group(2))).split()); rows.append((label,urllib.parse.urljoin(base,href)))
+              return rows
+          # Official Equip category. Read through public text reader if direct request is blocked.
+          official='https://equip.sbts.edu/category/publications/journals/journal-of-theology/'
+          pages=[]; alloff=[]
+          for p in range(1,40):
+              u=official if p==1 else official+f'page/{p}/'
+              got=False
+              for candidate in (u,'https://r.jina.ai/'+u):
+                  try:
+                      b,fu,h=get(candidate,60); t=b.decode('utf-8','replace');
+                      if candidate.startswith('https://r.jina.ai/'):
+                          pathlib.Path(f'out/official/page-{p:02d}.txt').write_bytes(b)
+                          # extract markdown links + bare URLs
+                          links=[]
+                          for m in re.finditer(r'\[([^\]]*)\]\((https?://[^)]+)\)',t): links.append((m.group(1).strip(),m.group(2).strip()))
+                          for v in re.findall(r'https?://[^\s<>\])]+',t): links.append(('',v.rstrip('.,')))
+                      else:
+                          pathlib.Path(f'out/official/page-{p:02d}.html').write_bytes(b);links=extract_links(t,fu)
+                      # stop if obvious 404/no posts
+                      if ('Page not found' in t or '404' in t[:500]) and p>1: raise RuntimeError('END')
+                      pages.append((p,u,len(b),candidate)); alloff.extend((p,a,v) for a,v in links);got=True;break
+                  except RuntimeError as e:
+                      if str(e)=='END': got=False; break
+                  except Exception: pass
+              if not got:
+                  if p<=2: continue
+                  break
+          # Dedup official urls
+          ouniq=[];seen=set()
+          for r in alloff:
+              if r[2] not in seen:seen.add(r[2]);ouniq.append(r)
+          with open('out/official/all-links.tsv','w',newline='') as f:
+              w=csv.writer(f,delimiter='\t');w.writerow(['page','anchor','url']);w.writerows(ouniq)
+          pdf=[r for r in ouniq if '.pdf' in r[2].lower()]
+          with open('out/official/pdf-links.tsv','w',newline='') as f:
+              w=csv.writer(f,delimiter='\t');w.writerow(['page','anchor','url']);w.writerows(pdf)
+          # Follow official SBJT issue/post links one level; find embedded PDFs and issue metadata.
+          follow=[]; embedded=[]
+          for i,(p,a,u) in enumerate(ouniq):
+              low=(a+' '+u).lower(); host=urllib.parse.urlparse(u).hostname or ''
+              if host not in {'equip.sbts.edu','www.sbts.edu','sbts.edu'}: continue
+              if '.pdf' in u.lower(): continue
+              if not any(x in low for x in ['journal','theology','sbjt','volume','issue']): continue
+              try:
+                  b,fu,h=get('https://r.jina.ai/'+u,50);t=b.decode('utf-8','replace');pathlib.Path(f'out/official/follow-{i:04d}.txt').write_bytes(b)
+                  for m in re.finditer(r'\[([^\]]*)\]\((https?://[^)]+)\)',t):
+                      lab=m.group(1).strip();v=m.group(2).strip()
+                      if '.pdf' in v.lower():embedded.append((u,lab,v))
+                  for v in re.findall(r'https?://[^\s<>\])]+',t):
+                      v=v.rstrip('.,')
+                      if '.pdf' in v.lower():embedded.append((u,'',v))
+                  title=''
+                  mt=re.search(r'^Title:\s*(.+)$',t,re.M); title=mt.group(1).strip() if mt else ''
+                  follow.append((u,'OK',len(b),title))
+              except Exception as e: follow.append((u,'ERROR',0,repr(e)[:150]))
+          ese=[];seen=set()
+          for r in embedded:
+              if r[2] not in seen: seen.add(r[2]); ese.append(r)
+          with open('out/official/embedded-pdfs.tsv','w',newline='') as f:
+              w=csv.writer(f,delimiter='\t');w.writerow(['source_page','anchor','pdf_url']);w.writerows(ese)
+          with open('out/official/followed.tsv','w',newline='') as f:
+              w=csv.writer(f,delimiter='\t');w.writerow(['url','status','bytes','title']);w.writerows(follow)
+          # BiblicalStudies sitemap to find dedicated SBJT page(s).
+          starts=['https://biblicalstudies.gospelstudies.org.uk/sitemap.php','https://www.gospelstudies.org.uk/biblicalstudies/sitemap.php']
+          sbpages=[]
+          for su in starts:
+              try:b,fu,h=get(su,50);t=b.decode('utf-8','replace');pathlib.Path('out/biblicalstudies/sitemap.html').write_bytes(b)
+              except:continue
+              for lab,v in extract_links(t,fu):
+                  low=(lab+' '+v).lower()
+                  if 'southern baptist journal' in low or 'sbjt' in low: sbpages.append((lab,v))
+              if sbpages:break
+          # Dedup and fetch source pages, extracting PDFs.
+          sbu=[];seen=set()
+          for r in sbpages:
+              if r[1] not in seen:seen.add(r[1]);sbu.append(r)
+          bpdf=[]
+          for i,(lab,u) in enumerate(sbu):
+              try:b,fu,h=get(u,50);t=b.decode('utf-8','replace');pathlib.Path(f'out/biblicalstudies/page-{i:02d}.html').write_bytes(b)
+              except Exception as e:continue
+              for a,v in extract_links(t,fu):
+                  if '.pdf' in v.lower():
+                      pos=t.find(v);ctx=' '.join(H.unescape(re.sub('<[^>]+>',' ',t[max(0,pos-600):pos+250])).split()) if pos>=0 else ''
+                      bpdf.append((lab,u,a,v,ctx))
+          bu=[];seen=set()
+          for r in bpdf:
+              if r[3] not in seen:seen.add(r[3]);bu.append(r)
+          with open('out/biblicalstudies/pages.tsv','w',newline='') as f:
+              w=csv.writer(f,delimiter='\t');w.writerow(['anchor','url']);w.writerows(sbu)
+          with open('out/biblicalstudies/pdfs.tsv','w',newline='') as f:
+              w=csv.writer(f,delimiter='\t');w.writerow(['source_label','source_page','anchor','pdf_url','context']);w.writerows(bu)
+          print('OFFICIAL_PAGES',len(pages),'OFFICIAL_LINKS',len(ouniq),'OFFICIAL_DIRECT_PDFS',len(pdf),'FOLLOWED',len(follow),'EMBEDDED_PDFS',len(ese))
+          print('BIBLICALSTUDIES_PAGES',len(sbu),'BIBLICALSTUDIES_PDFS',len(bu))
+          for r in sbu:print('BSPAGE',*r,sep='\t')
+          for r in pdf[:100]:print('OFFPDF',*r,sep='\t')
+          for r in ese[:100]:print('EMBPDF',*r,sep='\t')
+          PY
+      - name: Upload SBJT discovery
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbjt-discovery
+          path: out/
+          retention-days: 1
