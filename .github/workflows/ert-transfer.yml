@@ -1,8 +1,8 @@
 name: ERT transfer test
 on:
-  push:
+  pull_request:
     paths:
-      - '.github/workflows/ert-transfer.yml'
+      - 'ert-transfer-trigger.txt'
   workflow_dispatch:
 
 jobs:
