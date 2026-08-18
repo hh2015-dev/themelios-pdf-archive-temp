@@ -3,11 +3,9 @@ on:
   pull_request:
     branches: [main]
 jobs:
-  archive:
+  diagnose:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    permissions:
-      contents: write
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
@@ -15,26 +13,5 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: pip install requests beautifulsoup4 pypdf
-      - name: Run seven official full issues
-        shell: bash
-        run: |
-          sed -i "s/(10,1),(10,2)/(10,1)/" jbts_worker.py
-          sed -i "s/len(manifest)!=8/len(manifest)!=7/" jbts_worker.py
-          python jbts_worker.py
-      - uses: actions/upload-artifact@v4
-        with:
-          name: jbts-official-remaining-seven
-          path: jbts_out/
-          if-no-files-found: error
-          retention-days: 1
-          compression-level: 0
-      - name: Record run id
-        shell: bash
-        run: |
-          printf '%s\n' "$GITHUB_RUN_ID" > jbts-run-id.txt
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add jbts-run-id.txt
-          git commit -m 'Temporary JBTS run metadata' || exit 0
-          git push origin HEAD:temp-jbts-archive
+      - run: pip install requests beautifulsoup4
+      - run: python jbts_10_2_diag.py
