@@ -1,0 +1,46 @@
+name: Midwestern quick indexed search
+on:
+  pull_request:
+    paths:
+      - 'midwestern-quick-trigger.txt'
+  workflow_dispatch:
+
+jobs:
+  search:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Search indexed public sources
+        shell: bash
+        run: |
+          set -u
+          mkdir -p out
+          queries=(
+            'site:mbts.edu/wp-content/uploads "Midwestern Journal of Theology" pdf'
+            '"Midwestern Journal of Theology" PDF 2002 2019'
+            '"Midwestern Journal of Theology" "Spring 2021" pdf'
+          )
+          i=0
+          for q in "${queries[@]}"; do
+            enc=$(python -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1],safe=""))' "$q")
+            curl -L --max-time 35 --retry 1 -A 'Mozilla/5.0' "https://s.jina.ai/$enc" -o "out/q${i}.txt" || true
+            i=$((i+1))
+          done
+          python - <<'PY'
+          import pathlib,re
+          seen=set()
+          for f in sorted(pathlib.Path('out').glob('q*.txt')):
+              t=f.read_text(errors='replace')
+              print('\n###',f.name)
+              for u in re.findall(r'https?://[^\s<>\])]+',t):
+                  u=u.rstrip('.,')
+                  if u in seen: continue
+                  seen.add(u)
+                  if any(k in u.lower() for k in ['mbts.edu','biblicalstudies','archive.org','galaxie.com','theologicalstudies']):
+                      print(u)
+          PY
+      - name: Upload quick search
+        uses: actions/upload-artifact@v4
+        with:
+          name: midwestern-quick-search
+          path: out/
+          retention-days: 1
