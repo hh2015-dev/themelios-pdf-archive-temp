@@ -1,0 +1,77 @@
+name: Midwestern historical web search
+on:
+  pull_request:
+    paths:
+      - 'midwestern-websearch-trigger.txt'
+  workflow_dispatch:
+
+jobs:
+  search:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Search public web indexes
+        shell: bash
+        run: |
+          set -u
+          mkdir -p out
+          python - <<'PY'
+          import subprocess,urllib.parse,pathlib,re,html,csv,time
+          queries=[
+            '"Midwestern Journal of Theology" filetype:pdf',
+            'site:mbts.edu/wp-content/uploads MJT pdf theology journal',
+            'site:mbts.edu "Midwestern Journal of Theology" 2002 pdf',
+            'site:mbts.edu "Midwestern Journal of Theology" 2005 pdf',
+            'site:mbts.edu "Midwestern Journal of Theology" 2010 pdf',
+            'site:mbts.edu "Midwestern Journal of Theology" 2015 pdf',
+            'site:mbts.edu "Midwestern Journal of Theology" 2018 pdf',
+            'site:mbts.edu "Midwestern Journal of Theology" 2019 pdf',
+            '"Midwestern Journal of Theology" "Vol. 18" pdf',
+            '"Midwestern Journal of Theology" "Vol. 17" pdf',
+            '"Midwestern Journal of Theology" "Vol. 16" pdf',
+            '"Midwestern Journal of Theology" "Vol. 15" pdf',
+            '"Midwestern Journal of Theology" "Spring 2021" pdf',
+            '"Midwestern Journal of Theology" "Vol. 20" "No. 1" pdf'
+          ]
+          found=[]
+          for i,q in enumerate(queries):
+              enc=urllib.parse.quote_plus(q)
+              sources=[
+                ('bing',f'https://www.bing.com/search?q={enc}&count=50'),
+                ('ddg',f'https://html.duckduckgo.com/html/?q={enc}')
+              ]
+              for engine,u in sources:
+                  fn=pathlib.Path(f'out/{i:02d}-{engine}.html')
+                  try:
+                      b=subprocess.check_output(['curl','-L','--max-time','30','--retry','1','-A','Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/151 Safari/537.36',u],stderr=subprocess.DEVNULL)
+                      fn.write_bytes(b); t=b.decode('utf-8','replace')
+                  except Exception as e:
+                      fn.with_suffix('.err').write_text(repr(e)); continue
+                  # collect raw hrefs and decoded uddg targets
+                  urls=[]
+                  for m in re.finditer(r'href=["\']([^"\']+)',t,re.I):
+                      v=html.unescape(m.group(1))
+                      if 'uddg=' in v:
+                          try:
+                              qs=urllib.parse.parse_qs(urllib.parse.urlparse(v).query); v=qs.get('uddg',[v])[0]
+                          except: pass
+                      if v.startswith('//'): v='https:'+v
+                      if v.startswith('http'): urls.append(v)
+                  for v in urls:
+                      low=v.lower()
+                      if any(k in low for k in ['mbts.edu','biblicalstudies','gospelstudies','archive.org','galaxie.com','theologicalstudies','academia.edu','researchgate.net']):
+                          found.append((i,q,engine,v))
+          # unique URLs
+          uniq=[];seen=set()
+          for r in found:
+              if r[3] not in seen: seen.add(r[3]); uniq.append(r)
+          with open('out/results.tsv','w',newline='') as f:
+              w=csv.writer(f,delimiter='\t'); w.writerow(['query_n','query','engine','url']); w.writerows(uniq)
+          print('FOUND',len(uniq))
+          for r in uniq: print(*r,sep='\t')
+          PY
+      - name: Upload web search
+        uses: actions/upload-artifact@v4
+        with:
+          name: midwestern-web-search
+          path: out/
+          retention-days: 1
