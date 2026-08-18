@@ -1,0 +1,47 @@
+name: SBJT quick scan
+on:
+  pull_request:
+    paths:
+      - 'sbjt-quick-trigger.txt'
+  workflow_dispatch:
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Scan official archive and BiblicalStudies sitemap
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          curl -L --fail --max-time 60 -A 'Mozilla/5.0' 'https://r.jina.ai/https://equip.sbts.edu/category/publications/journals/journal-of-theology/' -o out/official.txt
+          curl -L --fail --max-time 60 -A 'Mozilla/5.0' 'https://biblicalstudies.gospelstudies.org.uk/sitemap.php' -o out/sitemap.html
+          python - <<'PY'
+          import pathlib,re,html as H,urllib.parse,csv
+          t=pathlib.Path('out/official.txt').read_text(errors='replace')
+          print('OFFICIAL_HEAD')
+          print(t[:12000])
+          links=[]
+          for m in re.finditer(r'\[([^\]]*)\]\((https?://[^)]+)\)',t):links.append((m.group(1).strip(),m.group(2).strip()))
+          for u in re.findall(r'https?://[^\s<>\])]+',t):links.append(('',u.rstrip('.,')))
+          seen=set();uniq=[]
+          for r in links:
+              if r[1] not in seen:seen.add(r[1]);uniq.append(r)
+          with open('out/official-links.tsv','w',newline='') as f:
+              w=csv.writer(f,delimiter='\t');w.writerow(['anchor','url']);w.writerows(uniq)
+          s=pathlib.Path('out/sitemap.html').read_text(errors='replace')
+          rows=[]
+          for m in re.finditer(r'<a\b[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>',s,re.I|re.S):
+              href=H.unescape(m.group(1));label=' '.join(H.unescape(re.sub('<[^>]+>',' ',m.group(2))).split());u=urllib.parse.urljoin('https://biblicalstudies.gospelstudies.org.uk/',href)
+              if 'southern baptist journal' in (label+' '+u).lower() or 'sbjt' in (label+' '+u).lower():rows.append((label,u))
+          print('BS_MATCHES',len(rows))
+          for r in rows:print('BS',*r,sep='\t')
+          with open('out/bs-pages.tsv','w',newline='') as f:
+              w=csv.writer(f,delimiter='\t');w.writerow(['anchor','url']);w.writerows(rows)
+          PY
+      - name: Upload quick scan
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbjt-quick-scan
+          path: out/
+          retention-days: 1
