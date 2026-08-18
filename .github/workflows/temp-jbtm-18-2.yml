@@ -25,11 +25,20 @@ jobs:
               raise SystemExit('Downloaded payload is not a valid-looking PDF')
           open('jbtm-18-2-fall-2021.pdf','wb').write(data)
           print('BYTES', len(data))
-      - name: Commit temporary PDF to branch
+      - name: Upload temporary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: jbtm-18-2-fall-2021
+          path: jbtm-18-2-fall-2021.pdf
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+      - name: Commit run metadata to branch
         shell: bash
         run: |
+          printf '%s\n' "$GITHUB_RUN_ID" > jbtm-run-id.txt
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add jbtm-18-2-fall-2021.pdf
-          git commit -m 'Temporary JBTM 18.2 PDF' || exit 0
+          git add jbtm-18-2-fall-2021.pdf jbtm-run-id.txt
+          git commit -m 'Temporary JBTM 18.2 artifact metadata' || exit 0
           git push origin HEAD:temp-jbtm-18-2
