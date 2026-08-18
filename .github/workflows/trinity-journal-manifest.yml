@@ -58,7 +58,6 @@ jobs:
                   direct_pdf.append(r)
           with open('out/pdf-links.tsv','w',newline='') as f:
               w=csv.writer(f,delimiter='\t'); w.writerow(['page','anchor_text','absolute_url','raw_href']); w.writerows(direct_pdf)
-          # Follow one level of article pages directly linked from the two Trinity index pages.
           allowed={'theologicalstudies.org.uk','www.theologicalstudies.org.uk','earlychurch.org.uk','www.earlychurch.org.uk','biblicalstudies.org.uk','www.biblicalstudies.org.uk','biblicalstudies.gospelstudies.org.uk'}
           followed=[]; discovered=[]
           ctx=ssl.create_default_context()
@@ -69,11 +68,9 @@ jobs:
               try:
                   req=Request(u,headers={'User-Agent':'Mozilla/5.0'})
                   with urlopen(req,timeout=25,context=ctx) as resp:
-                      raw=resp.read()
-                      final=resp.geturl()
+                      raw=resp.read(); final=resp.geturl()
                   text=raw.decode('utf-8','replace')
-                  pp=P(); pp.feed(text)
-                  found=0
+                  pp=P(); pp.feed(text); found=0
                   for href,anchor in pp.links:
                       a=urljoin(final,href)
                       if '.pdf' in a.lower():
@@ -95,9 +92,36 @@ jobs:
                   f.write(f'{page}_volumes={vols}\n')
           print(Path('out/summary.txt').read_text())
           PY
+      - name: Download standalone Trinity Journal PDFs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p pdfs
+          curl -L --fail --retry 3 'https://biblicalstudies.gospelstudies.org.uk/pdf/tj/kephale_grudem.pdf' -o pdfs/tj-06-1-grudem.pdf
+          curl -L --fail --retry 3 'https://biblicalstudies.gospelstudies.org.uk/pdf/tj/daniel_pierce.pdf' -o pdfs/tj-10-2-pierce.pdf
+          curl -L --fail --retry 3 'https://biblicalstudies.gospelstudies.org.uk/pdf/tj/task_kaiser.pdf' -o pdfs/tj-12-1-kaiser.pdf
+          curl -L --fail --retry 3 'https://earlychurch.org.uk/pdf/angel_juncker.pdf' -o pdfs/tj-15-2-juncker.pdf
+          curl -L --fail --retry 3 'https://biblicalstudies.gospelstudies.org.uk/pdf/tj/athenian_charles.pdf' -o pdfs/tj-16-1-charles.pdf
+          curl -L --fail --retry 3 'https://biblicalstudies.gospelstudies.org.uk/pdf/tj/q_linnemann.pdf' -o pdfs/tj-17-1-linnemann.pdf
+          curl -L --fail --retry 3 'https://biblicalstudies.gospelstudies.org.uk/pdf/tj/17-1_067.pdf' -o pdfs/tj-17-1-swanson.pdf
+          curl -L --fail --retry 3 'https://biblicalstudies.gospelstudies.org.uk/pdf/tj/20-1_053.pdf' -o pdfs/tj-20-1-ulrich.pdf
+          curl -L --fail --retry 3 'https://biblicalstudies.gospelstudies.org.uk/pdf/tj/matthew_baxter.pdf' -o pdfs/tj-20-1-baxter.pdf
+          curl -L --fail --retry 3 'https://biblicalstudies.gospelstudies.org.uk/pdf/tj/20-2_165.pdf' -o pdfs/tj-20-2-morrison.pdf
+          curl -L --fail --retry 3 'https://biblicalstudies.gospelstudies.org.uk/pdf/tj/21-2_131.pdf' -o pdfs/tj-21-2-obenhaus.pdf
+          for f in pdfs/*.pdf; do
+            test -s "$f"
+            head -c 5 "$f" | grep -q '%PDF-'
+          done
+          ls -lh pdfs
       - name: Upload manifest
         uses: actions/upload-artifact@v4
         with:
           name: trinity-journal-source-manifest
           path: out/
+          retention-days: 1
+      - name: Upload Trinity Journal PDFs
+        uses: actions/upload-artifact@v4
+        with:
+          name: trinity-journal-pdfs
+          path: pdfs/
           retention-days: 1
