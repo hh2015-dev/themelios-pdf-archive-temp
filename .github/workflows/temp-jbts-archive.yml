@@ -1,0 +1,185 @@
+name: temp-jbts-archive
+on:
+  push:
+    branches:
+      - temp-jbts-archive
+    paths:
+      - '.github/workflows/temp-jbts-archive.yml'
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: temp-jbts-archive
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install requests beautifulsoup4 pypdf
+      - name: Discover and download official JBTS issues
+        shell: python
+        run: |
+          import os, re, json, pathlib, time
+          import requests
+          from bs4 import BeautifulSoup
+          from urllib.parse import urljoin, urlparse
+          from pypdf import PdfReader, PdfWriter
+
+          BASE='https://jbtsonline.org/'
+          ISSUES=urljoin(BASE,'issues/')
+          S=requests.Session()
+          S.headers.update({'User-Agent':'Mozilla/5.0 BSUK-JBTS-Archiver/1.0'})
+          out=pathlib.Path('jbts_out'); out.mkdir(exist_ok=True)
+          manifest=[]
+
+          def get(url, timeout=60):
+              last=None
+              for i in range(3):
+                  try:
+                      r=S.get(url,timeout=timeout,allow_redirects=True)
+                      if r.status_code < 500: return r
+                      last=f'HTTP {r.status_code}'
+                  except Exception as e: last=repr(e)
+                  time.sleep(2+i)
+              raise RuntimeError(f'GET failed {url}: {last}')
+
+          def clean_text(x): return re.sub(r'\s+',' ',x.get_text(' ',strip=True)).strip()
+
+          html=get(ISSUES).text
+          soup=BeautifulSoup(html,'html.parser')
+          heads=[]
+          for h in soup.find_all(['h2','h3']):
+              t=clean_text(h)
+              if re.match(r'^JBTS Volume\s+\d+',t,re.I): heads.append(h)
+
+          sections={}
+          for h in heads:
+              ht=clean_text(h)
+              m=re.search(r'Volume\s+(\d+)(?:\s*\|\s*Issue\s*(\d+))?',ht,re.I)
+              if not m: continue
+              vol=int(m.group(1)); issue=int(m.group(2)) if m.group(2) else None
+              els=[]
+              for el in h.find_all_next():
+                  if el is h: continue
+                  if el.name in ('h2','h3') and re.match(r'^JBTS Volume\s+\d+',clean_text(el),re.I): break
+                  els.append(el)
+              links=[]; seen=set()
+              for el in els:
+                  if el.name!='a' or not el.get('href'): continue
+                  href=urljoin(ISSUES,el['href']); txt=clean_text(el)
+                  key=(href,txt)
+                  if key in seen: continue
+                  seen.add(key); links.append((href,txt))
+              sections[(vol,issue)]={'heading':ht,'links':links}
+
+          expected=[(6,1),(6,2),(7,1),(7,2),(8,1),(9,None),(10,1),(10,2)]
+
+          def pdf_from_link(url, label=''):
+              r=get(url)
+              ct=(r.headers.get('content-type') or '').lower()
+              if r.content.startswith(b'%PDF') or 'application/pdf' in ct:
+                  return r.url,r.content
+              page=BeautifulSoup(r.text,'html.parser')
+              candidates=[]
+              for a in page.find_all('a',href=True):
+                  href=urljoin(r.url,a['href']); txt=clean_text(a)
+                  if href.lower().split('?')[0].endswith('.pdf'):
+                      score=0
+                      if 'pdf' in txt.lower(): score+=4
+                      if 'full issue' in txt.lower(): score+=10
+                      if 'files/' in href.lower() or 'uploads/' in href.lower(): score+=2
+                      candidates.append((score,href))
+              for _,href in sorted(candidates,reverse=True):
+                  rr=get(href)
+                  if rr.content.startswith(b'%PDF'):
+                      return rr.url,rr.content
+              return None,None
+
+          def validate_pdf(data):
+              import io
+              rd=PdfReader(io.BytesIO(data))
+              return len(rd.pages)
+
+          for vol,iss in expected:
+              sec=sections.get((vol,iss))
+              if not sec: raise SystemExit(f'MISSING SECTION {(vol,iss)}')
+              links=sec['links']
+              full_candidates=[]
+              for href,txt in links:
+                  low=(txt+' '+href).lower()
+                  if 'full issue' in low or (href.lower().split('?')[0].endswith('.pdf') and ('jbts-%s'%vol in low or f'{vol}.{iss}' in low)):
+                      full_candidates.append((href,txt))
+              chosen=None
+              for href,txt in full_candidates:
+                  try:
+                      u,data=pdf_from_link(href,txt)
+                      if data:
+                          pages=validate_pdf(data); chosen=(u,data,pages); break
+                  except Exception as e:
+                      print('FULL CANDIDATE FAIL',vol,iss,href,repr(e))
+              if chosen:
+                  u,data,pages=chosen
+                  if iss is None:
+                      name=f'Journal of Biblical and Theological Studies - Volume {vol:03d}.pdf'
+                  else:
+                      name=f'Journal of Biblical and Theological Studies - Volume {vol:03d} Issue {iss:02d}.pdf'
+                  (out/name).write_bytes(data)
+                  manifest.append({'volume':vol,'issue':iss,'mode':'official_full_issue','source':u,'file':name,'pages':pages,'size':len(data)})
+                  print('FULL',vol,iss,pages,len(data),u)
+                  continue
+
+              # No full issue: reconstruct from every official article/review PDF linked in this issue section.
+              parts=[]; partmeta=[]
+              for href,txt in links:
+                  low=txt.lower()
+                  if not txt or txt.lower().startswith('jbts '): continue
+                  if any(x in low for x in ['cover','image']): continue
+                  try:
+                      u,data=pdf_from_link(href,txt)
+                  except Exception as e:
+                      print('PART FAIL',vol,iss,txt,href,repr(e)); continue
+                  if not data: continue
+                  # de-duplicate identical resolved PDFs
+                  if any(u==x[0] for x in partmeta): continue
+                  pages=validate_pdf(data)
+                  parts.append(data); partmeta.append((u,txt,pages,len(data)))
+                  print('PART',vol,iss,len(parts),pages,txt[:90],u)
+              if not parts:
+                  raise SystemExit(f'NO PDF PARTS for {(vol,iss)}')
+              import io
+              writer=PdfWriter()
+              for data in parts:
+                  rd=PdfReader(io.BytesIO(data))
+                  for p in rd.pages: writer.add_page(p)
+              bio=io.BytesIO(); writer.write(bio); merged=bio.getvalue(); pages=validate_pdf(merged)
+              if iss is None:
+                  name=f'Journal of Biblical and Theological Studies - Volume {vol:03d} - Reconstructed from official article PDFs.pdf'
+              else:
+                  name=f'Journal of Biblical and Theological Studies - Volume {vol:03d} Issue {iss:02d} - Reconstructed from official article PDFs.pdf'
+              (out/name).write_bytes(merged)
+              manifest.append({'volume':vol,'issue':iss,'mode':'reconstructed_official_articles','file':name,'pages':pages,'size':len(merged),'parts':[{'source':u,'title':t,'pages':p,'size':s} for u,t,p,s in partmeta]})
+              print('RECON',vol,iss,len(parts),pages,len(merged))
+
+          (out/'manifest.json').write_text(json.dumps(manifest,indent=2,ensure_ascii=False),encoding='utf-8')
+          print('SUMMARY',json.dumps([{'v':x['volume'],'i':x['issue'],'mode':x['mode'],'pages':x['pages']} for x in manifest]))
+          if len(manifest)!=8: raise SystemExit(f'Expected 8 outputs, got {len(manifest)}')
+      - name: Upload JBTS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: jbts-official-remaining
+          path: jbts_out/
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+      - name: Record run id
+        shell: bash
+        run: |
+          printf '%s\n' "$GITHUB_RUN_ID" > jbts-run-id.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add jbts-run-id.txt
+          git commit -m 'Temporary JBTS run metadata' || exit 0
+          git push origin HEAD:temp-jbts-archive
