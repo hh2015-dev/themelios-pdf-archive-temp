@@ -9,16 +9,17 @@ jobs:
   stage:
     runs-on: ubuntu-latest
     steps:
-      - name: Download ERT 1.1
+      - name: Download ERT archive 1977-2020
         shell: bash
         run: |
           mkdir -p out
-          curl -L --fail --retry 3 'https://theology.worldea.org/wp-content/uploads/2020/12/ERT-01-1.pdf' -o 'out/ERT-01-1.pdf'
-          test -s 'out/ERT-01-1.pdf'
+          curl -L --fail --retry 3 'https://theology.worldea.org/wp-content/uploads/2020/12/ERT-PDFs.zip' -o 'out/ERT-PDFs-1977-2020.zip'
+          test -s 'out/ERT-PDFs-1977-2020.zip'
+          unzip -t 'out/ERT-PDFs-1977-2020.zip' >/dev/null
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ert-transfer-test
-          path: out/ERT-01-1.pdf
+          name: ert-archive-1977-2020
+          path: out/ERT-PDFs-1977-2020.zip
           compression-level: 0
           retention-days: 1
