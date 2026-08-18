@@ -1,0 +1,51 @@
+name: Trinity external public PDF test
+on:
+  pull_request:
+    paths:
+      - 'trinity-external-trigger.txt'
+  workflow_dispatch:
+
+jobs:
+  test-public-downloads:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download and validate public Academia files
+        shell: bash
+        run: |
+          set -u
+          mkdir -p out/pdfs
+          cat > out/sources.tsv <<'EOF'
+          eric-price-article	https://www.academia.edu/attachments/56777393/download_file?s=profile
+          eric-price-review	https://www.academia.edu/attachments/58964159/download_file?s=profile
+          john-dunne	https://www.academia.edu/attachments/12100955/download_file?s=work_strip
+          andrew-sloane	https://www.academia.edu/attachments/75605619/download_file?s=profile
+          backfish-mangano	https://www.academia.edu/attachments/56742492/download_file?s=profile
+          backfish-psalms-worship	https://www.academia.edu/attachments/56742493/download_file?s=profile
+          backfish-genesis	https://www.academia.edu/attachments/56742491/download_file?s=profile
+          alexander-stewart	https://www.academia.edu/attachments/58987696/download_file?s=profile
+          EOF
+          printf 'key\tstatus\thttp\tcontent_type\tbytes\tpages\tfinal_url\n' > out/results.tsv
+          while IFS=$'\t' read -r key url; do
+            [ -z "$key" ] && continue
+            f="out/pdfs/${key}.bin"
+            headers="out/${key}.headers"
+            http=$(curl -L --retry 2 --connect-timeout 20 --max-time 90 -A 'Mozilla/5.0' -D "$headers" -o "$f" -w '%{http_code}' "$url" || true)
+            ctype=$(grep -i '^content-type:' "$headers" | tail -1 | tr -d '\r' | cut -d: -f2- | xargs || true)
+            final=$(curl -Ls -o /dev/null -w '%{url_effective}' -A 'Mozilla/5.0' "$url" || true)
+            bytes=$(stat -c%s "$f" 2>/dev/null || echo 0)
+            status=FAIL; pages=''
+            if [ -s "$f" ] && head -c5 "$f" | grep -q '^%PDF-'; then
+              status=PDF
+              mv "$f" "out/pdfs/${key}.pdf"
+              pages=$(pdfinfo "out/pdfs/${key}.pdf" 2>/dev/null | awk -F: '/^Pages/{gsub(/ /,"",$2);print $2}' || true)
+              pdftotext -f 1 -l 2 "out/pdfs/${key}.pdf" "out/${key}.txt" 2>/dev/null || true
+            fi
+            printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$key" "$status" "$http" "$ctype" "$bytes" "$pages" "$final" >> out/results.tsv
+          done < out/sources.tsv
+          cat out/results.tsv
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: trinity-external-public-pdfs
+          path: out/
+          retention-days: 1
