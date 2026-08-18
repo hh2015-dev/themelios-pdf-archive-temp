@@ -1,0 +1,101 @@
+name: SBJT complete issue discovery
+on:
+  pull_request:
+    paths:
+      - 'sbjt-complete-trigger.txt'
+  workflow_dispatch:
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Find and download all public complete issues
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out/official-pages out/official-pdfs out/bs-pages
+          python - <<'PY'
+          import urllib.request,urllib.parse,pathlib,re,html as H,csv,concurrent.futures,subprocess,time
+          UA={'User-Agent':'Mozilla/5.0'}
+          def get(u,t=70):
+              req=urllib.request.Request(u,headers=UA)
+              with urllib.request.urlopen(req,timeout=t) as r:return r.read(),r.geturl(),dict(r.headers)
+          # One official archive page lists all 109 issue pages.
+          b,fu,h=get('https://r.jina.ai/https://equip.sbts.edu/category/publications/journals/journal-of-theology/')
+          archive=b.decode('utf-8','replace');pathlib.Path('out/official-archive.txt').write_bytes(b)
+          issues=[]
+          rx=re.compile(r'\[\*\*SBJT\s+(\d+)/(\d+)\s+\(([^)]+)\)\*\*:[^\]]*\]\((https://equip\.sbts\.edu/category/publications/journals/journal-of-theology/[^)]+)\)')
+          for v,n,season,url in rx.findall(archive):issues.append((int(v),int(n),season,url))
+          print('ISSUES',len(issues),'FIRST',issues[-1] if issues else None,'LATEST',issues[0] if issues else None)
+          # Fetch all issue pages concurrently through public text reader; find explicit full-version PDFs only.
+          def scan_issue(item):
+              v,n,season,url=item
+              try:
+                  b,fu,h=get('https://r.jina.ai/'+url,70);t=b.decode('utf-8','replace')
+              except Exception as e:return (*item,'ERROR','',repr(e)[:180],'')
+              pathlib.Path(f'out/official-pages/{v:02d}-{n}.txt').write_bytes(b)
+              found=[]
+              for m in re.finditer(r'\[([^\]]*)\]\((https?://[^)]+)\)',t):
+                  a=m.group(1).strip();u=m.group(2).strip()
+                  if ('full version' in a.lower() or 'complete' in u.lower()) and '.pdf' in u.lower():found.append((a,u))
+              if not found:
+                  # only accept PDF if anchor itself explicitly says full/download and not article links
+                  for m in re.finditer(r'\[([^\]]*(?:Download|Full)[^\]]*)\]\((https?://[^)]+\.pdf[^)]*)\)',t,re.I):found.append((m.group(1).strip(),m.group(2).strip()))
+              # dedup
+              uniq=[];seen=set()
+              for x in found:
+                  if x[1] not in seen:seen.add(x[1]);uniq.append(x)
+              if len(uniq)==1:return (*item,'FOUND',uniq[0][1],'','')
+              if len(uniq)>1:return (*item,'MULTI',' | '.join(x[1] for x in uniq),'',' | '.join(x[0] for x in uniq))
+              return (*item,'NONE','','','')
+          with concurrent.futures.ThreadPoolExecutor(max_workers=12) as ex: scanned=list(ex.map(scan_issue,issues))
+          with open('out/official-complete-links.tsv','w',newline='') as f:
+              w=csv.writer(f,delimiter='\t');w.writerow(['volume','issue','season_year','issue_page','status','pdf_url','error','anchors']);w.writerows(scanned)
+          print('FULL_LINKS',sum(r[4]=='FOUND' for r in scanned),'NONE',sum(r[4]=='NONE' for r in scanned),'ERROR',sum(r[4]=='ERROR' for r in scanned))
+          for r in scanned:print('ISSUE',*r[:7],sep='\t')
+          # Download explicit full issue PDFs concurrently and validate.
+          candidates=[r for r in scanned if r[4]=='FOUND']
+          def dl(r):
+              v,n,season,page,status,u,err,anchors=r;fn=pathlib.Path(f'out/official-pdfs/{v:02d}-{n}.pdf')
+              try:b,fu,h=get(u,120)
+              except Exception as e:return (v,n,season,u,'ERROR',0,'',repr(e)[:150])
+              if not b.startswith(b'%PDF-'):return (v,n,season,u,'NOTPDF',len(b),'','')
+              fn.write_bytes(b)
+              pages=''
+              try:
+                  info=subprocess.check_output(['pdfinfo',str(fn)],text=True,stderr=subprocess.DEVNULL);m=re.search(r'^Pages:\s*(\d+)',info,re.M);pages=m.group(1) if m else '?'
+              except:pass
+              return (v,n,season,u,'PDF',len(b),pages,'')
+          with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex: downloads=list(ex.map(dl,candidates))
+          with open('out/official-downloads.tsv','w',newline='') as f:
+              w=csv.writer(f,delimiter='\t');w.writerow(['volume','issue','season_year','url','status','bytes','pages','error']);w.writerows(downloads)
+          print('OFFICIAL_PDF_OK',sum(r[4]=='PDF' for r in downloads))
+          # BiblicalStudies pages: capture complete/full issue links separately from article PDFs.
+          bspages=['https://biblicalstudies.gospelstudies.org.uk/articles_sbjt-01.php','https://biblicalstudies.gospelstudies.org.uk/articles_sbjt-02.php']
+          bsrows=[]
+          for pi,u in enumerate(bspages,1):
+              try:b,fu,h=get(u,60)
+              except Exception as e:print('BSERROR',u,repr(e));continue
+              pathlib.Path(f'out/bs-pages/page-{pi}.html').write_bytes(b);t=b.decode('utf-8','replace')
+              for m in re.finditer(r'<a\b[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>',t,re.I|re.S):
+                  href=H.unescape(m.group(1));a=' '.join(H.unescape(re.sub('<[^>]+>',' ',m.group(2))).split());v=urllib.parse.urljoin(fu,href)
+                  if '.pdf' not in v.lower():continue
+                  pre=' '.join(H.unescape(re.sub('<[^>]+>',' ',t[max(0,m.start()-650):m.start()])).split())[-550:]
+                  bsrows.append((pi,a,v,pre))
+          seen=set();bs=[]
+          for r in bsrows:
+              if r[2] not in seen:seen.add(r[2]);bs.append(r)
+          with open('out/biblicalstudies-pdfs.tsv','w',newline='') as f:
+              w=csv.writer(f,delimiter='\t');w.writerow(['page','anchor','pdf_url','context']);w.writerows(bs)
+          fullbs=[r for r in bs if any(k in (r[1]+' '+r[3]).lower() for k in ['complete issue','complete volume','full issue','full version'])]
+          with open('out/biblicalstudies-complete.tsv','w',newline='') as f:
+              w=csv.writer(f,delimiter='\t');w.writerow(['page','anchor','pdf_url','context']);w.writerows(fullbs)
+          print('BS_ALL_PDFS',len(bs),'BS_COMPLETE_CANDIDATES',len(fullbs))
+          for r in fullbs:print('BSCOMPLETE',*r,sep='\t')
+          PY
+      - name: Upload complete issue set
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbjt-complete-issues
+          path: out/
+          retention-days: 1
