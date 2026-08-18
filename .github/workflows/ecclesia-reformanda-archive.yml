@@ -1,0 +1,73 @@
+name: Ecclesia Reformanda archive
+on:
+  pull_request:
+    paths:
+      - 'ecclesia-reformanda-trigger.txt'
+  workflow_dispatch:
+
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch source page and PDFs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out/pdfs
+          python - <<'PY'
+          import re, csv, html as htmlmod, pathlib, urllib.parse, urllib.request, subprocess, os
+          urls=[
+            'https://www.gospelstudies.org.uk/biblicalstudies/articles_ecclesia-reformanda.php',
+            'https://biblicalstudies.gospelstudies.org.uk/articles_ecclesia-reformanda.php'
+          ]
+          data=None; final=None
+          for u in urls:
+              try:
+                  req=urllib.request.Request(u,headers={'User-Agent':'Mozilla/5.0'})
+                  with urllib.request.urlopen(req,timeout=30) as r:
+                      data=r.read(); final=r.geturl();
+                  if data: break
+              except Exception:
+                  pass
+          if not data: raise SystemExit('Could not fetch source page')
+          pathlib.Path('out/source.html').write_bytes(data)
+          text=data.decode('utf-8','replace')
+          # Capture anchors and a compact surrounding text window for metadata.
+          anchors=[]
+          for m in re.finditer(r'<a\b[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>', text, re.I|re.S):
+              href=htmlmod.unescape(m.group(1)); label=re.sub('<[^>]+>',' ',m.group(2)); label=' '.join(htmlmod.unescape(label).split())
+              absu=urllib.parse.urljoin(final,href)
+              pre=re.sub('<[^>]+>',' ',text[max(0,m.start()-700):m.start()]); pre=' '.join(htmlmod.unescape(pre).split())[-500:]
+              post=re.sub('<[^>]+>',' ',text[m.end():m.end()+300]); post=' '.join(htmlmod.unescape(post).split())[:250]
+              anchors.append((label,absu,pre,post))
+          pdf=[]; seen=set()
+          for label,u,pre,post in anchors:
+              if '.pdf' in u.lower() and u not in seen:
+                  seen.add(u); pdf.append((label,u,pre,post))
+          with open('out/manifest.tsv','w',newline='') as f:
+              w=csv.writer(f,delimiter='\t'); w.writerow(['n','anchor','url','context_before','context_after'])
+              for i,r in enumerate(pdf,1): w.writerow([i,*r])
+          print('PDF_LINKS',len(pdf))
+          for i,(label,u,pre,post) in enumerate(pdf,1):
+              fn=f'out/pdfs/{i:03d}.pdf'
+              req=urllib.request.Request(u,headers={'User-Agent':'Mozilla/5.0'})
+              try:
+                  with urllib.request.urlopen(req,timeout=90) as r: b=r.read()
+              except Exception as e:
+                  print('FAIL',i,u,type(e).__name__,e); continue
+              if not b.startswith(b'%PDF-'):
+                  print('NOTPDF',i,u,len(b)); continue
+              pathlib.Path(fn).write_bytes(b)
+              try:
+                  info=subprocess.check_output(['pdfinfo',fn],text=True,stderr=subprocess.DEVNULL)
+                  pages=re.search(r'^Pages:\s*(\d+)',info,re.M)
+                  p=pages.group(1) if pages else '?'
+              except Exception: p='?'
+              print('OK',i,len(b),'pages',p,u)
+          PY
+      - name: Upload Ecclesia artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ecclesia-reformanda-source-pdfs
+          path: out/
+          retention-days: 1
