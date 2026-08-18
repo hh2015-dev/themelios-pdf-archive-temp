@@ -9,68 +9,64 @@ jobs:
   search:
     runs-on: ubuntu-latest
     steps:
-      - name: Search public scholarly and archive indexes
+      - name: Probe missing issue files and official media
         shell: bash
         run: |
           set -u
-          mkdir -p out
+          mkdir -p out/files out/media
           python - <<'PY'
-          import urllib.request,urllib.parse,json,pathlib,re,csv,subprocess
-          UA={'User-Agent':'Mozilla/5.0 (compatible; research-archive/1.0)'}
-          queries=[
-            'Midwestern Journal of Theology 12.1 2013',
-            'Midwestern Journal of Theology 12.2 2013',
-            'Midwestern Journal of Theology 18.1 2019',
-            'Midwestern Journal of Theology 20.1 Spring 2021'
-          ]
-          rows=[]
-          def get(u,t=40):
+          import urllib.request,urllib.parse,pathlib,re,json,csv,subprocess
+          UA={'User-Agent':'Mozilla/5.0'}
+          def get(u,t=60):
               req=urllib.request.Request(u,headers=UA)
               with urllib.request.urlopen(req,timeout=t) as r:return r.read(),r.geturl(),dict(r.headers)
-          for qi,q in enumerate(queries):
-              # Internet Archive advanced search
-              ia='https://archive.org/advancedsearch.php?q='+urllib.parse.quote('"'+q+'"')+'&fl%5B%5D=identifier&fl%5B%5D=title&fl%5B%5D=year&fl%5B%5D=description&rows=100&page=1&output=json'
-              try:
-                  b,fu,h=get(ia); pathlib.Path(f'out/ia-{qi}.json').write_bytes(b)
-                  j=json.loads(b)
-                  for d in j.get('response',{}).get('docs',[]): rows.append((qi,q,'internet_archive',d.get('identifier',''),d.get('title',''),str(d.get('year','')),''))
-              except Exception as e: pathlib.Path(f'out/ia-{qi}.err').write_text(repr(e))
-              # OpenAlex works search
-              oa='https://api.openalex.org/works?search='+urllib.parse.quote(q)+'&per-page=50&select=id,display_name,publication_year,primary_location,open_access,locations'
-              try:
-                  b,fu,h=get(oa); pathlib.Path(f'out/openalex-{qi}.json').write_bytes(b)
-                  j=json.loads(b)
-                  for d in j.get('results',[]):
-                      locs=d.get('locations') or []
-                      urls=[]
-                      for loc in locs:
-                          if loc and (loc.get('pdf_url') or loc.get('landing_page_url')): urls.append(loc.get('pdf_url') or loc.get('landing_page_url'))
-                      rows.append((qi,q,'openalex',d.get('id',''),d.get('display_name',''),str(d.get('publication_year','')),' | '.join(urls)))
-              except Exception as e: pathlib.Path(f'out/openalex-{qi}.err').write_text(repr(e))
-              # Google Scholar public result page; collect visible external hrefs only. No login/circumvention.
-              gs='https://scholar.google.com/scholar?q='+urllib.parse.quote_plus('"'+q+'"')
-              try:
-                  b,fu,h=get(gs); pathlib.Path(f'out/scholar-{qi}.html').write_bytes(b); t=b.decode('utf-8','replace')
-                  for u in re.findall(r'href=["\'](https?://[^"\']+)',t,re.I):
-                      if 'google.' not in urllib.parse.urlparse(u).netloc:
-                          rows.append((qi,q,'google_scholar',u,'','',''))
-              except Exception as e: pathlib.Path(f'out/scholar-{qi}.err').write_text(repr(e))
-          # Also query IA broadly for journal title alone.
-          ia='https://archive.org/advancedsearch.php?q='+urllib.parse.quote('title:("Midwestern Journal of Theology") OR description:("Midwestern Journal of Theology")')+'&fl%5B%5D=identifier&fl%5B%5D=title&fl%5B%5D=year&rows=200&page=1&output=json'
-          try:
-              b,fu,h=get(ia); pathlib.Path('out/ia-broad.json').write_bytes(b);j=json.loads(b)
-              for d in j.get('response',{}).get('docs',[]):rows.append((99,'journal broad','internet_archive',d.get('identifier',''),d.get('title',''),str(d.get('year','')),''))
-          except Exception as e:pathlib.Path('out/ia-broad.err').write_text(repr(e))
-          with open('out/results.tsv','w',newline='') as f:
-              w=csv.writer(f,delimiter='\t');w.writerow(['q_n','query','source','id_or_url','title','year','locations']);w.writerows(rows)
-          print('ROWS',len(rows))
-          for r in rows:
-              s=' '.join(map(str,r)).lower()
-              if any(x in s for x in ['midwestern journal','theology','mbts','pdf','archive.org']):print(*r,sep='\t')
+          bases=[
+            'https://biblicalstudies.gospelstudies.org.uk/pdf/midwestern-journal-theology/vols/',
+            'https://www.gospelstudies.org.uk/biblicalstudies/pdf/midwestern-journal-theology/vols/'
+          ]
+          names=[]
+          for v in ['12','18']:
+              names += [f'{v}-1.pdf',f'{v}-2.pdf',f'{v}-1_2.pdf',f'{v}-1-2.pdf',f'{v}.pdf',f'{v}-01.pdf',f'{v}-02.pdf',f'{v}_1.pdf',f'{v}_2.pdf']
+          results=[];n=0
+          for base in bases:
+              for name in names:
+                  n+=1; u=base+name
+                  try:b,fu,h=get(u,35); status='PDF' if b.startswith(b'%PDF-') else 'NOTPDF'
+                  except Exception as e: results.append((u,'ERROR',0,'','',repr(e)[:120]));continue
+                  pages='';first=''
+                  if status=='PDF':
+                      fn=pathlib.Path(f'out/files/{n:03d}-{name}');fn.write_bytes(b)
+                      try:
+                          info=subprocess.check_output(['pdfinfo',str(fn)],text=True,stderr=subprocess.DEVNULL);m=re.search(r'^Pages:\s*(\d+)',info,re.M);pages=m.group(1) if m else '?'
+                          first=subprocess.check_output(['pdftotext','-f','1','-l','2',str(fn),'-'],text=True,stderr=subprocess.DEVNULL)[:700].replace('\n',' | ')
+                      except:pass
+                  results.append((u,status,len(b),pages,first,''))
+          # Official WP media searches for Spring 2021 under several naming variants.
+          terms=['MJT SP 21','MJT Spring 2021','MJT 20 1','MJT Vol 20','Spring 21 MJT','MJT-SP-21','MJT-SP21','MJT 2021']
+          media=[]
+          for i,term in enumerate(terms):
+              api='https://www.mbts.edu/wp-json/wp/v2/media?search='+urllib.parse.quote(term)+'&per_page=100'
+              reader='https://r.jina.ai/'+api
+              try:b,fu,h=get(reader,60); pathlib.Path(f'out/media/{i:02d}.txt').write_bytes(b);t=b.decode('utf-8','replace'); raw=t.split('Markdown Content:',1)[-1].strip();arr=json.loads(raw)
+              except Exception as e:media.append((term,'ERROR','','','','',repr(e)));continue
+              for d in arr:
+                  if d.get('mime_type')=='application/pdf':
+                      media.append((term,'PDF',d.get('id',''),d.get('title',{}).get('rendered',''),d.get('source_url',''),d.get('date',''),''))
+                  elif 'mjt' in str(d.get('title',{}).get('rendered','')).lower():
+                      media.append((term,d.get('mime_type',''),d.get('id',''),d.get('title',{}).get('rendered',''),d.get('source_url',''),d.get('date',''),''))
+          with open('out/file-probes.tsv','w',newline='') as f:
+              w=csv.writer(f,delimiter='\t');w.writerow(['url','status','bytes','pages','first_text','error']);w.writerows(results)
+          with open('out/media-results.tsv','w',newline='') as f:
+              w=csv.writer(f,delimiter='\t');w.writerow(['term','type','id','title','source_url','date','error']);w.writerows(media)
+          print('SOURCE_PDFS',sum(r[1]=='PDF' for r in results))
+          for r in results:
+              if r[1]=='PDF': print('FOUND_SOURCE',*r[:4],sep='\t')
+          print('MEDIA_ROWS',len(media))
+          for r in media: print('MEDIA',*r[:6],sep='\t')
           PY
-      - name: Upload gap search
+      - name: Upload gap probes
         uses: actions/upload-artifact@v4
         with:
-          name: midwestern-gap-search
+          name: midwestern-gap-probes
           path: out/
           retention-days: 1
