@@ -1,0 +1,52 @@
+name: Midwestern Wayback discovery
+on:
+  pull_request:
+    paths:
+      - 'midwestern-wayback-trigger.txt'
+  workflow_dispatch:
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Query Wayback CDX
+        shell: bash
+        run: |
+          set -u
+          mkdir -p out
+          python - <<'PY'
+          import subprocess, urllib.parse, pathlib, json, csv
+          patterns=[
+            'www.mbts.edu/wp-content/uploads/*mjt*.pdf',
+            'mbts.edu/wp-content/uploads/*mjt*.pdf',
+            'www.mbts.edu/wp-content/uploads/*MJT*.pdf',
+            'www.mbts.edu/wp-content/uploads/*journal*.pdf',
+            'www.mbts.edu/*mjt*.pdf',
+            'www.mbts.edu/*MJT*.pdf'
+          ]
+          rows=[]
+          for i,p in enumerate(patterns):
+              u='https://web.archive.org/cdx/search/cdx?url='+urllib.parse.quote(p,safe='*/:.')+'&output=json&fl=timestamp,original,statuscode,mimetype&filter=statuscode:200&collapse=urlkey&from=2000&to=2026'
+              try:
+                  b=subprocess.check_output(['curl','-L','--fail','--max-time','25','-A','Mozilla/5.0',u],stderr=subprocess.DEVNULL)
+                  pathlib.Path(f'out/cdx-{i}.json').write_bytes(b)
+                  j=json.loads(b)
+                  if j:
+                      rows.extend(tuple(x) for x in j[1:])
+              except Exception as e:
+                  pathlib.Path(f'out/cdx-{i}.err').write_text(repr(e))
+          uniq=[]; seen=set()
+          for r in rows:
+              k=r[1]
+              if k not in seen: seen.add(k); uniq.append(r)
+          with open('out/cdx.tsv','w',newline='') as f:
+              w=csv.writer(f,delimiter='\t'); w.writerow(['timestamp','original','statuscode','mimetype']); w.writerows(uniq)
+          print('UNIQUE',len(uniq))
+          for r in uniq: print(*r,sep='\t')
+          PY
+      - name: Upload CDX
+        uses: actions/upload-artifact@v4
+        with:
+          name: midwestern-wayback
+          path: out/
+          retention-days: 1
