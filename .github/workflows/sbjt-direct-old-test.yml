@@ -1,0 +1,26 @@
+name: SBJT direct old article test
+on:
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/sbjt-direct-old-test.yml']
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Test direct official HTML
+        shell: bash
+        run: |
+          set -u
+          mkdir -p out
+          U='https://equip.sbts.edu/publications/journals/journal-of-theology/sbjt-11-spring-1997/the-living-god-of-the-bible-2/'
+          curl -L --fail --max-time 40 -A 'Mozilla/5.0' "$U" -o out/article.html || true
+          echo SIZE=$(stat -c%s out/article.html 2>/dev/null || echo 0)
+          grep -Eoi 'https?[^"'"' <>()]+\.pdf[^"'"' <>()]*' out/article.html | head -20 || true
+          grep -Eoi 'href=["'"'][^"'"']+["'"'][^>]*>[^<]*(Download|PDF)[^<]*' out/article.html | head -20 || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sbjt-direct-old-test
+          path: out/
+          retention-days: 1
