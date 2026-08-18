@@ -1,0 +1,42 @@
+name: SBJT BiblicalStudies page1 extraction
+on:
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/sbjt-page1.yml']
+  workflow_dispatch:
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch page 1 and extract PDF links
+        shell: bash
+        run: |
+          set -u
+          mkdir -p out
+          URL='https://biblicalstudies.gospelstudies.org.uk/articles_sbjt-01.php'
+          if ! curl -L --fail --retry 3 --max-time 90 -A 'Mozilla/5.0' "$URL" -o out/page.html; then
+            curl -L --fail --retry 3 --max-time 90 -A 'Mozilla/5.0' "https://r.jina.ai/$URL" -o out/page.txt || true
+          fi
+          python - <<'PY'
+          import pathlib,re,html as H,urllib.parse,csv
+          p=pathlib.Path('out/page.html')
+          rows=[]
+          if p.exists():
+              t=p.read_text(errors='replace')
+              for m in re.finditer(r'<a\b[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>',t,re.I|re.S):
+                  href=H.unescape(m.group(1)); a=' '.join(H.unescape(re.sub('<[^>]+>',' ',m.group(2))).split())
+                  u=urllib.parse.urljoin('https://biblicalstudies.gospelstudies.org.uk/articles_sbjt-01.php',href)
+                  if '.pdf' in u.lower():
+                      ctx=' '.join(H.unescape(re.sub('<[^>]+>',' ',t[max(0,m.start()-800):m.start()+400])).split())[-1000:]
+                      rows.append((a,u,ctx))
+          with open('out/pdfs.tsv','w',newline='') as f:
+              w=csv.writer(f,delimiter='\t');w.writerow(['anchor','url','context']);w.writerows(rows)
+          print('PDF_LINKS',len(rows))
+          for r in rows: print('PDF',r[0],r[1],sep='\t')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sbjt-biblicalstudies-page1
+          path: out/
+          retention-days: 1
