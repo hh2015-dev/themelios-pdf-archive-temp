@@ -1,0 +1,19 @@
+name: Temporary JETS Discovery
+on:
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Discover BiblicalStudies JETS corpus
+        run: python jets_discover.py
+      - name: Upload discovery manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: jets-discovery
+          path: |
+            jets_manifest.json
+            jets_summary.txt
