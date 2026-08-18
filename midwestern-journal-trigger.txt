@@ -1,1 +1,1 @@
-trigger Midwestern Journal archive
+trigger Midwestern Journal archive v2
