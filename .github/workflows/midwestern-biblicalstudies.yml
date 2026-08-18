@@ -1,0 +1,61 @@
+name: Midwestern BiblicalStudies discovery
+on:
+  pull_request:
+    paths:
+      - 'midwestern-biblicalstudies-trigger.txt'
+  workflow_dispatch:
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Discover Midwestern pages and PDFs on BiblicalStudies
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out/pages out/pdfs
+          python - <<'PY'
+          import urllib.request,urllib.parse,pathlib,re,html as H,csv
+          UA={'User-Agent':'Mozilla/5.0'}
+          def get(u,t=40):
+              req=urllib.request.Request(u,headers=UA)
+              with urllib.request.urlopen(req,timeout=t) as r:return r.read(),r.geturl()
+          starts=['https://biblicalstudies.gospelstudies.org.uk/sitemap.php','https://www.gospelstudies.org.uk/biblicalstudies/sitemap.php']
+          b=fu=None
+          for u in starts:
+              try:b,fu=get(u);break
+              except:pass
+          if b is None:raise SystemExit('sitemap unavailable')
+          pathlib.Path('out/sitemap.html').write_bytes(b)
+          t=b.decode('utf-8','replace')
+          links=[]
+          for m in re.finditer(r'<a\b[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>',t,re.I|re.S):
+              href=H.unescape(m.group(1)); label=' '.join(H.unescape(re.sub('<[^>]+>',' ',m.group(2))).split()); u=urllib.parse.urljoin(fu,href)
+              if 'midwestern' in (label+' '+u).lower():links.append((label,u))
+          print('SITEMAP_MATCHES',len(links))
+          for x in links:print('PAGE',*x,sep='\t')
+          allpdf=[]
+          for i,(label,u) in enumerate(links):
+              try:pb,pfu=get(u);pathlib.Path(f'out/pages/{i:02d}.html').write_bytes(pb)
+              except Exception as e:print('PAGEFAIL',u,repr(e));continue
+              pt=pb.decode('utf-8','replace')
+              for m in re.finditer(r'<a\b[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>',pt,re.I|re.S):
+                  href=H.unescape(m.group(1)); a=' '.join(H.unescape(re.sub('<[^>]+>',' ',m.group(2))).split()); v=urllib.parse.urljoin(pfu,href)
+                  if '.pdf' in v.lower():
+                      pre=' '.join(H.unescape(re.sub('<[^>]+>',' ',pt[max(0,m.start()-800):m.start()])).split())[-650:]
+                      allpdf.append((label,u,a,v,pre))
+          # dedup pdf urls
+          uniq=[];seen=set()
+          for r in allpdf:
+              if r[3] not in seen:seen.add(r[3]);uniq.append(r)
+          with open('out/pdfs.tsv','w',newline='') as f:
+              w=csv.writer(f,delimiter='\t');w.writerow(['source_label','source_page','anchor','pdf_url','context']);w.writerows(uniq)
+          print('PDF_LINKS',len(uniq))
+          for i,r in enumerate(uniq,1):print('PDF',i,r[2],r[3],r[4],sep='\t')
+          PY
+      - name: Upload discovery
+        uses: actions/upload-artifact@v4
+        with:
+          name: midwestern-biblicalstudies
+          path: out/
+          retention-days: 1
