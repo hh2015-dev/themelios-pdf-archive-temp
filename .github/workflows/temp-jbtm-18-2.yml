@@ -3,6 +3,9 @@ on:
   push:
     branches:
       - temp-jbtm-18-2
+  pull_request:
+    branches:
+      - main
 jobs:
   fetch:
     runs-on: ubuntu-latest
