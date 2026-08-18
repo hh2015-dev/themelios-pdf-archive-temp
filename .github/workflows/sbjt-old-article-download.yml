@@ -1,0 +1,100 @@
+name: SBJT old issue article PDF download
+on:
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/sbjt-old-article-download.yml']
+  workflow_dispatch:
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Discover TOC articles and download official PDFs
+        shell: bash
+        run: |
+          set -u
+          mkdir -p out/pdfs out/issues out/articles
+          python - <<'PY'
+          import urllib.request,urllib.error,urllib.parse,pathlib,re,time,concurrent.futures,csv,os
+          UA={'User-Agent':'Mozilla/5.0'}
+          seasons={1:'spring',2:'summer',3:'fall',4:'winter'}
+          targets=[(v,i,1996+v) for v in range(1,9) for i in range(1,5)] + [(9,1,2005),(9,2,2005)]
+          def get(u,tries=4,timeout=80):
+              err=None
+              for n in range(tries):
+                  try:
+                      req=urllib.request.Request(u,headers=UA)
+                      with urllib.request.urlopen(req,timeout=timeout) as r:return r.read(),r.geturl()
+                  except Exception as e:
+                      err=e; time.sleep(2+n*2)
+              raise err
+          def issue_scan(x):
+              v,i,y=x; season=seasons[i]
+              issue=f'https://equip.sbts.edu/category/publications/journals/journal-of-theology/sbjt-{v}{i}-{season}-{y}/'
+              try:b,fu=get('https://r.jina.ai/'+issue); t=b.decode('utf-8','replace')
+              except Exception as e:return x,issue,[],f'ISSUE_ERROR:{e!r}'
+              pathlib.Path(f'out/issues/{v:02d}-{i}.txt').write_text(t)
+              links=[]
+              for m in re.finditer(r'\[([^\]]+)\]\((https?://[^)]+)\)',t):
+                  title=' '.join(m.group(1).split()); u=m.group(2).strip()
+                  lu=u.lower()
+                  if 'equip.sbts.edu/publications/journals/journal-of-theology/' not in lu: continue
+                  if '/category/' in lu: continue
+                  if u.rstrip('/')==issue.rstrip('/'): continue
+                  if title.lower() in {'southern equip','menu','articles','collections','topics','publications','podcasts'}: continue
+                  if (title,u) not in links: links.append((title,u))
+              return x,issue,links,''
+          scans=[]
+          with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
+              for r in ex.map(issue_scan,targets): scans.append(r)
+          article_tasks=[]
+          for (v,i,y),issue,links,err in scans:
+              for title,u in links: article_tasks.append((v,i,y,title,u))
+          def article_scan(a):
+              v,i,y,title,u=a
+              try:b,fu=get('https://r.jina.ai/'+u); t=b.decode('utf-8','replace')
+              except Exception as e:return (*a,'','ARTICLE_ERROR',0,repr(e)[:160])
+              # Prefer explicit Download PDF anchor, then any official SBTS PDF URL.
+              cand=[]
+              for m in re.finditer(r'\[([^\]]*)\]\((https?://[^)]+)\)',t):
+                  aa=m.group(1).strip(); pu=m.group(2).strip()
+                  if '.pdf' in pu.lower() and ('download' in aa.lower() or 'pdf' in aa.lower()):cand.append(pu)
+              if not cand:
+                  cand=[u2.rstrip('.,') for u2 in re.findall(r'https?://[^\s<>\])]+\.pdf[^\s<>\)]*',t,re.I) if 'sbts.edu' in u2]
+              # de-dup
+              seen=[]
+              for pu in cand:
+                  if pu not in seen:seen.append(pu)
+              if not seen:return (*a,'','NO_PDF',0,'')
+              pu=seen[0]
+              try:data,final=get(pu,tries=3,timeout=120)
+              except Exception as e:return (*a,pu,'PDF_ERROR',0,repr(e)[:160])
+              if not data.startswith(b'%PDF-'):return (*a,pu,'NOTPDF',len(data),'')
+              slug=re.sub(r'[^A-Za-z0-9._-]+','_',title).strip('_')[:120] or 'article'
+              fn=pathlib.Path(f'out/pdfs/{v:02d}-{i}--{slug}.pdf')
+              # avoid collision
+              n=2
+              while fn.exists(): fn=pathlib.Path(f'out/pdfs/{v:02d}-{i}--{slug}_{n}.pdf'); n+=1
+              fn.write_bytes(data)
+              return (*a,pu,'PDF',len(data),str(fn))
+          results=[]
+          with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
+              for r in ex.map(article_scan,article_tasks): results.append(r)
+          with open('out/articles.tsv','w',newline='') as f:
+              w=csv.writer(f,delimiter='\t');w.writerow(['volume','issue','year','title','article_url','pdf_url','status','bytes','local_file']);w.writerows(results)
+          # per issue report
+          with open('out/issues.tsv','w',newline='') as f:
+              w=csv.writer(f,delimiter='\t');w.writerow(['volume','issue','year','toc_links','pdf_ok','no_pdf','errors','issue_url','issue_error'])
+              for (v,i,y),issue,links,err in scans:
+                  rr=[r for r in results if r[0]==v and r[1]==i]
+                  ok=sum(r[6]=='PDF' for r in rr); no=sum(r[6]=='NO_PDF' for r in rr); er=len(rr)-ok-no
+                  w.writerow([v,i,y,len(links),ok,no,er,issue,err])
+                  print('ISSUE',v,i,y,'TOC',len(links),'PDF_OK',ok,'NO_PDF',no,'ERROR',er,'ISSUE_ERR',err)
+          print('ARTICLE_TASKS',len(article_tasks),'PDF_OK',sum(r[6]=='PDF' for r in results))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sbjt-old-article-pdfs
+          path: out/
+          retention-days: 1
+          compression-level: 6
