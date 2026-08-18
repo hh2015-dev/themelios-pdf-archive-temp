@@ -1,0 +1,52 @@
+name: SBJT issue PDF pattern scan
+on:
+  pull_request:
+    paths:
+      - 'sbjt-sample-trigger.txt'
+  workflow_dispatch:
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Scan sample issue pages for PDF structure
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          urls=(
+            'https://equip.sbts.edu/category/publications/journals/journal-of-theology/sbjt-293-fall-2025/'
+            'https://equip.sbts.edu/category/publications/journals/journal-of-theology/sbjt-221-spring-2018/'
+            'https://equip.sbts.edu/category/publications/journals/journal-of-theology/sbjt-11-spring-1997/'
+          )
+          n=0
+          for u in "${urls[@]}"; do
+            curl -L --fail --max-time 60 -A 'Mozilla/5.0' "https://r.jina.ai/$u" -o "out/page-$n.txt"
+            n=$((n+1))
+          done
+          python - <<'PY'
+          import pathlib,re,csv
+          rows=[]
+          for f in sorted(pathlib.Path('out').glob('page-*.txt')):
+              t=f.read_text(errors='replace')
+              title=re.search(r'^Title:\s*(.+)$',t,re.M); title=title.group(1) if title else f.name
+              links=[]
+              for m in re.finditer(r'\[([^\]]*)\]\((https?://[^)]+)\)',t):
+                  a=m.group(1).strip();u=m.group(2).strip()
+                  if '.pdf' in u.lower() or 'pdf' in a.lower() or 'download' in a.lower():links.append((a,u))
+              for u in re.findall(r'https?://[^\s<>\])]+',t):
+                  if '.pdf' in u.lower():links.append(('',u.rstrip('.,')))
+              seen=set();uniq=[]
+              for r in links:
+                  if r[1] not in seen:seen.add(r[1]);uniq.append(r)
+              print('\nPAGE',f.name,title,'PDFLIKE',len(uniq))
+              for a,u in uniq:print('PDFLIKE',a,u,sep='\t');rows.append((f.name,title,a,u))
+          with open('out/pdf-like.tsv','w',newline='') as fh:
+              w=csv.writer(fh,delimiter='\t');w.writerow(['page','title','anchor','url']);w.writerows(rows)
+          PY
+      - name: Upload sample scan
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbjt-sample-pages
+          path: out/
+          retention-days: 1
