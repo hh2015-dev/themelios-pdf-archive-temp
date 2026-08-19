@@ -1,8 +1,6 @@
 name: BT Bridge Test
 on:
-  push:
-    paths:
-      - '.github/workflows/bt-bridge.yml'
+  pull_request:
   workflow_dispatch:
 jobs:
   fetch:
