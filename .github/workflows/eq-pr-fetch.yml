@@ -1,0 +1,29 @@
+name: EQ direct fetch test
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Download direct from BiblicalStudies
+        run: |
+          mkdir -p out
+          curl -L --fail --retry 3 --retry-delay 2 \
+            'https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1930-1_003.pdf' \
+            -o 'out/1930-1_003.pdf'
+          test "$(head -c 5 out/1930-1_003.pdf)" = '%PDF-'
+          ls -lh out/1930-1_003.pdf
+      - name: Upload PDF artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: eq-direct-test
+          path: out/1930-1_003.pdf
+          if-no-files-found: error
+          retention-days: 1
