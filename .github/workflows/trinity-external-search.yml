@@ -1,0 +1,72 @@
+name: Trinity external public PDF test
+on:
+  pull_request:
+    paths:
+      - 'trinity-external-trigger.txt'
+  workflow_dispatch:
+
+jobs:
+  test-public-downloads:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe author and repository public copies
+        shell: bash
+        run: |
+          set -u
+          mkdir -p out/pdfs
+          printf 'key\tstatus\thttp\tcontent_type\tbytes\tpages\tfinal_url\n' > out/results.tsv
+
+          try_pdf() {
+            key="$1"; url="$2"
+            f="out/pdfs/${key}.bin"; headers="out/${key}.headers"
+            http=$(curl -L --retry 2 --connect-timeout 20 --max-time 90 -A 'Mozilla/5.0' -D "$headers" -o "$f" -w '%{http_code}' "$url" || true)
+            ctype=$(grep -i '^content-type:' "$headers" | tail -1 | tr -d '\r' | cut -d: -f2- | xargs || true)
+            final=$(curl -Ls --connect-timeout 15 --max-time 30 -o /dev/null -w '%{url_effective}' -A 'Mozilla/5.0' "$url" || true)
+            bytes=$(stat -c%s "$f" 2>/dev/null || echo 0)
+            status=FAIL; pages=''
+            if [ -s "$f" ] && head -c5 "$f" | grep -q '^%PDF-'; then
+              status=PDF; mv "$f" "out/pdfs/${key}.pdf"
+              pages=$(pdfinfo "out/pdfs/${key}.pdf" 2>/dev/null | awk -F: '/^Pages/{gsub(/ /,"",$2);print $2}' || true)
+              pdftotext -f 1 -l 2 "out/pdfs/${key}.pdf" "out/${key}.txt" 2>/dev/null || true
+            fi
+            printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$key" "$status" "$http" "$ctype" "$bytes" "$pages" "$final" >> out/results.tsv
+          }
+
+          try_pdf pennington-deponency 'https://jonathanpennington.com/wp-content/uploads/Pennington_Middle_Voice.pdf'
+          try_pdf pennington-deponency-www 'https://www.jonathanpennington.com/wp-content/uploads/Pennington_Middle_Voice.pdf'
+
+          # ResearchGate explicitly labels this as public full text uploaded by the author.
+          rg='https://www.researchgate.net/publication/331231605_New_Covenant_as_a_Theological_Norm_in_Early_Christianity'
+          curl -L --connect-timeout 20 --max-time 90 -A 'Mozilla/5.0' "$rg" -o out/researchgate-saucy.html -D out/researchgate-saucy.headers || true
+          python - <<'PY'
+          from pathlib import Path
+          import re, html
+          p=Path('out/researchgate-saucy.html')
+          s=p.read_text(errors='replace') if p.exists() else ''
+          urls=[]
+          for pat in [r'<meta[^>]+name=["\']citation_pdf_url["\'][^>]+content=["\']([^"\']+)',
+                      r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+name=["\']citation_pdf_url["\']',
+                      r'https?://[^"\'<> ]+\.pdf(?:\?[^"\'<> ]*)?']:
+              urls += re.findall(pat,s,re.I)
+          urls=[html.unescape(u).replace('\\u0026','&') for u in urls]
+          seen=[]
+          for u in urls:
+              if u not in seen: seen.append(u)
+          Path('out/researchgate-pdf-urls.txt').write_text('\n'.join(seen))
+          print('RG_PDF_URLS',len(seen))
+          for u in seen[:10]: print(u)
+          PY
+          if [ -s out/researchgate-pdf-urls.txt ]; then
+            i=0
+            while IFS= read -r u; do
+              [ -z "$u" ] && continue
+              i=$((i+1)); try_pdf "saucy-rg-$i" "$u"
+            done < out/researchgate-pdf-urls.txt
+          fi
+          cat out/results.tsv
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: trinity-external-public-pdfs-v2
+          path: out/
+          retention-days: 1
