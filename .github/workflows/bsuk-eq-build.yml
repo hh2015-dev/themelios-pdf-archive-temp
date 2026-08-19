@@ -24,38 +24,42 @@ jobs:
       - run: pip install requests beautifulsoup4 pymupdf
       - name: Download, validate, and build EQ archive
         run: python bsuk_worker/eq_build.py
-      - name: Split output into four transfer artifacts
+      - name: Split and package four transfer shards
         run: |
           mkdir -p eq_shard_1 eq_shard_2 eq_shard_3 eq_shard_4
           for v in $(seq -w 001 022); do [ ! -d "eq_build/Volume $v" ] || mv "eq_build/Volume $v" eq_shard_1/; done
           for v in $(seq -w 023 044); do [ ! -d "eq_build/Volume $v" ] || mv "eq_build/Volume $v" eq_shard_2/; done
           for v in $(seq -w 045 066); do [ ! -d "eq_build/Volume $v" ] || mv "eq_build/Volume $v" eq_shard_3/; done
           for v in $(seq -w 067 087); do [ ! -d "eq_build/Volume $v" ] || mv "eq_build/Volume $v" eq_shard_4/; done
+          (cd eq_shard_1 && zip -0 -r ../eq-archive-001-022.zip .)
+          (cd eq_shard_2 && zip -0 -r ../eq-archive-023-044.zip .)
+          (cd eq_shard_3 && zip -0 -r ../eq-archive-045-066.zip .)
+          (cd eq_shard_4 && zip -0 -r ../eq-archive-067-087.zip .)
       - uses: actions/upload-artifact@v4
         with:
           name: eq-archive-001-022
-          path: eq_shard_1/
+          path: eq-archive-001-022.zip
           retention-days: 1
           compression-level: 0
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
           name: eq-archive-023-044
-          path: eq_shard_2/
+          path: eq-archive-023-044.zip
           retention-days: 1
           compression-level: 0
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
           name: eq-archive-045-066
-          path: eq_shard_3/
+          path: eq-archive-045-066.zip
           retention-days: 1
           compression-level: 0
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
           name: eq-archive-067-087
-          path: eq_shard_4/
+          path: eq-archive-067-087.zip
           retention-days: 1
           compression-level: 0
           if-no-files-found: error
