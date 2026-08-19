@@ -1,0 +1,27 @@
+{
+  "bad_url_replacements": {
+    "https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1952-2_justifation_hughes.pdf": "https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1952-2_078.pdf",
+    "https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1958-4_morris.pdf": "https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1958-4_196.pdf",
+    "https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1959-3_143n.pdf": "https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1959-3_143.pdf",
+    "https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1971-1_131.pdf": "https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1971-3_131.pdf",
+    "https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1991-2_clifford.pdf": "https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1991-2_099.pdf",
+    "https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1991-2_parker.pdf": "https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1991-2_123.pdf",
+    "https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1995-3_clifford.pdf": "https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1995-3_211.pdf",
+    "https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1995-4_335bk.pdf": "https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1995-4_335.pdf",
+    "https://biblicalstudies.gospelstudies.org.uk/pdf/eq/2003_bombshell_stewart.pdf": "https://biblicalstudies.gospelstudies.org.uk/pdf/eq/2003-3_215.pdf"
+  },
+  "row_overrides": {
+    "7|4|Tests in the Final Judgment": "https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1935-4_351.pdf",
+    "23|3|The Person and Work of Christ": "https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1951-3_213.pdf",
+    "40|2|Observations on the Greek Use of the Names and Titles of God in Genesis": "https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1968-2_103.pdf",
+    "53|3|The Eighteenth Century Methodist Revival Reconsidered": "https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1981-3_130.pdf"
+  },
+  "collision_owners": {
+    "https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1935-4_337.pdf": "7|4|Religion and Comparative Religion",
+    "https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1939-1_030.pdf": "11|1|The Message of Friedrich Nietzsche",
+    "https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1951-1_051.pdf": "23|1|John Newton's Church History",
+    "https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1968-2_110.pdf": "40|2|An Ecumenical Calvinist, Bishop Joseph Hall (1574-1656)",
+    "https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1980-3_130.pdf": "52|3|Exodus Motifs in First Samuel 7 and 8: a Brief Comment",
+    "https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1991-4_305.pdf": "63|4|Melchizedek or 'King of Righteousness'"
+  }
+}
