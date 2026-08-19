@@ -5,6 +5,11 @@ on:
     paths:
       - 'bsuk_worker/temp_eq_inventory.py'
       - '.github/workflows/temp-eq-inventory.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'bsuk_worker/temp_eq_inventory.py'
+      - '.github/workflows/temp-eq-inventory.yml'
   workflow_dispatch:
 permissions:
   contents: read
