@@ -9,50 +9,20 @@ permissions:
 
 jobs:
   fetch:
-    if: startsWith(github.head_ref, 'temp-eq-direct-fetch')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - name: Download Volume 002 directly from BiblicalStudies
-        shell: bash
+      - uses: actions/checkout@v4
+      - name: Download direct from BiblicalStudies
         run: |
-          set -euo pipefail
+          set -e
           mkdir -p out
-          cat > urls.txt <<'EOF'
-https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1930-1_003.pdf
-https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1930-1_014.pdf
-https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1930-1_033.pdf
-https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1930-1_046.pdf
-https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1930-1_070.pdf
-https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1930-2_127.pdf
-https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1930-2_137.pdf
-https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1930-2_150.pdf
-https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1930-2_162.pdf
-https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1930-2_179.pdf
-https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1930-3_225.pdf
-https://biblicalstudies.gospelstudies.org.uk/pdf/jtvi/1930_241.pdf
-https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1930-3_268.pdf
-https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1930-3_286.pdf
-https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1930-3_302.pdf
-https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1930-4_337.pdf
-https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1930-4_344.pdf
-https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1930-4_358.pdf
-https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1930-4_401.pdf
-EOF
-          download_one() {
-            u="$1"
-            f="out/$(basename "$u")"
-            curl -L --fail --retry 3 --retry-delay 2 "$u" -o "$f"
-            test "$(head -c 5 "$f")" = '%PDF-'
-            echo "OK $(basename "$f") $(stat -c%s "$f")"
-          }
-          export -f download_one
-          xargs -P4 -n1 bash -c 'download_one "$0"' < urls.txt
-          test "$(find out -type f -name '*.pdf' | wc -l)" -eq 19
-      - name: Upload Volume 002 artifact
+          cat eq_urls.txt | xargs -P4 -I{} sh -c 'u="$1"; f="out/$(basename "$u")"; curl -L --fail --retry 3 --retry-delay 2 "$u" -o "$f"; test "$(head -c 5 "$f")" = "%PDF-"' _ {}
+          test "$(find out -type f -name "*.pdf" | wc -l)" -eq "$(grep -c "^http" eq_urls.txt)"
+      - name: Upload PDF artifact
         uses: actions/upload-artifact@v4
         with:
-          name: eq-volume-002
+          name: eq-direct-pdfs
           path: out/*.pdf
           if-no-files-found: error
           retention-days: 1
