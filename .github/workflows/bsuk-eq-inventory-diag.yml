@@ -1,8 +1,8 @@
 name: BSUK EQ inventory diagnostic
 
 on:
-  push:
-    branches: [eq-archive-temp-20260819]
+  pull_request:
+    branches: [main]
     paths:
       - 'bsuk_worker/eq_inventory_diag.py'
       - '.github/workflows/bsuk-eq-inventory-diag.yml'
