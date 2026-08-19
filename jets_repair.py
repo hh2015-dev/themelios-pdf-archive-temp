@@ -6,7 +6,7 @@ from pypdf import PdfReader,PdfWriter
 
 TARGETS={(55,2),(56,3),(58,1),(59,2),(59,3),(60,2),(60,3),(61,2),(61,4),(63,3)}
 OUT=Path('jets-repairs'); OUT.mkdir(exist_ok=True)
-UA='Mozilla/5.0 JETS-archive-repair/4.0'
+UA='Mozilla/5.0 JETS-archive-repair/5.0'
 manifest=json.load(open('jets_manifest.json',encoding='utf-8'))
 
 class P(HTMLParser):
@@ -62,11 +62,18 @@ def fetch_pdf(url,dest):
     dest.write_bytes(data); return len(PdfReader(str(dest),strict=False).pages)
 
 def dl(item,dest):
-    errors=[]; candidates=[(item['url'],'indexed')]
+    errors=[]
+    # Fast path: use exactly the PDF linked by BiblicalStudies. Most entries still work.
+    try:
+        return {'ok':True,'url':safe_url(item['url']),'pages':fetch_pdf(item['url'],dest),'repair_kind':'indexed'}
+    except Exception as e:
+        errors.append(f'indexed:{safe_url(item["url"])} => {type(e).__name__}:{e}')
+    # Only failed indexed links require a current official-page lookup and migration probes.
     match=official_match(item['volume'],item['citation'])
+    candidates=[]
     if match:
         _,href,text=match
-        if href!=item['url']:candidates.append((href,'official-current'))
+        candidates.append((href,'official-current'))
         for base in [item['url'],href]:
             for u in migration_candidates(base,item['volume'],item['issue'],item['year']):
                 if u not in [x for x,_ in candidates]:candidates.append((u,'official-migrated'))
