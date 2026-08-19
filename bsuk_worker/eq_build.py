@@ -105,3 +105,4 @@ M={'target':len(outputs),'reconstructed':sum(x['type']=='reconstructed' for x in
 (OUT/'build_manifest.json').write_text(json.dumps(M,ensure_ascii=False,indent=2),encoding='utf-8')
 print('BUILD_SUMMARY',json.dumps({k:M[k] for k in ['target','reconstructed','articles']},ensure_ascii=False),flush=True)
 if M['target']!=523 or M['reconstructed']!=247 or M['articles']!=276:raise SystemExit('Unexpected target/classification; refusing artifact')
+# trigger build
