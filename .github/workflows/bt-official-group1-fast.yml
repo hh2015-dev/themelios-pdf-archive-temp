@@ -1,0 +1,76 @@
+name: BT official group1 fast
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Discover official issue and PDF URLs
+        run: |
+          set -e
+          mkdir -p out/pages out/pdfs
+          python - <<'PY'
+          import html,re,urllib.parse,urllib.request,os,csv
+          UA={'User-Agent':'Mozilla/5.0'}
+          archive='https://translation.bible/the-bible-translator-archive/'
+          req=urllib.request.Request(archive,headers=UA)
+          with urllib.request.urlopen(req,timeout=60) as r: raw=r.read()
+          open('out/archive.html','wb').write(raw)
+          t=raw.decode('utf-8','replace')
+          issues=[]; seen=set()
+          for href in re.findall(r'''(?is)href\s*=\s*["']([^"']+)["']''',t):
+            u=urllib.parse.urljoin(archive,html.unescape(href))
+            m=re.search(r'/the-bible-translator/volume-(\d+)-issue-(\d+)(?:-[^/]+)?/?$',u,re.I)
+            if not m: continue
+            v=int(m.group(1)); i=int(m.group(2))
+            if 1 <= v <= 10 and (v,i,u.lower()) not in seen:
+              seen.add((v,i,u.lower())); issues.append((v,i,u))
+          # fallback deterministic issue URLs if archive markup hides some links
+          got={(v,i) for v,i,_ in issues}
+          for v in range(1,11):
+            for i in range(1,5):
+              if (v,i) not in got:
+                issues.append((v,i,f'https://translation.bible/the-bible-translator/volume-{v}-issue-{i}/'))
+          issues=sorted({(v,i,u) for v,i,u in issues})
+          rows=[]; pdf_seen=set()
+          for v,i,u in issues:
+            try:
+              req=urllib.request.Request(u,headers=UA)
+              with urllib.request.urlopen(req,timeout=60) as r: page=r.read()
+              open(f'out/pages/v{v:02d}i{i:02d}.html','wb').write(page)
+              s=page.decode('utf-8','replace')
+              found=[]
+              for h in re.findall(r'''(?is)href\s*=\s*["']([^"']+?\.pdf(?:\?[^"']*)?)["']''',s):
+                p=urllib.parse.urljoin(u,html.unescape(h)); k=p.lower()
+                if k in pdf_seen: continue
+                pdf_seen.add(k); found.append(p); rows.append([v,i,u,p])
+              print('ISSUE',v,i,'PDFS',len(found),u)
+            except Exception as e:
+              print('ISSUE_ERROR',v,i,u,repr(e))
+          with open('out/manifest.csv','w',newline='',encoding='utf-8-sig') as f:
+            w=csv.writer(f); w.writerow(['Volume','Issue','IssueUrl','PdfUrl']); w.writerows(rows)
+          with open('out/urls.txt','w',encoding='utf-8') as f:
+            for n,(v,i,iu,p) in enumerate(rows,1): f.write(f'{n:04d}|{v:03d}|{i:02d}|{p}\n')
+          print('ISSUES',len(issues),'UNIQUE_PDFS',len(rows))
+          PY
+      - name: Parallel download official PDFs
+        run: |
+          set -e
+          cat out/urls.txt | xargs -P8 -I{} bash -c '
+            line="$1"; n="${line%%|*}"; rest="${line#*|}"; v="${rest%%|*}"; rest="${rest#*|}"; i="${rest%%|*}"; u="${rest#*|}"; b="$(basename "${u%%\?*}")"; f="out/pdfs/${n}__V${v}I${i}__${b}"; curl -L --fail --retry 3 --retry-delay 1 --connect-timeout 20 --max-time 120 "$u" -o "$f"; test "$(head -c 5 "$f")" = "%PDF-"' _ {}
+          echo "PDF_COUNT=$(find out/pdfs -type f -name '*.pdf' | wc -l)"
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bt-official-group1
+          path: out/
+          compression-level: 0
+          retention-days: 1
