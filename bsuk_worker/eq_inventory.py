@@ -1,3 +1,4 @@
+# Temporary PR trigger for EQ inventory
 import csv, json, re, sys
 from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -49,7 +50,6 @@ for page in PAGES:
             articles.append({'volume':vol,'issue':iss,'year_text':year,'pages':pages,'title':title,'text':text,'page':page,'pdf_links':links})
         for href in links:
             pdf_occurrences.append({'volume':vol,'issue':iss,'year_text':year,'pages':pages,'title':title,'page':page,'url':href})
-    # Catch PDF anchors outside recognized rows, for diagnostics.
     all_pdf=[]
     for a in soup.find_all('a',href=True):
         href=urljoin(url,a['href'])
@@ -57,19 +57,15 @@ for page in PAGES:
     recognized=[x['url'] for x in pdf_occurrences[before_p:]]
     page_stats.append({'page':page,'articles':len(articles)-before_a,'recognized_pdf_occurrences':len(recognized),'all_pdf_anchors':len(all_pdf),'unmatched_pdf_anchors':sorted(set(all_pdf)-set(recognized))})
 
-# Deduplicate article rows accidentally repeated by malformed HTML, conservatively by bibliographic identity.
 uniq={}
 for a in articles:
     k=(a['volume'],a['issue'],a['year_text'],a['pages'],a['title'])
     uniq.setdefault(k,a)
 articles=list(uniq.values())
-
-# Rebuild PDF occurrence list from deduplicated articles.
 pdf_occurrences=[]
 for a in articles:
     for u in a['pdf_links']:
         pdf_occurrences.append({**{k:a[k] for k in ('volume','issue','year_text','pages','title','page')},'url':u})
-
 unique_urls=sorted(set(x['url'] for x in pdf_occurrences))
 
 def check(url):
@@ -88,47 +84,18 @@ with ThreadPoolExecutor(max_workers=4) as ex:
     for i,f in enumerate(as_completed(futs),1):
         checks.append(f.result())
         if i%100==0 or i==len(futs): print(f'CHECKED {i}/{len(futs)}',flush=True)
-
 check_by={c['url']:c for c in checks}
-for p in pdf_occurrences:
-    p['validation']=check_by.get(p['url'],{})
-
+for p in pdf_occurrences: p['validation']=check_by.get(p['url'],{})
 host_occ=Counter((check_by.get(p['url'],{}).get('host') or urlparse(p['url']).netloc.lower()) for p in pdf_occurrences)
 host_unique=Counter((c.get('host') or urlparse(c['url']).netloc.lower()) for c in checks)
-
 vol_issue_counts=defaultdict(list)
 for v,i in sorted(issues): vol_issue_counts[v].append(i)
-vol_pdf=Counter(p['volume'] for p in pdf_occurrences)
-vol_articles=Counter(a['volume'] for a in articles)
-
-summary={
- 'source_pages':PAGES,
- 'year_range':[1929,2017],
- 'volumes_list':sorted(volumes),
- 'volume_count':len(volumes),
- 'issues':[[v,i] for v,i in sorted(issues)],
- 'issue_position_count':len(issues),
- 'issue_numbers_by_volume':{str(v):xs for v,xs in sorted(vol_issue_counts.items())},
- 'article_count':len(articles),
- 'pdf_link_occurrence_count':len(pdf_occurrences),
- 'unique_pdf_url_count':len(unique_urls),
- 'valid_unique_pdf_count':sum(c['ok'] for c in checks),
- 'broken_unique_pdf_count':sum(not c['ok'] for c in checks),
- 'host_distribution_occurrences':dict(host_occ),
- 'host_distribution_unique':dict(host_unique),
- 'volumes_with_pdf':sorted(v for v,n in vol_pdf.items() if n),
- 'volumes_without_pdf':sorted(v for v in volumes if not vol_pdf[v]),
- 'article_count_by_volume':dict(sorted(vol_articles.items())),
- 'pdf_count_by_volume':dict(sorted(vol_pdf.items())),
- 'page_stats':page_stats,
- 'broken_links':[c for c in checks if not c['ok']],
- 'duplicate_pdf_urls':{u:sum(1 for p in pdf_occurrences if p['url']==u) for u in unique_urls if sum(1 for p in pdf_occurrences if p['url']==u)>1},
-}
+vol_pdf=Counter(p['volume'] for p in pdf_occurrences); vol_articles=Counter(a['volume'] for a in articles)
+summary={'source_pages':PAGES,'year_range':[1929,2017],'volumes_list':sorted(volumes),'volume_count':len(volumes),'issues':[[v,i] for v,i in sorted(issues)],'issue_position_count':len(issues),'issue_numbers_by_volume':{str(v):xs for v,xs in sorted(vol_issue_counts.items())},'article_count':len(articles),'pdf_link_occurrence_count':len(pdf_occurrences),'unique_pdf_url_count':len(unique_urls),'valid_unique_pdf_count':sum(c['ok'] for c in checks),'broken_unique_pdf_count':sum(not c['ok'] for c in checks),'host_distribution_occurrences':dict(host_occ),'host_distribution_unique':dict(host_unique),'volumes_with_pdf':sorted(v for v,n in vol_pdf.items() if n),'volumes_without_pdf':sorted(v for v in volumes if not vol_pdf[v]),'article_count_by_volume':dict(sorted(vol_articles.items())),'pdf_count_by_volume':dict(sorted(vol_pdf.items())),'page_stats':page_stats,'broken_links':[c for c in checks if not c['ok']],'duplicate_pdf_urls':{u:sum(1 for p in pdf_occurrences if p['url']==u) for u in unique_urls if sum(1 for p in pdf_occurrences if p['url']==u)>1}}
 open('eq_inventory_summary.json','w',encoding='utf-8').write(json.dumps(summary,ensure_ascii=False,indent=2))
 open('eq_articles.json','w',encoding='utf-8').write(json.dumps(articles,ensure_ascii=False,indent=2))
 with open('eq_pdf_manifest.csv','w',newline='',encoding='utf-8') as f:
-    w=csv.DictWriter(f,fieldnames=['volume','issue','year_text','pages','title','page','url','ok','status','content_type','final_url','host','pdf_header','error'])
-    w.writeheader()
+    w=csv.DictWriter(f,fieldnames=['volume','issue','year_text','pages','title','page','url','ok','status','content_type','final_url','host','pdf_header','error']); w.writeheader()
     for p in pdf_occurrences:
         c=p['validation']; row={k:p[k] for k in ('volume','issue','year_text','pages','title','page','url')}; row.update({k:c.get(k) for k in ('ok','status','content_type','final_url','host','pdf_header','error')}); w.writerow(row)
 print('SUMMARY_JSON='+json.dumps(summary,ensure_ascii=False,separators=(',',':')),flush=True)
