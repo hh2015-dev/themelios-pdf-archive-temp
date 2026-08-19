@@ -1,0 +1,71 @@
+name: BSUK EQ archive build
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'bsuk_worker/eq_build.py'
+      - 'bsuk_worker/eq_corrections.json'
+      - '.github/workflows/bsuk-eq-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install requests beautifulsoup4 pymupdf
+      - name: Download, validate, and build EQ archive
+        run: python bsuk_worker/eq_build.py
+      - name: Split and package four transfer shards
+        run: |
+          mkdir -p eq_shard_1 eq_shard_2 eq_shard_3 eq_shard_4
+          for v in $(seq -w 001 022); do [ ! -d "eq_build/Volume $v" ] || mv "eq_build/Volume $v" eq_shard_1/; done
+          for v in $(seq -w 023 044); do [ ! -d "eq_build/Volume $v" ] || mv "eq_build/Volume $v" eq_shard_2/; done
+          for v in $(seq -w 045 066); do [ ! -d "eq_build/Volume $v" ] || mv "eq_build/Volume $v" eq_shard_3/; done
+          for v in $(seq -w 067 087); do [ ! -d "eq_build/Volume $v" ] || mv "eq_build/Volume $v" eq_shard_4/; done
+          (cd eq_shard_1 && zip -0 -r ../eq-archive-001-022.zip .)
+          (cd eq_shard_2 && zip -0 -r ../eq-archive-023-044.zip .)
+          (cd eq_shard_3 && zip -0 -r ../eq-archive-045-066.zip .)
+          (cd eq_shard_4 && zip -0 -r ../eq-archive-067-087.zip .)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eq-archive-001-022
+          path: eq-archive-001-022.zip
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eq-archive-023-044
+          path: eq-archive-023-044.zip
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eq-archive-045-066
+          path: eq-archive-045-066.zip
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eq-archive-067-087
+          path: eq-archive-067-087.zip
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eq-build-manifest
+          path: eq_build/build_manifest.json
+          retention-days: 1
+          if-no-files-found: error
