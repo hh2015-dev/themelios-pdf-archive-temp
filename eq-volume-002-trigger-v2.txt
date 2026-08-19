@@ -1,0 +1,1 @@
+trigger EQ Volume 002 direct fetch v2 - synchronized
