@@ -1,0 +1,41 @@
+name: TEMP EQ bulk download
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'bsuk_worker/temp_eq_bulk_download.py'
+      - 'eq-bulk-trigger.txt'
+permissions:
+  contents: read
+jobs:
+  bulk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install requests beautifulsoup4 pymupdf
+      - name: Download and validate EQ Volumes 2-87
+        run: python bsuk_worker/temp_eq_bulk_download.py
+      - uses: actions/upload-artifact@v4
+        with: {name: eq-v001-010, path: eq_bulk/v001-010/, retention-days: 1, compression-level: 0, if-no-files-found: error}
+      - uses: actions/upload-artifact@v4
+        with: {name: eq-v011-020, path: eq_bulk/v011-020/, retention-days: 1, compression-level: 0, if-no-files-found: error}
+      - uses: actions/upload-artifact@v4
+        with: {name: eq-v021-030, path: eq_bulk/v021-030/, retention-days: 1, compression-level: 0, if-no-files-found: error}
+      - uses: actions/upload-artifact@v4
+        with: {name: eq-v031-040, path: eq_bulk/v031-040/, retention-days: 1, compression-level: 0, if-no-files-found: error}
+      - uses: actions/upload-artifact@v4
+        with: {name: eq-v041-050, path: eq_bulk/v041-050/, retention-days: 1, compression-level: 0, if-no-files-found: error}
+      - uses: actions/upload-artifact@v4
+        with: {name: eq-v051-060, path: eq_bulk/v051-060/, retention-days: 1, compression-level: 0, if-no-files-found: error}
+      - uses: actions/upload-artifact@v4
+        with: {name: eq-v061-070, path: eq_bulk/v061-070/, retention-days: 1, compression-level: 0, if-no-files-found: error}
+      - uses: actions/upload-artifact@v4
+        with: {name: eq-v071-080, path: eq_bulk/v071-080/, retention-days: 1, compression-level: 0, if-no-files-found: error}
+      - uses: actions/upload-artifact@v4
+        with: {name: eq-v081-087, path: eq_bulk/v081-087/, retention-days: 1, compression-level: 0, if-no-files-found: error}
+      - uses: actions/upload-artifact@v4
+        with: {name: eq-bulk-manifest, path: eq_bulk/manifest_complete.json, retention-days: 1, compression-level: 0, if-no-files-found: error}
