@@ -1,0 +1,39 @@
+name: TEMP Kraken public wheel bridge
+
+on:
+  push:
+    branches:
+      - temp-kraken-wheel-bridge
+    paths:
+      - '.github/workflows/temp-kraken-wheel-bridge.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  bridge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: temp-kraken-wheel-bridge
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Download official Kraken 7.1 wheel
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf temp_kraken_wheel
+          mkdir -p temp_kraken_wheel
+          python -m pip download --only-binary=:all: --no-deps 'kraken==7.1' -d temp_kraken_wheel
+          sha256sum temp_kraken_wheel/* | tee temp_kraken_wheel/sha256.txt
+      - name: Commit public wheel to temporary branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add temp_kraken_wheel
+          git commit -m 'temp: bridge official Kraken 7.1 wheel'
+          git push origin HEAD:temp-kraken-wheel-bridge
