@@ -1,0 +1,30 @@
+name: BSUK EQ anomaly probe
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'bsuk_worker/eq_anomaly_probe.py'
+      - '.github/workflows/bsuk-eq-anomaly-probe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install requests beautifulsoup4 pymupdf
+      - run: python bsuk_worker/eq_anomaly_probe.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eq-anomaly-probe
+          path: eq_anomaly_probe.json
+          retention-days: 1
+          if-no-files-found: error
