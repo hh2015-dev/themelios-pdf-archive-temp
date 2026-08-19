@@ -1,0 +1,35 @@
+name: BSUK EQ inventory
+
+on:
+  push:
+    paths:
+      - 'bsuk_worker/eq_inventory.py'
+      - '.github/workflows/bsuk-eq-inventory.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install requests beautifulsoup4
+      - name: Inventory and validate EQ corpus
+        run: python bsuk_worker/eq_inventory.py
+      - name: Upload EQ inventory artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: eq-inventory
+          path: |
+            eq_inventory_summary.json
+            eq_articles.json
+            eq_pdf_manifest.csv
+          retention-days: 1
+          compression-level: 6
+          if-no-files-found: error
