@@ -1,4 +1,4 @@
-name: BT Bridge Test
+name: BT Bridge Batch
 on:
   pull_request:
   workflow_dispatch:
@@ -8,17 +8,83 @@ jobs:
     permissions:
       contents: read
     steps:
-      - name: Download PDF
+      - name: Download Volume 1 PDFs from BiblicalStudies-linked sources
         run: |
-          curl -L --fail --retry 3 --connect-timeout 20 \
-            'https://translation.bible/wp-content/uploads/2024/04/nida-1950-new-help-on-old-problems.pdf' \
-            -o bt-test.pdf
-          file bt-test.pdf
-          test "$(head -c 5 bt-test.pdf)" = "%PDF-"
+          python - <<'PY'
+          import csv, html, os, re, urllib.parse, urllib.request
+          from html.parser import HTMLParser
+
+          INDEXES = [
+              'https://biblicalstudies.gospelstudies.org.uk/articles_bible-translator_01.php',
+              'https://www.biblicalstudies.org.uk/articles_bible-translator_01.php',
+          ]
+          UA={'User-Agent':'Mozilla/5.0'}
+          raw=None; base=None
+          for u in INDEXES:
+              try:
+                  req=urllib.request.Request(u,headers=UA)
+                  with urllib.request.urlopen(req,timeout=30) as r:
+                      raw=r.read().decode('utf-8','replace'); base=u; break
+              except Exception as e:
+                  print('INDEX_FAIL',u,e)
+          if raw is None:
+              raise SystemExit('Could not fetch BiblicalStudies index')
+
+          # Capture anchors and a surrounding text window. The source page is regular enough
+          # that the nearest enclosing paragraph/list block carries citation metadata.
+          blocks=re.findall(r'(?is)<(?:p|li|tr)\b[^>]*>.*?</(?:p|li|tr)>', raw)
+          out=[]; seen=set()
+          for block in blocks:
+              text=re.sub(r'(?is)<[^>]+>',' ',block)
+              text=html.unescape(re.sub(r'\s+',' ',text)).strip()
+              mmeta=re.search(r'Bible Translator\s+1\.(\d{1,2}).*?\b(1950)\b.*?(\d{1,4}(?:\s*[-–]\s*\d{1,4})?)\.?\s*$',text,re.I)
+              if not mmeta:
+                  continue
+              issue=int(mmeta.group(1)); year=int(mmeta.group(2)); pages=mmeta.group(3).replace('–','-').replace(' ','')
+              for href,atext in re.findall(r'(?is)<a\b[^>]*href=["\']([^"\']+?\.pdf(?:\?[^"\']*)?)["\'][^>]*>(.*?)</a>',block):
+                  url=urllib.parse.urljoin(base,html.unescape(href))
+                  key=url.lower()
+                  if key in seen: continue
+                  seen.add(key)
+                  title=html.unescape(re.sub(r'(?is)<[^>]+>',' ',atext))
+                  title=re.sub(r'\s+',' ',title).strip()
+                  if not title or title.lower() in {'pdf','[pdf]','online'}:
+                      # Try quoted title from citation block.
+                      mm=re.search(r'["“](.+?)["”]\s*,?\s*Bible Translator',text,re.I)
+                      title=mm.group(1).strip() if mm else os.path.basename(urllib.parse.urlparse(url).path).rsplit('.',1)[0]
+                  title=re.sub(r'[<>:"/\\|?*]','-',title)
+                  title=re.sub(r'\s+',' ',title).strip(' .-')[:120]
+                  fn=f'The Bible Translator - Volume 001 Issue {issue:02d} - {year} - {title} - pp {pages}.pdf'
+                  out.append((issue,year,pages,title,url,fn,text))
+
+          os.makedirs('bt_batch',exist_ok=True)
+          rows=[]
+          for i,(issue,year,pages,title,url,fn,citation) in enumerate(out,1):
+              path=os.path.join('bt_batch',fn)
+              try:
+                  req=urllib.request.Request(url,headers=UA)
+                  with urllib.request.urlopen(req,timeout=90) as r, open(path,'wb') as f:
+                      data=r.read(); f.write(data)
+                  if not data.startswith(b'%PDF-'):
+                      raise RuntimeError('not PDF')
+                  status='OK'; size=len(data)
+              except Exception as e:
+                  status='ERROR '+repr(e); size=0
+                  try: os.remove(path)
+                  except: pass
+              rows.append([issue,year,pages,title,url,fn,status,size,citation])
+              print(i,len(out),status,fn)
+          with open('bt_batch/manifest.csv','w',newline='',encoding='utf-8-sig') as f:
+              w=csv.writer(f); w.writerow(['Issue','Year','Pages','Title','SourceUrl','FileName','Status','Bytes','Citation']); w.writerows(rows)
+          ok=sum(r[6]=='OK' for r in rows)
+          print('DISCOVERED',len(rows),'OK',ok,'ERRORS',len(rows)-ok)
+          if ok==0:
+              raise SystemExit('No PDFs downloaded')
+          PY
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: bt-test-pdf
-          path: bt-test.pdf
+          name: bt-volume-001
+          path: bt_batch/
           compression-level: 0
           retention-days: 1
