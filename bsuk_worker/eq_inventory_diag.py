@@ -23,3 +23,4 @@ for page in PAGES:
     print('CANDIDATES',len(candidates))
     for x in candidates[:50]: print('CAND',json.dumps(x,ensure_ascii=False),flush=True)
     print('---ENDPAGE---',flush=True)
+# trigger 2026-08-19
