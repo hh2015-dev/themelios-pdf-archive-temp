@@ -5,10 +5,14 @@ on:
     paths:
       - 'bsuk_worker/eq_inventory.py'
       - '.github/workflows/bsuk-eq-inventory.yml'
+  pull_request:
+    paths:
+      - 'bsuk_worker/eq_inventory.py'
+      - '.github/workflows/bsuk-eq-inventory.yml'
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   inventory:
@@ -22,15 +26,6 @@ jobs:
       - run: pip install requests beautifulsoup4
       - name: Inventory and validate EQ corpus
         run: python bsuk_worker/eq_inventory.py
-      - name: Publish temporary inventory results
-        run: |
-          mkdir -p bsuk_worker/eq_inventory_output
-          cp eq_inventory_summary.json eq_articles.json eq_pdf_manifest.csv bsuk_worker/eq_inventory_output/
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add bsuk_worker/eq_inventory_output/
-          git commit -m "Publish temporary EQ inventory results" || exit 0
-          git push
       - name: Upload EQ inventory artifact
         uses: actions/upload-artifact@v4
         with:
