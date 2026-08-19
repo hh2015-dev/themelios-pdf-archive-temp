@@ -1,36 +1,38 @@
-import json,time
+import json, requests
 from pathlib import Path
-from urllib.parse import quote
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-
 OUT=Path('bible_student_ia_discovery'); OUT.mkdir(exist_ok=True)
-q='"Recent Finds in Palestine"'
-opts=Options(); opts.add_argument('--headless=new'); opts.add_argument('--no-sandbox'); opts.add_argument('--disable-dev-shm-usage'); opts.add_argument('--disable-gpu'); opts.add_argument('--window-size=1400,1200')
-opts.set_capability('goog:loggingPrefs', {'performance':'ALL','browser':'ALL'})
-driver=webdriver.Chrome(options=opts)
-try:
-    url='https://archive.org/search?query='+quote(q)+'&sin=TXT'
-    driver.get(url); time.sleep(15)
-    perf=driver.get_log('performance')
-    browser=driver.get_log('browser')
-    reqs=[]
-    for entry in perf:
-        try:
-            msg=json.loads(entry['message'])['message']
-            if msg.get('method')!='Network.requestWillBeSent': continue
-            r=msg['params']['request']; u=r.get('url','')
-            if 'archive.org' in u or 'internetarchive' in u:
-                reqs.append({'url':u,'method':r.get('method'),'type':msg['params'].get('type'),'postData':r.get('postData')})
-        except Exception: pass
-    # ordered de-dupe
-    seen=set(); uniq=[]
-    for r in reqs:
-        sig=(r['url'],r['method'],r.get('postData'))
-        if sig in seen: continue
-        seen.add(sig); uniq.append(r)
-    result={'query':q,'page_url':driver.current_url,'title':driver.title,'network_requests':uniq,'browser_log':browser,'html_bytes':len(driver.page_source)}
-finally:
-    driver.quit()
-(OUT/'summary.json').write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding='utf-8')
-print(json.dumps(result,ensure_ascii=False,indent=2))
+S=requests.Session(); S.headers.update({'User-Agent':'Mozilla/5.0 BSUK Bible Student archival discovery/1.5'})
+URL='https://archive.org/services/search/beta/page_production/'
+queries=[
+ '"Recent Finds in Palestine"',
+ '"Exegetical Study of Colossians"',
+ '"Exegetical Study of Colossians" "verse 9"',
+ '"The Bible Student" "Alfred McDonald Redwood"',
+ '"The Bible Student" Redwood',
+ '"The Bible Student" Mysore',
+ '"The Bible Student" Bangalore',
+ '"The Bible Student" "Scripture Literature Press"',
+ '"The Bible Student" "Indian Mission Press"',
+ '"The Bible Student" 1931',
+ '"The Bible Student" 1932',
+ '"The Bible Student" 1933',
+ '"The Bible Student" 1934',
+ '"The Bible Student" 1935',
+ '"The Bible Student" 1936',
+ '"The Bible Student" 1937',
+ '"The Bible Student" 1938',
+ '"The Bible Student" 1939',
+ '"The Bible Student" 1940',
+]
+results=[]
+for q in queries:
+    rec={'query':q}
+    try:
+        r=S.get(URL,params={'service_backend':'fts','user_query':q,'hits_per_page':100,'page':1,'aggregations':'false'},timeout=90)
+        rec['status']=r.status_code; rec['url']=r.url; rec['content_type']=r.headers.get('content-type'); rec['bytes']=len(r.content)
+        try: rec['data']=r.json()
+        except Exception: rec['text']=r.text[:5000]
+    except Exception as e: rec['error']=repr(e)
+    results.append(rec)
+(OUT/'summary.json').write_text(json.dumps(results,ensure_ascii=False,indent=2),encoding='utf-8')
+print(json.dumps([{'query':x['query'],'status':x.get('status'),'bytes':x.get('bytes'),'keys':list(x.get('data',{}).keys()) if isinstance(x.get('data'),dict) else None} for x in results],ensure_ascii=False,indent=2))
