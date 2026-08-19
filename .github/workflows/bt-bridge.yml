@@ -1,0 +1,26 @@
+name: BT Bridge Test
+on:
+  push:
+    paths:
+      - '.github/workflows/bt-bridge.yml'
+  workflow_dispatch:
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Download PDF
+        run: |
+          curl -L --fail --retry 3 --connect-timeout 20 \
+            'https://translation.bible/wp-content/uploads/2024/04/nida-1950-new-help-on-old-problems.pdf' \
+            -o bt-test.pdf
+          file bt-test.pdf
+          test "$(head -c 5 bt-test.pdf)" = "%PDF-"
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bt-test-pdf
+          path: bt-test.pdf
+          compression-level: 0
+          retention-days: 1
