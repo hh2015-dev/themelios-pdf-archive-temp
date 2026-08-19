@@ -1,0 +1,29 @@
+name: BSUK Bible Student discovery
+
+on:
+  push:
+    paths:
+      - bsuk_worker/bible_student_discovery.py
+      - .github/workflows/bsuk-bible-student-discovery.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install requests beautifulsoup4
+      - run: python bsuk_worker/bible_student_discovery.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bsuk-bible-student-discovery
+          path: bible_student_discovery/
+          if-no-files-found: error
+          retention-days: 1
