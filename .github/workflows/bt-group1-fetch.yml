@@ -1,0 +1,67 @@
+name: BT group1 fetch
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch index and PDFs
+        run: |
+          set -e
+          mkdir -p out
+          python - <<'PY'
+          import html, os, re, urllib.parse, urllib.request
+          urls=[
+            'https://biblicalstudies.gospelstudies.org.uk/articles_bible-translator_01.php',
+            'https://www.biblicalstudies.org.uk/articles_bible-translator_01.php'
+          ]
+          raw=None; base=None
+          for u in urls:
+            try:
+              req=urllib.request.Request(u,headers={'User-Agent':'Mozilla/5.0'})
+              with urllib.request.urlopen(req,timeout=30) as r:
+                raw=r.read(); base=u; break
+            except Exception as e:
+              print('INDEX_FAIL',u,e)
+          if raw is None: raise SystemExit('index fetch failed')
+          open('out/index.html','wb').write(raw)
+          text=raw.decode('utf-8','replace')
+          hrefs=[]; seen=set()
+          for h in re.findall(r'''(?is)href\s*=\s*["']([^"']+?\.pdf(?:\?[^"']*)?)["']''',text):
+            u=urllib.parse.urljoin(base,html.unescape(h))
+            k=u.lower()
+            if k in seen: continue
+            seen.add(k); hrefs.append(u)
+          open('out/urls.txt','w',encoding='utf-8').write('\n'.join(hrefs)+'\n')
+          print('UNIQUE_PDF_URLS',len(hrefs))
+          for i,u in enumerate(hrefs,1):
+            basefn=os.path.basename(urllib.parse.urlparse(u).path) or f'file-{i:04d}.pdf'
+            if not basefn.lower().endswith('.pdf'): basefn += '.pdf'
+            fn=f'{i:04d}__{basefn}'
+            path=os.path.join('out',fn)
+            try:
+              req=urllib.request.Request(u,headers={'User-Agent':'Mozilla/5.0'})
+              with urllib.request.urlopen(req,timeout=90) as r:
+                data=r.read()
+              if not data.startswith(b'%PDF-'): raise RuntimeError('not PDF')
+              open(path,'wb').write(data)
+              print('OK',i,len(data),u)
+            except Exception as e:
+              print('ERROR',i,u,repr(e))
+          PY
+          echo "PDF_COUNT=$(find out -maxdepth 1 -type f -name '*.pdf' | wc -l)"
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bt-group1-pdfs
+          path: out/
+          compression-level: 0
+          retention-days: 1
