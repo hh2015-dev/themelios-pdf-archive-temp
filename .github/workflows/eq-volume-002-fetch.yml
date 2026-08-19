@@ -1,0 +1,50 @@
+name: EQ Volume 002 direct fetch
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  fetch:
+    if: github.head_ref == 'temp-eq-direct-fetch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Download Volume 002 PDFs directly from BiblicalStudies
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          cat > urls.txt <<'EOF'
+https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1930-1_003.pdf
+https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1930-1_014.pdf
+https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1930-1_033.pdf
+https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1930-1_046.pdf
+https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1930-1_070.pdf
+https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1930-2_127.pdf
+https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1930-2_137.pdf
+https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1930-2_150.pdf
+https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1930-2_162.pdf
+https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1930-2_179.pdf
+https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1930-3_225.pdf
+https://biblicalstudies.gospelstudies.org.uk/pdf/jtvi/1930_241.pdf
+https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1930-3_268.pdf
+https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1930-3_286.pdf
+https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1930-3_302.pdf
+https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1930-4_337.pdf
+https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1930-4_344.pdf
+https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1930-4_358.pdf
+https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1930-4_401.pdf
+EOF
+          cat urls.txt | xargs -n1 -P4 -I{} bash -c 'u="$1"; f="out/$(basename "$u")"; curl -L --fail --retry 3 --retry-delay 2 "$u" -o "$f"; test "$(head -c 5 "$f")" = "%PDF-"; echo "OK $(basename "$f") $(stat -c%s "$f")"' _ {}
+          test "$(find out -type f -name '*.pdf' | wc -l)" -eq 19
+      - name: Upload Volume 002 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: eq-volume-002
+          path: out/*.pdf
+          retention-days: 1
+          if-no-files-found: error
