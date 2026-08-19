@@ -15,7 +15,7 @@ collisions={
 }
 
 broken_candidates={
-'1952-2_justifation_hughes.pdf':['1952-2_078.pdf','1952-2_justification_hughes.pdf','1952-2_justification_hughes.pdf'],
+'1952-2_justifation_hughes.pdf':['1952-2_078.pdf','1952-2_justification_hughes.pdf'],
 '1958-4_morris.pdf':['1958-4_196.pdf'],
 '1959-3_143n.pdf':['1959-3_143.pdf'],
 '1971-1_131.pdf':['1971-3_131.pdf'],
@@ -55,3 +55,4 @@ for old,cands in broken_candidates.items():
         print('RECOVERY',old,json.dumps(x,ensure_ascii=False),flush=True)
     out['broken_candidates'].append(rec)
 open('eq_anomaly_probe.json','w',encoding='utf-8').write(json.dumps(out,ensure_ascii=False,indent=2))
+# trigger 2026-08-19
