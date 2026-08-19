@@ -2,11 +2,12 @@ import json,re,shutil,urllib.request,urllib.parse,unicodedata,difflib
 from pathlib import Path
 from html.parser import HTMLParser
 from concurrent.futures import ThreadPoolExecutor
+from functools import lru_cache
 from pypdf import PdfReader,PdfWriter
 
 TARGETS={(55,2),(56,3),(58,1),(59,2),(59,3),(60,2),(60,3),(61,2),(61,4),(63,3)}
 OUT=Path('jets-repairs'); OUT.mkdir(exist_ok=True)
-UA='Mozilla/5.0 JETS-archive-repair/5.0'
+UA='Mozilla/5.0 JETS-archive-repair/6.0'
 manifest=json.load(open('jets_manifest.json',encoding='utf-8'))
 
 class P(HTMLParser):
@@ -21,7 +22,7 @@ class P(HTMLParser):
 
 def get(url):
     req=urllib.request.Request(url,headers={'User-Agent':UA})
-    with urllib.request.urlopen(req,timeout=15) as r:return r.read()
+    with urllib.request.urlopen(req,timeout=12) as r:return r.read()
 
 def safe_url(url): return urllib.parse.quote(url,safe=':/?=&%#')
 def norm(s): return re.sub(r'[^a-z0-9]+',' ',unicodedata.normalize('NFKD',s).encode('ascii','ignore').decode().lower()).strip()
@@ -32,13 +33,15 @@ def page_range(c):
 def clean_name(s,maxlen=150):
     s=re.sub(r'[\\/:*?"<>|]+',' - ',s); s=' '.join(s.split()).strip(' .-'); return s[:maxlen].rstrip(' .-')
 
+@lru_cache(maxsize=None)
 def official_links(vol):
     for u in [f'https://etsjets.org/jets-volume/jets{vol}/',f'https://etsjets.org/jets{vol}/']:
         try:
             p=P(u); p.feed(get(u).decode('utf-8','replace')); pdf=[x for x in p.links if '.pdf' in x[0].lower()]
-            if pdf:return pdf
+            if pdf:return tuple(pdf)
         except Exception:pass
-    return []
+    return tuple()
+
 def official_match(vol,citation):
     nt=norm(cit_title(citation)); cs=[]
     for href,text in official_links(vol):
@@ -47,15 +50,6 @@ def official_match(vol,citation):
     cs.sort(reverse=True)
     return cs[0] if cs and cs[0][0]>=0.55 else None
 
-def migration_candidates(url,vol,no,year):
-    dec=urllib.parse.unquote(url); m=re.search(r'/files/JETS-PDFs/(\d+)/(\d+-\d+)/([^?#]+\.pdf)',dec,re.I)
-    if not m:return []
-    fname=m.group(3); enc=urllib.parse.quote(f'files_JETS-PDFs_{vol}_{vol}-{no}_{fname}',safe='-_.()%')
-    month_map={1:[3,4],2:[6,7],3:[9,10],4:[12]}; out=[]
-    for mm in month_map.get(no,[]):out.append(f'https://etsjets.org/wp-content/uploads/{year}/{mm:02d}/{enc}')
-    if no==4:out.append(f'https://etsjets.org/wp-content/uploads/{year+1}/01/{enc}')
-    return out
-
 def fetch_pdf(url,dest):
     data=get(safe_url(url))
     if not data.startswith(b'%PDF'):raise ValueError('not PDF')
@@ -63,23 +57,22 @@ def fetch_pdf(url,dest):
 
 def dl(item,dest):
     errors=[]
-    # Fast path: use exactly the PDF linked by BiblicalStudies. Most entries still work.
     try:
         return {'ok':True,'url':safe_url(item['url']),'pages':fetch_pdf(item['url'],dest),'repair_kind':'indexed'}
     except Exception as e:
         errors.append(f'indexed:{safe_url(item["url"])} => {type(e).__name__}:{e}')
-    # Only failed indexed links require a current official-page lookup and migration probes.
     match=official_match(item['volume'],item['citation'])
-    candidates=[]
     if match:
-        _,href,text=match
-        candidates.append((href,'official-current'))
-        for base in [item['url'],href]:
-            for u in migration_candidates(base,item['volume'],item['issue'],item['year']):
-                if u not in [x for x,_ in candidates]:candidates.append((u,'official-migrated'))
-    for url,kind in candidates:
-        try:return {'ok':True,'url':safe_url(url),'pages':fetch_pdf(url,dest),'repair_kind':kind}
-        except Exception as e:errors.append(f'{kind}:{safe_url(url)} => {type(e).__name__}:{e}')
+        _,href,_=match
+        if href!=item['url']:
+            try:
+                return {'ok':True,'url':safe_url(href),'pages':fetch_pdf(href,dest),'repair_kind':'official-current'}
+            except Exception as e:
+                errors.append(f'official-current:{safe_url(href)} => {type(e).__name__}:{e}')
+        else:
+            errors.append('official-current: same dead URL as indexed link')
+    else:
+        errors.append('official-current: no reliable matching PDF link on current ETS volume page')
     return {'ok':False,'error':' | '.join(errors)}
 
 reports=[]
