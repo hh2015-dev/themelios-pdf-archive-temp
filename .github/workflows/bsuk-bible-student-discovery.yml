@@ -1,14 +1,13 @@
 name: BSUK Bible Student discovery
 
 on:
-  push:
+  pull_request:
     paths:
-      - bsuk_worker/bible_student_discovery.py
-      - .github/workflows/bsuk-bible-student-discovery.yml
+      - bible-student-trigger.txt
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   discover:
@@ -27,10 +26,3 @@ jobs:
           path: bible_student_discovery/
           if-no-files-found: error
           retention-days: 1
-      - name: Commit discovery results for audit
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add bible_student_discovery/
-          git diff --cached --quiet || git commit -m "Temporary Bible Student discovery results"
-          git push
