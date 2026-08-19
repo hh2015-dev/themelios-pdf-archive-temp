@@ -1,0 +1,24 @@
+name: EQ Fetch Smoke
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download one EQ PDF
+        run: |
+          mkdir -p out
+          curl -L --fail --retry 3 --retry-delay 2 \
+            'https://biblicalstudies.gospelstudies.org.uk/pdf/eq/1930-1_003.pdf' \
+            -o 'out/eq-test.pdf'
+          test "$(head -c 5 out/eq-test.pdf)" = '%PDF-'
+          ls -lh out/eq-test.pdf
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: eq-test-pdf
+          path: out/eq-test.pdf
+          if-no-files-found: error
