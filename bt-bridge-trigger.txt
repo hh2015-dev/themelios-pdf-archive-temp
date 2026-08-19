@@ -1,1 +1,1 @@
-trigger
+trigger volume 1 batch
