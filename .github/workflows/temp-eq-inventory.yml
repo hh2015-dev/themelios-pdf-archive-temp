@@ -1,0 +1,36 @@
+name: TEMP EQ inventory
+on:
+  push:
+    branches: [temp-eq-inventory-20260819]
+    paths:
+      - 'bsuk_worker/temp_eq_inventory.py'
+      - '.github/workflows/temp-eq-inventory.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'bsuk_worker/temp_eq_inventory.py'
+      - '.github/workflows/temp-eq-inventory.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install requests beautifulsoup4
+      - name: Inventory EQ corpus
+        run: python bsuk_worker/temp_eq_inventory.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eq-inventory
+          path: |
+            eq_summary.json
+            eq_manifest.jsonl
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
