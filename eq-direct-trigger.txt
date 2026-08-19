@@ -1,0 +1,1 @@
+Trigger temporary Evangelical Quarterly direct fetch test.
