@@ -1,4 +1,4 @@
-name: BT group1 fast
+name: BT group2 BiblicalStudies inventory
 
 on:
   pull_request:
@@ -8,18 +8,18 @@ permissions:
   contents: read
 
 jobs:
-  fetch:
+  inventory:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - name: Fetch index and URL list
+      - name: Fetch BiblicalStudies group2 index
         run: |
           set -e
-          mkdir -p out/pdfs
+          mkdir -p out-bsuk
           python - <<'PY'
-          import html,re,urllib.parse,urllib.request
-          urls=['https://biblicalstudies.gospelstudies.org.uk/articles_bible-translator_01.php','https://www.biblicalstudies.org.uk/articles_bible-translator_01.php']
+          import html,re,urllib.parse,urllib.request,csv
+          urls=['https://biblicalstudies.gospelstudies.org.uk/articles_bible-translator_02.php','https://www.biblicalstudies.org.uk/articles_bible-translator_02.php']
           raw=None;base=None
           for u in urls:
             try:
@@ -27,25 +27,20 @@ jobs:
               with urllib.request.urlopen(req,timeout=30) as r: raw=r.read(); base=u; break
             except Exception as e: print('INDEX_FAIL',u,e)
           if raw is None: raise SystemExit('index fetch failed')
-          open('out/index.html','wb').write(raw)
+          open('out-bsuk/index.html','wb').write(raw)
           t=raw.decode('utf-8','replace'); seen=set(); rows=[]
           for h in re.findall(r'''(?is)href\s*=\s*["']([^"']+?\.pdf(?:\?[^"']*)?)["']''',t):
             u=urllib.parse.urljoin(base,html.unescape(h)); k=u.lower()
             if k in seen: continue
             seen.add(k); rows.append(u)
-          open('out/urls.txt','w').write('\n'.join(rows)+'\n')
+          open('out-bsuk/urls.txt','w',encoding='utf-8').write('\n'.join(rows)+'\n')
+          print('INDEX',base)
           print('UNIQUE_PDF_URLS',len(rows))
           PY
-      - name: Parallel download
-        run: |
-          set -e
-          nl -ba -w4 -s'|' out/urls.txt | xargs -P8 -I{} bash -c '
-            line="$1"; n="${line%%|*}"; u="${line#*|}"; b="$(basename "${u%%\?*}")"; f="out/pdfs/${n}__${b}"; curl -L --fail --retry 3 --retry-delay 1 --connect-timeout 20 --max-time 120 "$u" -o "$f"; test "$(head -c 5 "$f")" = "%PDF-"' _ {}
-          echo "PDF_COUNT=$(find out/pdfs -type f -name '*.pdf' | wc -l)"
-      - name: Upload artifact
+      - name: Upload inventory artifact
         uses: actions/upload-artifact@v4
         with:
-          name: bt-group1-fast
-          path: out/
+          name: bt-bsuk-group2-inventory
+          path: out-bsuk/
           compression-level: 0
           retention-days: 1
