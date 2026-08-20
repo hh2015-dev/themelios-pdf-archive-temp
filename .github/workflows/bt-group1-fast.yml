@@ -1,4 +1,4 @@
-name: BT group3 BiblicalStudies inventory
+name: BT group3 BiblicalStudies fetch
 
 on:
   pull_request:
@@ -8,17 +8,17 @@ permissions:
   contents: read
 
 jobs:
-  inventory:
+  fetch:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - name: Fetch BiblicalStudies group3 index
         run: |
           set -e
-          mkdir -p out-bsuk
+          mkdir -p out-bsuk/pdfs
           python - <<'PY'
-          import html,re,urllib.parse,urllib.request
+          import html,re,urllib.parse,urllib.request,csv
           urls=['https://biblicalstudies.gospelstudies.org.uk/articles_bible-translator_03.php','https://www.biblicalstudies.org.uk/articles_bible-translator_03.php']
           raw=None;base=None
           for u in urls:
@@ -33,14 +33,21 @@ jobs:
             u=urllib.parse.urljoin(base,html.unescape(h)); k=u.lower()
             if k in seen: continue
             seen.add(k); rows.append(u)
-          open('out-bsuk/urls.txt','w',encoding='utf-8').write('\n'.join(rows)+'\n')
+          with open('out-bsuk/urls.txt','w',encoding='utf-8') as f:
+            for n,u in enumerate(rows,1): f.write(f'{n:04d}|{u}\n')
           print('INDEX',base)
           print('UNIQUE_PDF_URLS',len(rows))
           PY
-      - name: Upload inventory artifact
+      - name: Parallel download BiblicalStudies-linked PDFs
+        run: |
+          set -e
+          cat out-bsuk/urls.txt | xargs -P8 -I{} bash -c '
+            line="$1"; n="${line%%|*}"; u="${line#*|}"; b="$(basename "${u%%\?*}")"; f="out-bsuk/pdfs/${n}__${b}"; curl -L --fail --retry 3 --retry-delay 1 --connect-timeout 20 --max-time 120 "$u" -o "$f"; test "$(head -c 5 "$f")" = "%PDF-"' _ {}
+          echo "PDF_COUNT=$(find out-bsuk/pdfs -type f -name '*.pdf' | wc -l)"
+      - name: Upload group3 artifact
         uses: actions/upload-artifact@v4
         with:
-          name: bt-bsuk-group3-inventory
+          name: bt-bsuk-group3
           path: out-bsuk/
           compression-level: 0
           retention-days: 1
