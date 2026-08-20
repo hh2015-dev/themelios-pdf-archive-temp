@@ -1,4 +1,4 @@
-name: BT group7 BiblicalStudies fetch
+name: Canadian Journal of Theology BiblicalStudies fetch
 
 on:
   pull_request:
@@ -14,7 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Fetch and inventory BiblicalStudies group7 index
+      - name: Fetch and inventory Canadian Journal of Theology index
         run: |
           set -e
           mkdir -p out-bsuk/pdfs
@@ -22,8 +22,8 @@ jobs:
           import html, re, urllib.parse, urllib.request
 
           indexes = [
-              'https://biblicalstudies.gospelstudies.org.uk/articles_bible-translator_07.php',
-              'https://www.biblicalstudies.org.uk/articles_bible-translator_07.php',
+              'https://biblicalstudies.gospelstudies.org.uk/articles_canadian-journal.php',
+              'https://www.biblicalstudies.org.uk/articles_canadian-journal.php',
           ]
 
           raw = None
@@ -124,11 +124,11 @@ jobs:
               raise SystemExit(f'count mismatch: {pdf_count} != {len(rows)}')
           PY
 
-      - name: Upload group7 artifact
+      - name: Upload Canadian Journal of Theology artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: bt-bsuk-group7
+          name: cjt-bsuk-full
           path: out-bsuk/
           compression-level: 0
           retention-days: 1
