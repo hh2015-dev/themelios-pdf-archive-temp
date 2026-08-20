@@ -1,4 +1,4 @@
-name: BT group6 BiblicalStudies fetch
+name: BT group7 BiblicalStudies fetch
 
 on:
   pull_request:
@@ -14,7 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Fetch and inventory BiblicalStudies group6 index
+      - name: Fetch and inventory BiblicalStudies group7 index
         run: |
           set -e
           mkdir -p out-bsuk/pdfs
@@ -22,13 +22,9 @@ jobs:
           import html, re, urllib.parse, urllib.request
 
           indexes = [
-              'https://biblicalstudies.gospelstudies.org.uk/articles_bible-translator_06.php',
-              'https://www.biblicalstudies.org.uk/articles_bible-translator_06.php',
+              'https://biblicalstudies.gospelstudies.org.uk/articles_bible-translator_07.php',
+              'https://www.biblicalstudies.org.uk/articles_bible-translator_07.php',
           ]
-          fallback = {
-              'chhetri-2007-translating-the-hebrew-oath-formula-a-nepali-perspective-1.pdf':
-              'https://translation.bible/wp-content/uploads/2024/06/chhetri-2007-translating-the-hebrew-oath-formula-a-nepali-perspective.pdf'
-          }
 
           raw = None
           base = None
@@ -55,8 +51,7 @@ jobs:
                   continue
               seen.add(key)
               basename = urllib.parse.unquote(original.split('?', 1)[0].rsplit('/', 1)[-1])
-              effective = fallback.get(basename.lower(), original)
-              rows.append((original, effective, basename))
+              rows.append((original, original, basename))
 
           with open('out-bsuk/manifest.tsv', 'w', encoding='utf-8') as f:
               f.write('seq\toriginal_url\teffective_url\tbasename\n')
@@ -65,13 +60,12 @@ jobs:
 
           print('INDEX', base)
           print('UNIQUE_PDF_URLS', len(rows))
-          print('OFFICIAL_FALLBACKS', sum(1 for a,b,_ in rows if a != b))
           PY
 
       - name: Parallel download and validate all PDFs
         run: |
           python - <<'PY'
-          import concurrent.futures, csv, os, pathlib, urllib.request
+          import concurrent.futures, csv, pathlib, urllib.request
 
           out = pathlib.Path('out-bsuk/pdfs')
           out.mkdir(parents=True, exist_ok=True)
@@ -130,11 +124,11 @@ jobs:
               raise SystemExit(f'count mismatch: {pdf_count} != {len(rows)}')
           PY
 
-      - name: Upload group6 artifact
+      - name: Upload group7 artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: bt-bsuk-group6
+          name: bt-bsuk-group7
           path: out-bsuk/
           compression-level: 0
           retention-days: 1
