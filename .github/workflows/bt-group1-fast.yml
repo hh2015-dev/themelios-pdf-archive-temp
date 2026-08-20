@@ -1,4 +1,4 @@
-name: BT group2 BiblicalStudies inventory
+name: BT group3 BiblicalStudies inventory
 
 on:
   pull_request:
@@ -13,13 +13,13 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - name: Fetch BiblicalStudies group2 index
+      - name: Fetch BiblicalStudies group3 index
         run: |
           set -e
           mkdir -p out-bsuk
           python - <<'PY'
-          import html,re,urllib.parse,urllib.request,csv
-          urls=['https://biblicalstudies.gospelstudies.org.uk/articles_bible-translator_02.php','https://www.biblicalstudies.org.uk/articles_bible-translator_02.php']
+          import html,re,urllib.parse,urllib.request
+          urls=['https://biblicalstudies.gospelstudies.org.uk/articles_bible-translator_03.php','https://www.biblicalstudies.org.uk/articles_bible-translator_03.php']
           raw=None;base=None
           for u in urls:
             try:
@@ -40,7 +40,7 @@ jobs:
       - name: Upload inventory artifact
         uses: actions/upload-artifact@v4
         with:
-          name: bt-bsuk-group2-inventory
+          name: bt-bsuk-group3-inventory
           path: out-bsuk/
           compression-level: 0
           retention-days: 1
