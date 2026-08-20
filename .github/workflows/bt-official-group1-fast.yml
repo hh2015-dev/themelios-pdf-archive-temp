@@ -1,4 +1,4 @@
-name: BT official group2 fast
+name: BT official group3 fast
 
 on:
   pull_request:
@@ -31,11 +31,10 @@ jobs:
             m=re.search(r'/the-bible-translator/volume-(\d+)-issue-(\d+)(?:-[^/]+)?/?$',u,re.I)
             if not m: continue
             v=int(m.group(1)); i=int(m.group(2))
-            if 11 <= v <= 20 and (v,i,u.lower()) not in seen:
+            if 21 <= v <= 30 and (v,i,u.lower()) not in seen:
               seen.add((v,i,u.lower())); issues.append((v,i,u))
-          # fallback deterministic issue URLs if archive markup hides some links
           got={(v,i) for v,i,_ in issues}
-          for v in range(11,21):
+          for v in range(21,31):
             for i in range(1,5):
               if (v,i) not in got:
                 issues.append((v,i,f'https://translation.bible/the-bible-translator/volume-{v}-issue-{i}/'))
@@ -70,7 +69,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: bt-official-group2
+          name: bt-official-group3
           path: out/
           compression-level: 0
           retention-days: 1
