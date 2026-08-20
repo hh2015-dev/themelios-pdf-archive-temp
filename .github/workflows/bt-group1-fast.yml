@@ -13,38 +13,125 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - name: Fetch BiblicalStudies group6 index
+
+      - name: Fetch and inventory BiblicalStudies group6 index
         run: |
           set -e
           mkdir -p out-bsuk/pdfs
           python - <<'PY'
-          import html,re,urllib.parse,urllib.request
-          urls=['https://biblicalstudies.gospelstudies.org.uk/articles_bible-translator_06.php','https://www.biblicalstudies.org.uk/articles_bible-translator_06.php']
-          raw=None;base=None
-          for u in urls:
-            try:
-              req=urllib.request.Request(u,headers={'User-Agent':'Mozilla/5.0'})
-              with urllib.request.urlopen(req,timeout=30) as r: raw=r.read(); base=u; break
-            except Exception as e: print('INDEX_FAIL',u,e)
-          if raw is None: raise SystemExit('index fetch failed')
-          open('out-bsuk/index.html','wb').write(raw)
-          t=raw.decode('utf-8','replace'); seen=set(); rows=[]
-          for h in re.findall(r'''(?is)href\s*=\s*["']([^"']+?\.pdf(?:\?[^"']*)?)["']''',t):
-            u=urllib.parse.urljoin(base,html.unescape(h)); k=u.lower()
-            if k in seen: continue
-            seen.add(k); rows.append(u)
-          with open('out-bsuk/urls.txt','w',encoding='utf-8') as f:
-            for n,u in enumerate(rows,1): f.write(f'{n:04d}|{u}\n')
-          print('INDEX',base)
-          print('UNIQUE_PDF_URLS',len(rows))
+          import html, re, urllib.parse, urllib.request
+
+          indexes = [
+              'https://biblicalstudies.gospelstudies.org.uk/articles_bible-translator_06.php',
+              'https://www.biblicalstudies.org.uk/articles_bible-translator_06.php',
+          ]
+          fallback = {
+              'chhetri-2007-translating-the-hebrew-oath-formula-a-nepali-perspective-1.pdf':
+              'https://translation.bible/wp-content/uploads/2024/06/chhetri-2007-translating-the-hebrew-oath-formula-a-nepali-perspective.pdf'
+          }
+
+          raw = None
+          base = None
+          for u in indexes:
+              try:
+                  req = urllib.request.Request(u, headers={'User-Agent': 'Mozilla/5.0'})
+                  with urllib.request.urlopen(req, timeout=30) as r:
+                      raw = r.read()
+                      base = u
+                      break
+              except Exception as e:
+                  print('INDEX_FAIL', u, e)
+          if raw is None:
+              raise SystemExit('index fetch failed')
+
+          open('out-bsuk/index.html', 'wb').write(raw)
+          text = raw.decode('utf-8', 'replace')
+          seen = set()
+          rows = []
+          for href in re.findall(r'''(?is)href\s*=\s*["']([^"']+?\.pdf(?:\?[^"']*)?)["']''', text):
+              original = urllib.parse.urljoin(base, html.unescape(href))
+              key = original.lower()
+              if key in seen:
+                  continue
+              seen.add(key)
+              basename = urllib.parse.unquote(original.split('?', 1)[0].rsplit('/', 1)[-1])
+              effective = fallback.get(basename.lower(), original)
+              rows.append((original, effective, basename))
+
+          with open('out-bsuk/manifest.tsv', 'w', encoding='utf-8') as f:
+              f.write('seq\toriginal_url\teffective_url\tbasename\n')
+              for n, (original, effective, basename) in enumerate(rows, 1):
+                  f.write(f'{n:04d}\t{original}\t{effective}\t{basename}\n')
+
+          print('INDEX', base)
+          print('UNIQUE_PDF_URLS', len(rows))
+          print('OFFICIAL_FALLBACKS', sum(1 for a,b,_ in rows if a != b))
           PY
-      - name: Parallel download BiblicalStudies-linked PDFs
+
+      - name: Parallel download and validate all PDFs
         run: |
-          set -e
-          cat out-bsuk/urls.txt | xargs -P8 -I{} bash -c '
-            line="$1"; n="${line%%|*}"; u="${line#*|}"; b="$(basename "${u%%\?*}")"; f="out-bsuk/pdfs/${n}__${b}"; curl -L --fail --retry 3 --retry-delay 1 --connect-timeout 20 --max-time 120 "$u" -o "$f"; test "$(head -c 5 "$f")" = "%PDF-"' _ {}
-          echo "PDF_COUNT=$(find out-bsuk/pdfs -type f -name '*.pdf' | wc -l)"
+          python - <<'PY'
+          import concurrent.futures, csv, os, pathlib, urllib.request
+
+          out = pathlib.Path('out-bsuk/pdfs')
+          out.mkdir(parents=True, exist_ok=True)
+          with open('out-bsuk/manifest.tsv', encoding='utf-8') as f:
+              rows = list(csv.DictReader(f, delimiter='\t'))
+
+          def fetch(row):
+              seq = row['seq']
+              url = row['effective_url']
+              basename = row['basename']
+              dest = out / f'{seq}__{basename}'
+              last = None
+              for _ in range(4):
+                  try:
+                      req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+                      with urllib.request.urlopen(req, timeout=120) as r, open(dest, 'wb') as w:
+                          while True:
+                              chunk = r.read(1024 * 1024)
+                              if not chunk:
+                                  break
+                              w.write(chunk)
+                      with open(dest, 'rb') as chk:
+                          if chk.read(5) != b'%PDF-':
+                              raise ValueError('not a PDF')
+                      return seq, True, str(dest), ''
+                  except Exception as e:
+                      last = repr(e)
+                      try:
+                          dest.unlink()
+                      except FileNotFoundError:
+                          pass
+              return seq, False, str(dest), last or 'unknown error'
+
+          results = []
+          with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
+              futures = [ex.submit(fetch, row) for row in rows]
+              for fut in concurrent.futures.as_completed(futures):
+                  results.append(fut.result())
+
+          results.sort(key=lambda x: x[0])
+          failures = [r for r in results if not r[1]]
+          with open('out-bsuk/download-results.tsv', 'w', encoding='utf-8') as f:
+              f.write('seq\tok\tpath\terror\n')
+              for seq, ok, path, err in results:
+                  f.write(f'{seq}\t{1 if ok else 0}\t{path}\t{err}\n')
+          with open('out-bsuk/failures.txt', 'w', encoding='utf-8') as f:
+              for seq, ok, path, err in failures:
+                  f.write(f'{seq}\t{path}\t{err}\n')
+
+          pdf_count = len(list(out.glob('*.pdf')))
+          print('PDF_COUNT', pdf_count)
+          print('FAILURE_COUNT', len(failures))
+          if failures:
+              raise SystemExit(1)
+          if pdf_count != len(rows):
+              raise SystemExit(f'count mismatch: {pdf_count} != {len(rows)}')
+          PY
+
       - name: Upload group6 artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: bt-bsuk-group6
