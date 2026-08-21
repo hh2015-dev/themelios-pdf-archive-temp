@@ -25,15 +25,25 @@ jobs:
 
           UA={'User-Agent':'Mozilla/5.0 (compatible; BSUK-Drive-Archiver/0.1)'}
           PAGES=[f'https://biblicalstudies.org.uk/articles_scripture-{i:02d}.php' for i in range(1,5)]
-          EXPECTED={1:21,2:31,3:33,4:73,5:40,6:35,7:19,8:13,9:12,10:14,11:13,12:14,13:16,14:11,15:13,16:12,17:13,18:11,19:11,20:14}
-          EXPECTED_TOTAL=sum(EXPECTED.values())
+          EXPECTED={1:21,2:31,3:33,4:73,5:40,6:35,7:18,8:13,9:12,10:14,11:13,12:14,13:16,14:11,15:13,16:12,17:13,18:11,19:11,20:14}
+          EXPECTED_TOTAL=418
+          MISLINK='https://biblicalstudies.org.uk/pdf/scripture/17_01.pdf'
           os.makedirs('out',exist_ok=True)
 
           def norm(s):
               return re.sub(r'\s+',' ',html.unescape(s or '')).strip()
 
-          links=[]; seen=set(); page_status=[]
-          for page in PAGES:
+          def source_volume(a):
+              for tag in a.find_all_previous(['h1','h2','h3','h4','h5','h6']):
+                  t=norm(tag.get_text(' ',strip=True))
+                  m=re.match(r'^Volume\s+(\d+)\b',t,re.I)
+                  if m:
+                      v=int(m.group(1))
+                      if 1 <= v <= 20: return v
+              return None
+
+          occurrences=[]; page_status=[]
+          for page_no,page in enumerate(PAGES,1):
               req=urllib.request.Request(page,headers=UA)
               with urllib.request.urlopen(req,timeout=90) as r:
                   raw=r.read(); final=r.geturl(); status=getattr(r,'status',200)
@@ -43,37 +53,40 @@ jobs:
                   href=html.unescape(a.get('href','').strip())
                   url=urllib.parse.urljoin(final,href)
                   p=urllib.parse.urlparse(url).path.lower()
-                  if '/pdf/scripture/' not in p or not p.endswith('.pdf'):
-                      continue
-                  key=url.lower()
-                  if key in seen: continue
-                  seen.add(key); found+=1
-                  node=a
-                  context=''
-                  for _ in range(7):
-                      if node is None: break
-                      text=norm(node.get_text(' ',strip=True))
-                      if re.search(r'\bScripture\s+\d+',text,re.I) and len(text)>20:
-                          context=text; break
-                      node=node.parent
-                  if not context:
-                      prev=a.find_previous(string=re.compile(r'Scripture\s+\d+',re.I))
-                      context=norm(str(prev)) if prev else norm(a.get_text(' ',strip=True))
-                  vm=re.search(r'\bScripture\s+(\d+)',context,re.I)
-                  if not vm:
-                      raise RuntimeError(f'Cannot determine volume for {url}: {context[:250]}')
-                  vol=int(vm.group(1))
+                  if '/pdf/scripture/' not in p or not p.endswith('.pdf'): continue
+                  found+=1
+                  context=norm(a.get_text(' ',strip=True))
+                  vol=source_volume(a)
+                  if vol is None:
+                      vm=re.search(r'\bScripture\s+(\d+)\b',context,re.I)
+                      vol=int(vm.group(1)) if vm and int(vm.group(1))<=20 else None
+                  if vol is None: raise RuntimeError(f'Cannot determine source volume: {url} {context}')
                   im=re.search(r'\bNo\.?\s*(\d+)',context,re.I)
-                  if im:
-                      issue=int(im.group(1))
-                  else:
-                      im=re.search(r'\bScripture\s+\d+\.(\d+)',context,re.I)
-                      issue=int(im.group(1)) if im else None
-                  links.append({'source_page':page,'url':url,'context':context,'volume':vol,'issue':issue,'basename':urllib.parse.unquote(os.path.basename(urllib.parse.urlparse(url).path))})
-              page_status.append({'page':page,'status':status,'final_url':final,'pdf_links':found})
+                  issue=int(im.group(1)) if im else None
+                  occurrences.append({'source_page':page,'page_no':page_no,'url':url,'context':context,'volume':vol,'issue':issue,'basename':urllib.parse.unquote(os.path.basename(urllib.parse.urlparse(url).path))})
+              page_status.append({'page':page,'status':status,'final_url':final,'pdf_link_occurrences':found})
+
+          # The source itself mislinks Volume 7 No.1 Editorial to the Volume 12 No.17 PDF.
+          # Drop only that wrong occurrence; retain the correct Volume 12 occurrence.
+          filtered=[]
+          gaps=[]
+          for r in occurrences:
+              if r['url'].lower()==MISLINK.lower() and r['volume']==7:
+                  gaps.append({'volume':7,'issue':1,'type':'mislinked source entry','context':r['context'],'wrong_url':r['url'],'action':'not archived under Volume 7'})
+                  continue
+              filtered.append(r)
+
+          # Deduplicate physical URLs after correcting the known mislink.
+          seen={}; links=[]; duplicate_occurrences=[]
+          for r in filtered:
+              key=r['url'].lower()
+              if key in seen:
+                  duplicate_occurrences.append({'url':r['url'],'kept':seen[key],'duplicate':r})
+                  continue
+              seen[key]=r; links.append(r)
 
           if len(links)!=EXPECTED_TOTAL:
-              raise SystemExit(f'Expected {EXPECTED_TOTAL} unique PDF links, discovered {len(links)}; pages={page_status}')
+              raise SystemExit(f'Expected {EXPECTED_TOTAL} unique valid PDFs, discovered {len(links)}; page_status={page_status}; duplicates={len(duplicate_occurrences)}')
           counts={}
           for r in links: counts[r['volume']]=counts.get(r['volume'],0)+1
           if counts!=EXPECTED:
@@ -89,58 +102,50 @@ jobs:
 
           def parse_identity(rec):
               c=rec['context']
-              # Trim icon/pipe prefixes and the bibliographic tail beginning with Scripture volume.
               before=re.split(r'\bScripture\s+\d+',c,maxsplit=1,flags=re.I)[0].strip(' |,')
-              before=re.sub(r'^(?:On-line Resource|Article in Journal or Book)\s*\|?\s*','',before,flags=re.I).strip()
-              # Most entries: Author, "Title," ; special unsigned entries begin directly with a quoted title.
+              before=re.sub(r'\s+pdf\s*$','',before,flags=re.I).strip()
               m=re.match(r'^(.*?),\s*["“](.+?)["”],?\s*$',before)
-              if m:
-                  return clean(m.group(1),80), clean(m.group(2))
+              if m: return clean(m.group(1),80),clean(m.group(2))
               m=re.match(r'^["“](.+?)["”],?\s*$',before)
-              if m:
-                  return '', clean(m.group(1))
-              # Fallback: detect quoted title anywhere.
+              if m: return '',clean(m.group(1))
               qm=re.search(r'["“](.+?)["”]',before)
               if qm:
-                  title=clean(qm.group(1)); author=clean(before[:qm.start()].strip(' ,'),80) if before[:qm.start()].strip(' ,') else ''
-                  return author,title
+                  author=clean(before[:qm.start()].strip(' ,'),80) if before[:qm.start()].strip(' ,') else ''
+                  return author,clean(qm.group(1))
               return '',clean(before)
 
           def final_name(rec):
               author,title=parse_identity(rec)
-              v=rec['volume']; issue=rec['issue']
-              parts=['Scripture',f'Volume {v:03d}']
-              if issue is not None: parts.append(f'Issue {issue:03d}')
+              parts=['Scripture',f'Volume {rec["volume"]:03d}']
               low=title.lower()
-              if low.startswith('book review') or low.startswith('book reviews'):
-                  parts.append('Book Review')
-                  if title.lower() not in ('book review','book reviews'): parts.append(title)
-              elif low.startswith('editorial'):
+              if low.startswith('editorial'):
                   parts.append('Editorial')
-              elif 'bibliograph' in low and not author:
-                  parts.append(title)
+                  if rec['issue'] is not None: parts.append(f'Issue {rec["issue"]:03d}')
+              elif low.startswith('book review') or low.startswith('book reviews'):
+                  parts.append('Book Review')
+                  if author: parts.append(author)
+                  if title.lower() not in ('book review','book reviews'): parts.append(title)
               else:
                   if author: parts.append(author)
                   parts.append(title)
               return ' - '.join(parts)+'.pdf'
 
-          # Make names unique deterministically; add source basename only if citation naming collides.
           name_seen={}
           for r in links:
-              n=final_name(r)
-              k=(r['volume'],n.lower())
+              n=final_name(r); k=(r['volume'],n.casefold())
               if k in name_seen:
+                  # Keep a normalized semantic name while disambiguating by issue when available.
                   stem=n[:-4]
-                  n=f'{stem} - {os.path.splitext(r["basename"])[0]}.pdf'
-              name_seen[(r['volume'],n.lower())]=r['url']
-              r['filename']=n
+                  if r['issue'] is not None: n=f'{stem} - Issue {r["issue"]:03d}.pdf'
+                  else: n=f'{stem} - Source {clean(os.path.splitext(r["basename"])[0],50)}.pdf'
+              name_seen[(r['volume'],n.casefold())]=r['url']; r['filename']=n
 
           def fetch(rec):
               d=os.path.join('out',f'Volume {rec["volume"]:03d}'); os.makedirs(d,exist_ok=True)
               dest=os.path.join(d,rec['filename'])
               req=urllib.request.Request(rec['url'],headers=UA)
-              with urllib.request.urlopen(req,timeout=240) as r:
-                  data=r.read(); ctype=r.headers.get('Content-Type',''); final=r.geturl(); status=getattr(r,'status',200)
+              with urllib.request.urlopen(req,timeout=240) as rr:
+                  data=rr.read(); ctype=rr.headers.get('Content-Type',''); final=rr.geturl(); status=getattr(rr,'status',200)
               if data[:5]!=b'%PDF-': raise RuntimeError(f'Not PDF: {rec["url"]} status={status} ctype={ctype} head={data[:20]!r}')
               if len(data)<5000: raise RuntimeError(f'Implausibly small PDF: {rec["url"]} bytes={len(data)}')
               with open(dest,'wb') as f: f.write(data)
@@ -154,24 +159,13 @@ jobs:
           rows.sort(key=lambda r:(r['volume'],r['issue'] if r['issue'] is not None else -1,r['filename']))
           verified={}
           for r in rows: verified[r['volume']]=verified.get(r['volume'],0)+1
-          if len(rows)!=EXPECTED_TOTAL or verified!=EXPECTED:
-              raise SystemExit(f'Verified corpus mismatch total={len(rows)} counts={verified}')
-          # Raw-name guard.
-          rawish=re.compile(r'^(?:\d{1,3}[_-]|[0-9_-]+\.pdf$)',re.I)
-          offenders=[r['filename'] for r in rows if rawish.search(r['filename']) or not r['filename'].startswith('Scripture - Volume ')]
+          if len(rows)!=EXPECTED_TOTAL or verified!=EXPECTED: raise SystemExit(f'Verified corpus mismatch total={len(rows)} counts={verified}')
+          offenders=[r['filename'] for r in rows if not r['filename'].startswith('Scripture - Volume ') or not r['filename'].lower().endswith('.pdf')]
           if offenders: raise SystemExit(f'Naming audit failed: {offenders[:10]}')
-          manifest={'journal':'Scripture','source_pages':page_status,'expected_total':EXPECTED_TOTAL,'volume_counts':EXPECTED,'verified_total':len(rows),'files':rows}
+          manifest={'journal':'Scripture','source_pages':page_status,'expected_total':EXPECTED_TOTAL,'volume_counts':EXPECTED,'verified_total':len(rows),'gaps':gaps,'duplicate_occurrences':duplicate_occurrences,'files':rows}
           with open('out/manifest.json','w',encoding='utf-8') as f: json.dump(manifest,f,ensure_ascii=False,indent=2)
-          print('DISCOVERED',len(links)); print('VERIFIED',len(rows)); print('COUNTS',verified)
+          print('DISCOVERED_VALID_UNIQUE',len(links)); print('VERIFIED',len(rows)); print('COUNTS',verified); print('GAPS',gaps)
           PY
-      - name: Upload per-volume artifacts
-        shell: bash
-        run: |
-          set -euo pipefail
-          for v in $(seq -w 1 20); do
-            vv=$(printf '%03d' "$((10#$v))")
-            echo "volume=$vv" >> "$GITHUB_OUTPUT"
-          done
       - name: Upload Volume 001
         uses: actions/upload-artifact@v4
         with: {name: scripture-volume-001, path: 'out/Volume 001/', if-no-files-found: error, compression-level: 0, retention-days: 1}
