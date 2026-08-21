@@ -1,0 +1,31 @@
+name: BSUK The Sower artifact transfer test
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/bsuk-the-sower-artifact-transfer-test.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  artifact:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify staged PDF
+        shell: bash
+        run: |
+          set -euo pipefail
+          f='bridge/the-sower/Volume 001/The Sower - Volume 001 (1879) - Complete Volume.pdf'
+          test "$(head -c 5 "$f")" = '%PDF-'
+          sha256sum "$f"
+      - name: Upload exact PDF as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: the-sower-volume-001-transfer-test
+          path: 'bridge/the-sower/Volume 001/The Sower - Volume 001 (1879) - Complete Volume.pdf'
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
