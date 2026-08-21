@@ -5,6 +5,10 @@ on:
     paths:
       - bsuk_worker/discover_sunday_at_home.py
       - .github/workflows/bsuk-sunday-at-home-discovery.yml
+  pull_request:
+    paths:
+      - bsuk_worker/discover_sunday_at_home.py
+      - .github/workflows/bsuk-sunday-at-home-discovery.yml
   workflow_dispatch:
 
 permissions:
