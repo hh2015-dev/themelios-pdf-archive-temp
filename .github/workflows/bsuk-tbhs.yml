@@ -1,0 +1,40 @@
+name: BSUK TBHS complete issues
+
+on:
+  push:
+    branches: [tbhs-archive]
+    paths:
+      - 'bsuk_worker/download_tbhs_complete_issues.py'
+      - '.github/workflows/bsuk-tbhs.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: tbhs-archive
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install requests beautifulsoup4
+      - run: python bsuk_worker/download_tbhs_complete_issues.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bsuk-tbhs-complete-issues
+          path: tbhs_stage/**
+          if-no-files-found: error
+          retention-days: 1
+      - name: Commit staged PDFs and manifest
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add tbhs_stage
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Stage TBHS complete issue PDFs [skip ci]'
+          git push origin HEAD:tbhs-archive
