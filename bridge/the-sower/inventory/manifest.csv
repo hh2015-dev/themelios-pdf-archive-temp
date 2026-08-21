@@ -1,0 +1,40 @@
+﻿Volume,Year,SourceUrl,FileName,Status,Bytes,SHA256,Error
+1,1879,https://biblicalstudies.org.uk/pdf/the-sower/the-sower_1879.pdf,The Sower - Volume 001 (1879) - Complete Volume.pdf,OK,8558099,2b5781ece5a7d81eb7d2a0859b565242f3c576d52c2026bf76c5f98e1bd1e257,
+2,1880,https://biblicalstudies.org.uk/pdf/the-sower/the-sower_1880.pdf,The Sower - Volume 002 (1880) - Complete Volume.pdf,OK,9567727,b82b979cfaa273b6a1d67f8fcf4229518350bf76a8a170ffe01b154bde4a8cf1,
+3,1881,https://biblicalstudies.org.uk/pdf/the-sower/the-sower_1881.pdf,The Sower - Volume 003 (1881) - Complete Volume.pdf,OK,9146609,459d7bd112a9ce50c206db643bef7d7ec8bdce1f93000561c8efb2e4043360d3,
+4,1882,https://biblicalstudies.org.uk/pdf/the-sower/the-sower_1882.pdf,The Sower - Volume 004 (1882) - Complete Volume.pdf,OK,10228416,e22e309f08493491c98b8c768d274b5c1207a1a41ecc6c52be3ff5ed70de68be,
+5,1883,https://biblicalstudies.org.uk/pdf/the-sower/the-sower_1883.pdf,The Sower - Volume 005 (1883) - Complete Volume.pdf,OK,9213705,7eb212ad738efa47ece6b82c25e35a29f94f0cffda040b2979d95b58daf4052b,
+6,1884,https://biblicalstudies.org.uk/pdf/the-sower/the-sower_1884.pdf,The Sower - Volume 006 (1884) - Complete Volume.pdf,ERROR,0,,<HTTPError 404: 'Not Found'>
+7,1885,https://biblicalstudies.org.uk/pdf/the-sower/the-sower_1885.pdf,The Sower - Volume 007 (1885) - Complete Volume.pdf,OK,8332322,b9c243e00b4ed59369a94fa46ecaae300c7608854df1e3e129bc0215f80f019c,
+8,1886,https://biblicalstudies.org.uk/pdf/the-sower/the-sower_1886.pdf,The Sower - Volume 008 (1886) - Complete Volume.pdf,OK,12635115,808c95e6cf3916d0d90832e6d380284458746c224d1f783113a7f554ce02b1a1,
+9,1887,https://biblicalstudies.org.uk/pdf/the-sower/the-sower_1887.pdf,The Sower - Volume 009 (1887) - Complete Volume.pdf,ERROR,0,,<HTTPError 404: 'Not Found'>
+10,1888,https://biblicalstudies.org.uk/pdf/the-sower/the-sower_1888.pdf,The Sower - Volume 010 (1888) - Complete Volume.pdf,OK,13237311,7c62ddfab5963371376153ba39f95c944fa8cec8efa3f581fffcf6e1d88d00ab,
+11,1889,https://biblicalstudies.org.uk/pdf/the-sower/the-sower_1889.pdf,The Sower - Volume 011 (1889) - Complete Volume.pdf,OK,12864610,a63ecefa13e9d3fe670d83518c1bf9aa3d5402c913d69ead2e5e544d0f1cb64e,
+12,1890,https://biblicalstudies.org.uk/pdf/the-sower/the-sower_1890.pdf,The Sower - Volume 012 (1890) - Complete Volume.pdf,OK,13066154,1ed76697646d7f95d1069381655c296a5f8e8373cde17cd970cf730a77c899ce,
+13,1891,https://biblicalstudies.org.uk/pdf/the-sower/the-sower_1891.pdf,The Sower - Volume 013 (1891) - Complete Volume.pdf,OK,9183304,bf6092f10908c8f3d81df5850a50c9803cc39b876dd5c452601b91362eae690e,
+14,1892,https://biblicalstudies.org.uk/pdf/the-sower/the-sower_1892.pdf,The Sower - Volume 014 (1892) - Complete Volume.pdf,OK,12131439,9b563c6f518a525d248b89f3cb2168ffdeef0f3487702da85a68effc81247981,
+15,1893,https://biblicalstudies.org.uk/pdf/the-sower/the-sower_1893.pdf,The Sower - Volume 015 (1893) - Complete Volume.pdf,ERROR,0,,<HTTPError 404: 'Not Found'>
+16,1894,https://biblicalstudies.org.uk/pdf/the-sower/the-sower_1894.pdf,The Sower - Volume 016 (1894) - Complete Volume.pdf,OK,12653596,19febf2b70f0ba3dc70ff7fb3d6920a1b2c98132c09e3e8ad956d1ccb42248eb,
+17,1895,https://biblicalstudies.org.uk/pdf/the-sower/the-sower_1895.pdf,The Sower - Volume 017 (1895) - Complete Volume.pdf,OK,9260996,92ff053c850d439ecc28bf7a2c6d159280889f4130d2c9fe201f5066fc9dc79b,
+18,1896,https://biblicalstudies.org.uk/pdf/the-sower/the-sower_1896.pdf,The Sower - Volume 018 (1896) - Complete Volume.pdf,OK,9935148,464b1946b5dd49624b37fa29607878a99267c915cf5356b42cb40d889a0bf765,
+19,1897,https://biblicalstudies.org.uk/pdf/the-sower/the-sower_1897.pdf,The Sower - Volume 019 (1897) - Complete Volume.pdf,OK,10714171,125ba5dea9ae2f9486f034e43eac45c054c5661c4e37b383e0950fc5dba09fb0,
+20,1898,https://biblicalstudies.org.uk/pdf/the-sower/the-sower_1898.pdf,The Sower - Volume 020 (1898) - Complete Volume.pdf,ERROR,0,,<HTTPError 404: 'Not Found'>
+21,1899,https://biblicalstudies.org.uk/pdf/the-sower/the-sower_1899.pdf,The Sower - Volume 021 (1899) - Complete Volume.pdf,ERROR,0,,<HTTPError 404: 'Not Found'>
+22,1900,https://biblicalstudies.org.uk/pdf/the-sower/the-sower_1900.pdf,The Sower - Volume 022 (1900) - Complete Volume.pdf,OK,10227693,518ba04dc4f80826eeca9025fce9d64fe6d9385c70ec5a19bbf1651cbc90e688,
+23,1901,https://biblicalstudies.org.uk/pdf/the-sower/the-sower_1901.pdf,The Sower - Volume 023 (1901) - Complete Volume.pdf,OK,10179481,a095105d0f6362fd5806e9aa54a36a9ae79e02adc08b2f355946e50b7fa1d0f3,
+24,1902,https://biblicalstudies.org.uk/pdf/the-sower/the-sower_1902.pdf,The Sower - Volume 024 (1902) - Complete Volume.pdf,ERROR,0,,<HTTPError 404: 'Not Found'>
+25,1903,https://biblicalstudies.org.uk/pdf/the-sower/the-sower_1903.pdf,The Sower - Volume 025 (1903) - Complete Volume.pdf,ERROR,0,,<HTTPError 404: 'Not Found'>
+26,1904,https://biblicalstudies.org.uk/pdf/the-sower/the-sower_1904.pdf,The Sower - Volume 026 (1904) - Complete Volume.pdf,ERROR,0,,<HTTPError 404: 'Not Found'>
+27,1905,https://biblicalstudies.org.uk/pdf/the-sower/the-sower_1905.pdf,The Sower - Volume 027 (1905) - Complete Volume.pdf,ERROR,0,,<HTTPError 404: 'Not Found'>
+28,1906,https://biblicalstudies.org.uk/pdf/the-sower/the-sower_1906.pdf,The Sower - Volume 028 (1906) - Complete Volume.pdf,ERROR,0,,<HTTPError 404: 'Not Found'>
+29,1907,https://biblicalstudies.org.uk/pdf/the-sower/the-sower_1907.pdf,The Sower - Volume 029 (1907) - Complete Volume.pdf,ERROR,0,,<HTTPError 404: 'Not Found'>
+30,1908,https://biblicalstudies.org.uk/pdf/the-sower/the-sower_1908.pdf,The Sower - Volume 030 (1908) - Complete Volume.pdf,ERROR,0,,<HTTPError 404: 'Not Found'>
+31,1909,https://biblicalstudies.org.uk/pdf/the-sower/the-sower_1909.pdf,The Sower - Volume 031 (1909) - Complete Volume.pdf,ERROR,0,,<HTTPError 404: 'Not Found'>
+32,1910,https://biblicalstudies.org.uk/pdf/the-sower/the-sower_1910.pdf,The Sower - Volume 032 (1910) - Complete Volume.pdf,ERROR,0,,<HTTPError 404: 'Not Found'>
+33,1911,https://biblicalstudies.org.uk/pdf/the-sower/the-sower_1911.pdf,The Sower - Volume 033 (1911) - Complete Volume.pdf,ERROR,0,,<HTTPError 404: 'Not Found'>
+34,1912,https://biblicalstudies.org.uk/pdf/the-sower/the-sower_1912.pdf,The Sower - Volume 034 (1912) - Complete Volume.pdf,ERROR,0,,<HTTPError 404: 'Not Found'>
+35,1913,https://biblicalstudies.org.uk/pdf/the-sower/the-sower_1913.pdf,The Sower - Volume 035 (1913) - Complete Volume.pdf,ERROR,0,,<HTTPError 404: 'Not Found'>
+36,1914,https://biblicalstudies.org.uk/pdf/the-sower/the-sower_1914.pdf,The Sower - Volume 036 (1914) - Complete Volume.pdf,ERROR,0,,<HTTPError 404: 'Not Found'>
+37,1915,https://biblicalstudies.org.uk/pdf/the-sower/the-sower_1915.pdf,The Sower - Volume 037 (1915) - Complete Volume.pdf,ERROR,0,,<HTTPError 404: 'Not Found'>
+38,1916,https://biblicalstudies.org.uk/pdf/the-sower/the-sower_1916.pdf,The Sower - Volume 038 (1916) - Complete Volume.pdf,ERROR,0,,<HTTPError 404: 'Not Found'>
+39,1917,https://biblicalstudies.org.uk/pdf/the-sower/the-sower_1917.pdf,The Sower - Volume 039 (1917) - Complete Volume.pdf,ERROR,0,,<HTTPError 404: 'Not Found'>
