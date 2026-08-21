@@ -1,8 +1,7 @@
 name: TCHS full archive bridge
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -18,22 +17,19 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p out
-          curl -fL --retry 4 --retry-delay 2 -A 'Mozilla/5.0' 'https://biblicalstudies.org.uk/pdf/congregational-history/01_19_index.pdf' -o 'out/Transactions_of_Congregational_Historical_Society_Index_Volumes_001-019.pdf'
-          test "$(head -c 5 'out/Transactions_of_Congregational_Historical_Society_Index_Volumes_001-019.pdf')" = '%PDF-'
+          curl -fL --retry 4 --retry-delay 2 -A 'Mozilla/5.0' 'https://biblicalstudies.org.uk/pdf/congregational-history/01_19_index.pdf' -o 'out/Index_Vols_001-019.pdf'
+          test "$(head -c 5 'out/Index_Vols_001-019.pdf')" = '%PDF-'
           for n in $(seq 1 7); do
             v=$(printf '%02d' "$n")
-            vv=$(printf '%03d' "$n")
-            mkdir -p "out/Volume_${vv}"
+            vol=$(printf '%03d' "$n")
+            mkdir -p "out/Volume_${vol}"
             for i in $(seq 1 6); do
-              ii=$(printf '%02d' "$i")
               url="https://biblicalstudies.org.uk/pdf/congregational-history/${v}-${i}.pdf"
-              file="out/Volume_${vv}/Transactions_of_Congregational_Historical_Society_Volume_${vv}_Issue_${ii}.pdf"
-              echo "GET $url"
+              file="out/Volume_${vol}/Transactions_of_Congregational_Historical_Society_Volume_${vol}_Issue_0${i}.pdf"
               curl -fL --retry 4 --retry-delay 2 -A 'Mozilla/5.0' "$url" -o "$file"
               test "$(head -c 5 "$file")" = '%PDF-'
             done
           done
-          echo "PDF_COUNT=$(find out -type f -name '*.pdf' | wc -l)"
           test "$(find out -type f -name '*.pdf' | wc -l)" -eq 43
       - name: Upload artifact
         uses: actions/upload-artifact@v4
