@@ -67,3 +67,11 @@ jobs:
           path: out/
           compression-level: 0
           retention-days: 1
+      - name: Upload The Sower Volume 001 handoff artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: the-sower-volume-001-handoff
+          path: 'bridge/the-sower/Volume 001/The Sower - Volume 001 (1879) - Complete Volume.pdf'
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
