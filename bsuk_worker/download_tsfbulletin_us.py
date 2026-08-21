@@ -1,3 +1,4 @@
+# run trigger 2026-08-21
 import os, re, json, hashlib
 from urllib.parse import urljoin
 import requests
@@ -32,14 +33,12 @@ for tag in soup.find_all(['h2','h3','a']):
             url=urljoin(PAGE,tag['href'])
             items.append({'volume':current_vol,'year':current_year,'issue_label':current_issue,'url':url})
 
-# dedupe URLs
 seen=set(); clean=[]
 for x in items:
     if x['url'] in seen: continue
     seen.add(x['url']); clean.append(x)
 items=clean
 
-# assign stable issue numbers within each volume by page order
 counts={}
 manifest={'source_page':PAGE,'title':TITLE,'issues':[],'errors':[]}
 for x in items:
@@ -57,7 +56,6 @@ for x in items:
         manifest['errors'].append({**x,'issue_number':n,'file':name,'error':str(e)})
         print('ERR',v,n,x['url'],e)
 
-# independent linked index/bibliography PDFs only (if any)
 manifest['independent_indexes']=[]
 for a in soup.find_all('a',href=True):
     label=' '.join(a.stripped_strings)
