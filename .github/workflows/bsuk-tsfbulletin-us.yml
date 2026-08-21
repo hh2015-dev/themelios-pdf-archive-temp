@@ -6,6 +6,11 @@ on:
     paths:
       - 'bsuk_worker/download_tsfbulletin_us.py'
       - '.github/workflows/bsuk-tsfbulletin-us.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'bsuk_worker/download_tsfbulletin_us.py'
+      - '.github/workflows/bsuk-tsfbulletin-us.yml'
   workflow_dispatch:
 
 permissions:
