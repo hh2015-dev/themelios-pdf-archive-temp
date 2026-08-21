@@ -8,7 +8,6 @@ os.makedirs(OUT, exist_ok=True)
 s=requests.Session(); s.headers.update({'User-Agent':'Mozilla/5.0'})
 
 corpus=[]
-# Vols 1-3 are identified by month on the source page.
 early={
   1:(1978,[('Jan.',['jan','january']),('April',['apr','april']),('May',['may']),('October',['oct','october']),('Nov.',['nov','november'])]),
   2:(1979,[('January',['jan','january']),('March',['mar','march']),('May',['may']),('Oct.',['oct','october']),('Nov.',['nov','november'])]),
@@ -19,11 +18,14 @@ for v,(yr,issues) in early.items():
         candidates=[f'{BASE}tsf-news-and-reviews_{yr}-{slug}.pdf' for slug in slugs]
         corpus.append({'volume':v,'issue_number':n,'year':str(yr),'issue_label':label,'candidates':candidates})
 
-# Vols 4-10: five bimonthly issues per volume, filename uses the volume start-year.
 start_year={4:1980,5:1981,6:1982,7:1983,8:1984,9:1985,10:1986}
 for v,yr in start_year.items():
     for n in range(1,6):
-        corpus.append({'volume':v,'issue_number':n,'year':f'{yr}/{yr+1}','issue_label':f'{v}.{n}','candidates':[f'{BASE}tsf-bulletin_{v:02d}-{n}_{yr}.pdf']})
+        candidates=[
+            f'{BASE}tsf-bulletin_{v:02d}-{n}_{yr}.pdf',
+            f'{BASE}tsf-bulletin_{v:02d}-{n}_{yr+1}.pdf'
+        ]
+        corpus.append({'volume':v,'issue_number':n,'year':f'{yr}/{yr+1}','issue_label':f'{v}.{n}','candidates':candidates})
 
 manifest={'source_page':'https://biblicalstudies.org.uk/articles_tsfbulletin-us.php','title':TITLE,'expected':len(corpus),'issues':[],'errors':[],'independent_indexes':[]}
 for x in corpus:
