@@ -15,71 +15,87 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Inventory source page
+      - name: Inventory all URC journal pages
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
           import html, json, os, re, urllib.parse, urllib.request
           from html.parser import HTMLParser
-
-          PAGE='https://biblicalstudies.org.uk/articles_urc-historical-society-01.php'
           UA={'User-Agent':'Mozilla/5.0 (compatible; BSUK-Drive-Archiver/0.1)'}
-          req=urllib.request.Request(PAGE,headers=UA)
-          with urllib.request.urlopen(req,timeout=60) as r:
-              raw=r.read()
-          text=raw.decode('utf-8','replace')
+          BASE='https://biblicalstudies.org.uk/articles_urc-historical-society-{:02d}.php'
 
           class P(HTMLParser):
-              def __init__(self):
-                  super().__init__(); self.rows=[]; self.cur=None; self.stack=[]
+              def __init__(self): super().__init__(); self.rows=[]; self.cur=None
               def handle_starttag(self, tag, attrs):
-                  d=dict(attrs); self.stack.append(tag)
-                  if tag=='a' and 'href' in d:
-                      self.cur={'href':d['href'],'text':''}
-              def handle_data(self, data):
+                  d=dict(attrs)
+                  if tag=='a' and 'href' in d: self.cur={'href':d['href'],'text':''}
+              def handle_data(self,data):
                   if self.cur is not None: self.cur['text'] += data
-              def handle_endtag(self, tag):
+              def handle_endtag(self,tag):
                   if tag=='a' and self.cur is not None:
                       self.rows.append(self.cur); self.cur=None
-                  if self.stack: self.stack.pop()
-          p=P(); p.feed(text)
 
-          links=[]
-          for x in p.rows:
-              href=html.unescape(x['href'].strip())
-              url=urllib.parse.urljoin(PAGE,href)
-              if not urllib.parse.urlparse(url).path.lower().endswith('.pdf'):
+          pages=[]; all_links=[]
+          for n in range(1,11):
+              page=BASE.format(n)
+              try:
+                  req=urllib.request.Request(page,headers=UA)
+                  with urllib.request.urlopen(req,timeout=60) as r: raw=r.read(); status=r.status
+              except Exception as e:
+                  pages.append({'page':page,'ok':False,'error':repr(e)})
                   continue
-              anchor=' '.join(x['text'].split())
-              pos=text.find(x['href'])
-              context=''
-              if pos>=0:
-                  snippet=text[max(0,pos-350):pos+500]
-                  snippet=re.sub(r'<[^>]+>',' ',snippet)
-                  context=' '.join(html.unescape(snippet).split())
-              links.append({'anchor':anchor,'url':url,'context':context,'basename':os.path.basename(urllib.parse.urlparse(url).path)})
+              text=raw.decode('utf-8','replace')
+              p=P(); p.feed(text)
+              rows=[]
+              for x in p.rows:
+                  href=html.unescape(x['href'].strip())
+                  url=urllib.parse.urljoin(page,href)
+                  path=urllib.parse.urlparse(url).path.lower()
+                  if '/pdf/jurchs/' not in path or not path.endswith('.pdf'): continue
+                  anchor=' '.join(x['text'].split())
+                  basename=os.path.basename(urllib.parse.urlparse(url).path)
+                  rows.append({'page_no':n,'page':page,'anchor':anchor,'url':url,'basename':basename})
+              seen=set(); uniq=[]
+              for r in rows:
+                  k=r['url'].lower()
+                  if k in seen: continue
+                  seen.add(k); uniq.append(r)
+              pages.append({'page':page,'ok':True,'pdf_count':len(uniq)})
+              all_links.extend(uniq)
 
-          # dedupe by URL preserving order
-          seen=set(); out=[]
-          for row in links:
-              k=row['url'].lower()
+          # global dedupe
+          seen=set(); links=[]
+          for r in all_links:
+              k=r['url'].lower()
               if k in seen: continue
-              seen.add(k); out.append(row)
+              seen.add(k); links.append(r)
 
+          vols={}
+          for r in links:
+              b=r['basename'].lower()
+              m=re.match(r'^(\d{2})-(\d{2})\.pdf$',b)
+              if m:
+                  v=int(m.group(1)); i=int(m.group(2))
+                  vols.setdefault(v,{'issues':[],'index':None})['issues'].append({'issue':i,**r})
+                  continue
+              m=re.match(r'^index-(\d{2})\.pdf$',b)
+              if m:
+                  v=int(m.group(1)); vols.setdefault(v,{'issues':[],'index':None})['index']=r
+          for v in vols:
+              vols[v]['issues'].sort(key=lambda x:x['issue'])
+
+          out={'pages':pages,'unique_pdf_count':len(links),'volumes':vols,'links':links}
           os.makedirs('bridge',exist_ok=True)
-          with open('bridge/urc-inventory.json','w',encoding='utf-8') as f:
-              json.dump({'page':PAGE,'pdf_count':len(out),'links':out},f,ensure_ascii=False,indent=2)
-          with open('bridge/urc-source-page.html','wb') as f: f.write(raw)
-          print('PDF_COUNT',len(out))
-          for row in out:
-              print(row['basename'],'|',row['anchor'],'|',row['url'])
+          with open('bridge/urc-inventory-all.json','w',encoding='utf-8') as f:
+              json.dump(out,f,ensure_ascii=False,indent=2)
+          print(json.dumps({str(v):{'issues':[x['issue'] for x in d['issues']], 'has_index': bool(d['index'])} for v,d in sorted(vols.items())},indent=2))
           PY
       - name: Commit inventory
         shell: bash
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add bridge/urc-inventory.json bridge/urc-source-page.html
-          git commit -m 'Record URC journal inventory' || exit 0
+          git add bridge/urc-inventory-all.json
+          git commit -m 'Record full URC journal inventory' || exit 0
           git push
