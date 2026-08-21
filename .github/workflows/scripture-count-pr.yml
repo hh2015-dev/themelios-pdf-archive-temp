@@ -1,0 +1,42 @@
+name: Scripture live count PR
+on:
+  pull_request:
+    branches: [ main ]
+permissions:
+  contents: read
+jobs:
+  count:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: python -m pip install --disable-pip-version-check beautifulsoup4
+      - shell: bash
+        run: |
+          python - <<'PY'
+          import html,re,urllib.parse,urllib.request
+          from bs4 import BeautifulSoup
+          UA={'User-Agent':'Mozilla/5.0 (compatible; BSUK-Drive-Archiver/0.1)'}
+          counts={}; total=0
+          for i in range(1,5):
+            page=f'https://biblicalstudies.org.uk/articles_scripture-{i:02d}.php'
+            req=urllib.request.Request(page,headers=UA)
+            with urllib.request.urlopen(req,timeout=60) as r: raw=r.read(); final=r.geturl()
+            soup=BeautifulSoup(raw,'html.parser'); seen=set(); pc={}
+            for a in soup.find_all('a',href=True):
+              url=urllib.parse.urljoin(final,html.unescape(a['href'].strip()))
+              p=urllib.parse.urlparse(url).path.lower()
+              if '/pdf/scripture/' not in p or not p.endswith('.pdf') or url.lower() in seen: continue
+              seen.add(url.lower())
+              node=a; context=''
+              for _ in range(7):
+                if node is None: break
+                text=re.sub(r'\s+',' ',html.unescape(node.get_text(' ',strip=True))).strip()
+                if re.search(r'\bScripture\s+\d+',text,re.I) and len(text)>20: context=text; break
+                node=node.parent
+              m=re.search(r'\bScripture\s+(\d+)',context,re.I)
+              if not m: raise SystemExit(f'NO_VOLUME {url} {context[:200]}')
+              v=int(m.group(1)); counts[v]=counts.get(v,0)+1; pc[v]=pc.get(v,0)+1; total+=1
+            print('PAGE',i,'UNIQUE',len(seen),'COUNTS',dict(sorted(pc.items())))
+          print('TOTAL',total)
+          print('VOLUME_COUNTS',dict(sorted(counts.items())))
+          PY
