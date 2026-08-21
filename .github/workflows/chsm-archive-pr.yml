@@ -1,4 +1,4 @@
-name: SRSHJ discovery PR
+name: SRSHJ archive PR
 
 on:
   pull_request:
@@ -8,58 +8,132 @@ permissions:
   contents: read
 
 jobs:
-  discover:
+  archive:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
-      - name: Discover SRSHJ corpus
+      - name: Discover download and verify SRSHJ PDFs
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
-          import html, json, re, urllib.parse, urllib.request, urllib.error
+          import concurrent.futures, hashlib, html, json, os, re, urllib.parse, urllib.request
           UA={'User-Agent':'Mozilla/5.0 (compatible; BSUK-Drive-Archiver/0.1)'}
-          pages=[]; links=[]; seen=set()
-          for i in range(1,7):
+          links=[]; seen=set()
+          for i in (1,2):
               page=f'https://biblicalstudies.org.uk/articles_srshj_{i:02d}.php'
-              try:
-                  req=urllib.request.Request(page,headers=UA)
-                  with urllib.request.urlopen(req,timeout=60) as r: raw=r.read(); status=getattr(r,'status',200); final=r.geturl()
-                  text=raw.decode('utf-8','replace')
-                  pdfs=[]
-                  for m in re.finditer(r'''(?is)<a\b[^>]*href\s*=\s*["']([^"']+)["'][^>]*>(.*?)</a>''',text):
-                      href=html.unescape(m.group(1).strip())
-                      label=re.sub(r'(?is)<[^>]+>',' ',m.group(2))
-                      label=html.unescape(re.sub(r'\s+',' ',label)).strip()
-                      url=urllib.parse.urljoin(final,href)
-                      p=urllib.parse.urlparse(url).path.lower()
-                      if '/pdf/srshj/' not in p or not p.endswith('.pdf'): continue
-                      if url.lower() in seen: continue
-                      seen.add(url.lower())
-                      base=urllib.parse.unquote(urllib.parse.urlparse(url).path.rsplit('/',1)[-1])
-                      mm=re.match(r'^(\d{2})[_-](.+)\.pdf$',base,re.I)
-                      vol=int(mm.group(1)) if mm else None
-                      rec={'page':page,'url':url,'label':label,'basename':base,'volume':vol}
-                      links.append(rec); pdfs.append(rec)
-                  pages.append({'page':page,'status':status,'bytes':len(raw),'pdf_count':len(pdfs)})
-                  print('PAGE_OK',page,'PDFS',len(pdfs),'BYTES',len(raw))
-              except urllib.error.HTTPError as e:
-                  pages.append({'page':page,'status':e.code,'pdf_count':0})
-                  print('PAGE_HTTP',page,e.code)
-              except Exception as e:
-                  pages.append({'page':page,'error':repr(e),'pdf_count':0})
-                  print('PAGE_ERROR',page,repr(e))
-          vols={}
-          for x in links: vols.setdefault(str(x['volume']),0); vols[str(x['volume'])]+=1
-          summary={'pages':pages,'unique_pdf_links':len(links),'volume_counts':dict(sorted(vols.items(),key=lambda kv:int(kv[0]) if kv[0]!='None' else 999)),'min_volume':min([x['volume'] for x in links if x['volume'] is not None],default=None),'max_volume':max([x['volume'] for x in links if x['volume'] is not None],default=None)}
-          json.dump({'summary':summary,'links':links},open('srshj-discovery.json','w'),ensure_ascii=False,indent=2)
-          print('UNIQUE_PDFS',len(links),'VOLUMES',summary['volume_counts'])
+              req=urllib.request.Request(page,headers=UA)
+              with urllib.request.urlopen(req,timeout=60) as r: raw=r.read(); final=r.geturl()
+              text=raw.decode('utf-8','replace')
+              for m in re.finditer(r'''(?is)<a\b[^>]*href\s*=\s*["']([^"']+)["'][^>]*>(.*?)</a>''',text):
+                  href=html.unescape(m.group(1).strip())
+                  label=re.sub(r'(?is)<[^>]+>',' ',m.group(2))
+                  label=html.unescape(re.sub(r'\s+',' ',label)).strip()
+                  url=urllib.parse.urljoin(final,href)
+                  p=urllib.parse.urlparse(url).path.lower()
+                  if '/pdf/srshj/' not in p or not p.endswith('.pdf') or url.lower() in seen: continue
+                  seen.add(url.lower())
+                  base=urllib.parse.unquote(urllib.parse.urlparse(url).path.rsplit('/',1)[-1])
+                  mm=re.match(r'^(\d{2})[_-](.+)\.pdf$',base,re.I)
+                  vol=int(mm.group(1)) if mm else None
+                  links.append({'page':page,'url':url,'label':label,'basename':base,'volume':vol})
+          if len(links)!=124: raise SystemExit(f'Expected 124 PDF links, discovered {len(links)}')
+          def clean(s):
+              s=html.unescape(s).replace('/', '-').replace('\\','-').replace(':',' - ').replace('*','').replace('?','').replace('<','').replace('>','').replace('|','-')
+              s=re.sub(r'\s+',' ',s).strip(' .-')
+              return s
+          def make_name(rec):
+              label=re.sub(r'\s+pdf\s*$','',rec['label'],flags=re.I).strip()
+              marker='Scottish Reformation Society Historical Journal'
+              before=label.split(marker,1)[0].strip() if marker in label else label
+              m=re.match(r'^(.*?),\s*["“](.*)["”],?\s*$',before)
+              if m:
+                  author=clean(m.group(1)); title=clean(m.group(2))
+                  if len(title)>150: title=title[:147].rstrip()+'...'
+                  return f'Scottish Reformation Society Historical Journal - Volume {rec["volume"]:03d} - {author} - {title}.pdf'
+              return f'Scottish Reformation Society Historical Journal - Volume {rec["volume"]:03d} - {rec["basename"]}'
+          def fetch(rec):
+              vol=rec['volume']; d=os.path.join('out',f'Volume {vol:03d}'); os.makedirs(d,exist_ok=True)
+              name=make_name(rec); dest=os.path.join(d,name)
+              req=urllib.request.Request(rec['url'],headers=UA)
+              with urllib.request.urlopen(req,timeout=180) as r: data=r.read(); ctype=r.headers.get('Content-Type','')
+              if data[:5]!=b'%PDF-': raise RuntimeError(f'Not PDF: {rec["url"]} head={data[:20]!r}')
+              if len(data)<20000: raise RuntimeError(f'Too small: {rec["url"]} bytes={len(data)}')
+              open(dest,'wb').write(data)
+              return {**rec,'filename':name,'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest(),'content_type':ctype}
+          rows=[]
+          with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
+              futs=[ex.submit(fetch,r) for r in links]
+              for fut in concurrent.futures.as_completed(futs):
+                  row=fut.result(); rows.append(row); print('OK',row['volume'],row['basename'],row['bytes'])
+          rows.sort(key=lambda r:(r['volume'],r['basename']))
+          if len(rows)!=124: raise SystemExit(f'Incomplete verified corpus {len(rows)}')
+          counts={}
+          for r in rows: counts[r['volume']]=counts.get(r['volume'],0)+1
+          expected={1:9,2:11,3:9,4:7,5:9,6:10,7:10,8:9,9:8,10:9,11:8,12:11,13:7,14:7}
+          if counts!=expected: raise SystemExit(f'Volume counts mismatch {counts}')
+          json.dump({'count':len(rows),'volume_counts':counts,'files':rows},open('out/manifest.json','w',encoding='utf-8'),ensure_ascii=False,indent=2)
+          print('VERIFIED_TOTAL',len(rows),'VOLUMES',counts)
           PY
-      - name: Upload discovery artifact
+      - name: Upload SRSHJ volumes 001-003
         uses: actions/upload-artifact@v4
         with:
-          name: srshj-discovery
-          path: srshj-discovery.json
+          name: srshj-001-003
+          path: |
+            out/Volume 001/
+            out/Volume 002/
+            out/Volume 003/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+      - name: Upload SRSHJ volumes 004-006
+        uses: actions/upload-artifact@v4
+        with:
+          name: srshj-004-006
+          path: |
+            out/Volume 004/
+            out/Volume 005/
+            out/Volume 006/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+      - name: Upload SRSHJ volumes 007-009
+        uses: actions/upload-artifact@v4
+        with:
+          name: srshj-007-009
+          path: |
+            out/Volume 007/
+            out/Volume 008/
+            out/Volume 009/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+      - name: Upload SRSHJ volumes 010-012
+        uses: actions/upload-artifact@v4
+        with:
+          name: srshj-010-012
+          path: |
+            out/Volume 010/
+            out/Volume 011/
+            out/Volume 012/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+      - name: Upload SRSHJ volumes 013-014
+        uses: actions/upload-artifact@v4
+        with:
+          name: srshj-013-014
+          path: |
+            out/Volume 013/
+            out/Volume 014/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+      - name: Upload SRSHJ manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: srshj-manifest
+          path: out/manifest.json
           if-no-files-found: error
           retention-days: 1
