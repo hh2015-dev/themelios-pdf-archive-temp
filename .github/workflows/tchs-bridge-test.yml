@@ -1,0 +1,28 @@
+name: TCHS Bridge Test
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/tchs-bridge-test.yml'
+  workflow_dispatch:
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download one TCHS issue
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          curl -fL --retry 4 --retry-delay 3 -A 'Mozilla/5.0' 'https://biblicalstudies.org.uk/pdf/congregational-history/01-1.pdf' -o out/01-1.pdf
+          test "$(head -c 5 out/01-1.pdf)" = '%PDF-'
+          ls -lh out/01-1.pdf
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tchs-01-1
+          path: out/01-1.pdf
+          if-no-files-found: error
+          retention-days: 1
