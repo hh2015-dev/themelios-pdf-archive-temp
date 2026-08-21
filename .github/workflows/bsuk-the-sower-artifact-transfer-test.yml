@@ -1,6 +1,10 @@
 name: BSUK The Sower artifact transfer test
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/bsuk-the-sower-artifact-transfer-test.yml'
   pull_request:
     branches: [main]
     paths:
