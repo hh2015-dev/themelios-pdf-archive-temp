@@ -1,0 +1,1739 @@
+{
+  "pages": [
+    {
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-01.php",
+      "ok": true,
+      "pdf_count": 20
+    },
+    {
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-02.php",
+      "ok": true,
+      "pdf_count": 20
+    },
+    {
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-03.php",
+      "ok": true,
+      "pdf_count": 20
+    },
+    {
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-04.php",
+      "ok": true,
+      "pdf_count": 20
+    },
+    {
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-05.php",
+      "ok": true,
+      "pdf_count": 20
+    },
+    {
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-06.php",
+      "ok": true,
+      "pdf_count": 20
+    },
+    {
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-07.php",
+      "ok": true,
+      "pdf_count": 20
+    },
+    {
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-08.php",
+      "ok": true,
+      "pdf_count": 20
+    },
+    {
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-09.php",
+      "ok": true,
+      "pdf_count": 20
+    },
+    {
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-10.php",
+      "ok": true,
+      "pdf_count": 20
+    }
+  ],
+  "unique_pdf_count": 110,
+  "volumes": {
+    "1": {
+      "issues": [
+        {
+          "issue": 1,
+          "page_no": 1,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-01.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/01-01.pdf",
+          "basename": "01-01.pdf"
+        },
+        {
+          "issue": 2,
+          "page_no": 1,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-01.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/01-02.pdf",
+          "basename": "01-02.pdf"
+        },
+        {
+          "issue": 3,
+          "page_no": 1,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-01.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/01-03.pdf",
+          "basename": "01-03.pdf"
+        },
+        {
+          "issue": 4,
+          "page_no": 1,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-01.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/01-04.pdf",
+          "basename": "01-04.pdf"
+        },
+        {
+          "issue": 5,
+          "page_no": 1,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-01.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/01-05.pdf",
+          "basename": "01-05.pdf"
+        },
+        {
+          "issue": 6,
+          "page_no": 1,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-01.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/01-06.pdf",
+          "basename": "01-06.pdf"
+        },
+        {
+          "issue": 7,
+          "page_no": 1,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-01.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/01-07.pdf",
+          "basename": "01-07.pdf"
+        },
+        {
+          "issue": 8,
+          "page_no": 1,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-01.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/01-08.pdf",
+          "basename": "01-08.pdf"
+        },
+        {
+          "issue": 9,
+          "page_no": 1,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-01.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/01-09.pdf",
+          "basename": "01-09.pdf"
+        },
+        {
+          "issue": 10,
+          "page_no": 1,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-01.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/01-10.pdf",
+          "basename": "01-10.pdf"
+        }
+      ],
+      "index": {
+        "page_no": 1,
+        "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-01.php",
+        "anchor": "Index pdf",
+        "url": "https://biblicalstudies.org.uk/pdf/jurchs/index-01.pdf",
+        "basename": "index-01.pdf"
+      }
+    },
+    "2": {
+      "issues": [
+        {
+          "issue": 1,
+          "page_no": 2,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-02.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/02-01.pdf",
+          "basename": "02-01.pdf"
+        },
+        {
+          "issue": 2,
+          "page_no": 2,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-02.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/02-02.pdf",
+          "basename": "02-02.pdf"
+        },
+        {
+          "issue": 3,
+          "page_no": 2,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-02.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/02-03.pdf",
+          "basename": "02-03.pdf"
+        },
+        {
+          "issue": 4,
+          "page_no": 2,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-02.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/02-04.pdf",
+          "basename": "02-04.pdf"
+        },
+        {
+          "issue": 5,
+          "page_no": 2,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-02.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/02-05.pdf",
+          "basename": "02-05.pdf"
+        },
+        {
+          "issue": 6,
+          "page_no": 2,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-02.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/02-06.pdf",
+          "basename": "02-06.pdf"
+        },
+        {
+          "issue": 7,
+          "page_no": 2,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-02.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/02-07.pdf",
+          "basename": "02-07.pdf"
+        },
+        {
+          "issue": 8,
+          "page_no": 2,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-02.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/02-08.pdf",
+          "basename": "02-08.pdf"
+        },
+        {
+          "issue": 9,
+          "page_no": 2,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-02.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/02-09.pdf",
+          "basename": "02-09.pdf"
+        },
+        {
+          "issue": 10,
+          "page_no": 2,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-02.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/02-10.pdf",
+          "basename": "02-10.pdf"
+        }
+      ],
+      "index": {
+        "page_no": 1,
+        "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-01.php",
+        "anchor": "Index pdf",
+        "url": "https://biblicalstudies.org.uk/pdf/jurchs/index-02.pdf",
+        "basename": "index-02.pdf"
+      }
+    },
+    "3": {
+      "issues": [
+        {
+          "issue": 1,
+          "page_no": 3,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-03.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/03-01.pdf",
+          "basename": "03-01.pdf"
+        },
+        {
+          "issue": 2,
+          "page_no": 3,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-03.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/03-02.pdf",
+          "basename": "03-02.pdf"
+        },
+        {
+          "issue": 3,
+          "page_no": 3,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-03.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/03-03.pdf",
+          "basename": "03-03.pdf"
+        },
+        {
+          "issue": 4,
+          "page_no": 3,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-03.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/03-04.pdf",
+          "basename": "03-04.pdf"
+        },
+        {
+          "issue": 5,
+          "page_no": 3,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-03.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/03-05.pdf",
+          "basename": "03-05.pdf"
+        },
+        {
+          "issue": 6,
+          "page_no": 3,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-03.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/03-06.pdf",
+          "basename": "03-06.pdf"
+        },
+        {
+          "issue": 7,
+          "page_no": 3,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-03.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/03-07.pdf",
+          "basename": "03-07.pdf"
+        },
+        {
+          "issue": 8,
+          "page_no": 3,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-03.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/03-08.pdf",
+          "basename": "03-08.pdf"
+        },
+        {
+          "issue": 9,
+          "page_no": 3,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-03.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/03-09.pdf",
+          "basename": "03-09.pdf"
+        },
+        {
+          "issue": 10,
+          "page_no": 3,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-03.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/03-10.pdf",
+          "basename": "03-10.pdf"
+        }
+      ],
+      "index": {
+        "page_no": 1,
+        "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-01.php",
+        "anchor": "Index pdf",
+        "url": "https://biblicalstudies.org.uk/pdf/jurchs/index-03.pdf",
+        "basename": "index-03.pdf"
+      }
+    },
+    "4": {
+      "issues": [
+        {
+          "issue": 1,
+          "page_no": 4,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-04.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/04-01.pdf",
+          "basename": "04-01.pdf"
+        },
+        {
+          "issue": 2,
+          "page_no": 4,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-04.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/04-02.pdf",
+          "basename": "04-02.pdf"
+        },
+        {
+          "issue": 3,
+          "page_no": 4,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-04.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/04-03.pdf",
+          "basename": "04-03.pdf"
+        },
+        {
+          "issue": 4,
+          "page_no": 4,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-04.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/04-04.pdf",
+          "basename": "04-04.pdf"
+        },
+        {
+          "issue": 5,
+          "page_no": 4,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-04.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/04-05.pdf",
+          "basename": "04-05.pdf"
+        },
+        {
+          "issue": 6,
+          "page_no": 4,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-04.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/04-06.pdf",
+          "basename": "04-06.pdf"
+        },
+        {
+          "issue": 7,
+          "page_no": 4,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-04.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/04-07.pdf",
+          "basename": "04-07.pdf"
+        },
+        {
+          "issue": 8,
+          "page_no": 4,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-04.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/04-08.pdf",
+          "basename": "04-08.pdf"
+        },
+        {
+          "issue": 9,
+          "page_no": 4,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-04.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/04-09.pdf",
+          "basename": "04-09.pdf"
+        },
+        {
+          "issue": 10,
+          "page_no": 4,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-04.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/04-10.pdf",
+          "basename": "04-10.pdf"
+        }
+      ],
+      "index": {
+        "page_no": 1,
+        "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-01.php",
+        "anchor": "Index pdf",
+        "url": "https://biblicalstudies.org.uk/pdf/jurchs/index-04.pdf",
+        "basename": "index-04.pdf"
+      }
+    },
+    "5": {
+      "issues": [
+        {
+          "issue": 1,
+          "page_no": 5,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-05.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/05-01.pdf",
+          "basename": "05-01.pdf"
+        },
+        {
+          "issue": 2,
+          "page_no": 5,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-05.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/05-02.pdf",
+          "basename": "05-02.pdf"
+        },
+        {
+          "issue": 3,
+          "page_no": 5,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-05.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/05-03.pdf",
+          "basename": "05-03.pdf"
+        },
+        {
+          "issue": 4,
+          "page_no": 5,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-05.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/05-04.pdf",
+          "basename": "05-04.pdf"
+        },
+        {
+          "issue": 5,
+          "page_no": 5,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-05.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/05-05.pdf",
+          "basename": "05-05.pdf"
+        },
+        {
+          "issue": 6,
+          "page_no": 5,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-05.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/05-06.pdf",
+          "basename": "05-06.pdf"
+        },
+        {
+          "issue": 7,
+          "page_no": 5,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-05.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/05-07.pdf",
+          "basename": "05-07.pdf"
+        },
+        {
+          "issue": 8,
+          "page_no": 5,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-05.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/05-08.pdf",
+          "basename": "05-08.pdf"
+        },
+        {
+          "issue": 9,
+          "page_no": 5,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-05.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/05-09.pdf",
+          "basename": "05-09.pdf"
+        },
+        {
+          "issue": 10,
+          "page_no": 5,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-05.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/05-10.pdf",
+          "basename": "05-10.pdf"
+        }
+      ],
+      "index": {
+        "page_no": 1,
+        "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-01.php",
+        "anchor": "Index pdf",
+        "url": "https://biblicalstudies.org.uk/pdf/jurchs/index-05.pdf",
+        "basename": "index-05.pdf"
+      }
+    },
+    "6": {
+      "issues": [
+        {
+          "issue": 1,
+          "page_no": 6,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-06.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/06-01.pdf",
+          "basename": "06-01.pdf"
+        },
+        {
+          "issue": 2,
+          "page_no": 6,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-06.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/06-02.pdf",
+          "basename": "06-02.pdf"
+        },
+        {
+          "issue": 3,
+          "page_no": 6,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-06.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/06-03.pdf",
+          "basename": "06-03.pdf"
+        },
+        {
+          "issue": 4,
+          "page_no": 6,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-06.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/06-04.pdf",
+          "basename": "06-04.pdf"
+        },
+        {
+          "issue": 5,
+          "page_no": 6,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-06.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/06-05.pdf",
+          "basename": "06-05.pdf"
+        },
+        {
+          "issue": 6,
+          "page_no": 6,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-06.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/06-06.pdf",
+          "basename": "06-06.pdf"
+        },
+        {
+          "issue": 7,
+          "page_no": 6,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-06.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/06-07.pdf",
+          "basename": "06-07.pdf"
+        },
+        {
+          "issue": 8,
+          "page_no": 6,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-06.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/06-08.pdf",
+          "basename": "06-08.pdf"
+        },
+        {
+          "issue": 9,
+          "page_no": 6,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-06.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/06-09.pdf",
+          "basename": "06-09.pdf"
+        },
+        {
+          "issue": 10,
+          "page_no": 6,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-06.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/06-10.pdf",
+          "basename": "06-10.pdf"
+        }
+      ],
+      "index": {
+        "page_no": 1,
+        "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-01.php",
+        "anchor": "Index pdf",
+        "url": "https://biblicalstudies.org.uk/pdf/jurchs/index-06.pdf",
+        "basename": "index-06.pdf"
+      }
+    },
+    "7": {
+      "issues": [
+        {
+          "issue": 1,
+          "page_no": 7,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-07.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/07-01.pdf",
+          "basename": "07-01.pdf"
+        },
+        {
+          "issue": 2,
+          "page_no": 7,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-07.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/07-02.pdf",
+          "basename": "07-02.pdf"
+        },
+        {
+          "issue": 3,
+          "page_no": 7,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-07.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/07-03.pdf",
+          "basename": "07-03.pdf"
+        },
+        {
+          "issue": 4,
+          "page_no": 7,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-07.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/07-04.pdf",
+          "basename": "07-04.pdf"
+        },
+        {
+          "issue": 5,
+          "page_no": 7,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-07.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/07-05.pdf",
+          "basename": "07-05.pdf"
+        },
+        {
+          "issue": 6,
+          "page_no": 7,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-07.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/07-06.pdf",
+          "basename": "07-06.pdf"
+        },
+        {
+          "issue": 7,
+          "page_no": 7,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-07.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/07-07.pdf",
+          "basename": "07-07.pdf"
+        },
+        {
+          "issue": 8,
+          "page_no": 7,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-07.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/07-08.pdf",
+          "basename": "07-08.pdf"
+        },
+        {
+          "issue": 9,
+          "page_no": 7,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-07.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/07-09.pdf",
+          "basename": "07-09.pdf"
+        },
+        {
+          "issue": 10,
+          "page_no": 7,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-07.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/07-10.pdf",
+          "basename": "07-10.pdf"
+        }
+      ],
+      "index": {
+        "page_no": 1,
+        "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-01.php",
+        "anchor": "Index pdf",
+        "url": "https://biblicalstudies.org.uk/pdf/jurchs/index-07.pdf",
+        "basename": "index-07.pdf"
+      }
+    },
+    "8": {
+      "issues": [
+        {
+          "issue": 1,
+          "page_no": 8,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-08.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/08-01.pdf",
+          "basename": "08-01.pdf"
+        },
+        {
+          "issue": 2,
+          "page_no": 8,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-08.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/08-02.pdf",
+          "basename": "08-02.pdf"
+        },
+        {
+          "issue": 3,
+          "page_no": 8,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-08.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/08-03.pdf",
+          "basename": "08-03.pdf"
+        },
+        {
+          "issue": 4,
+          "page_no": 8,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-08.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/08-04.pdf",
+          "basename": "08-04.pdf"
+        },
+        {
+          "issue": 5,
+          "page_no": 8,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-08.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/08-05.pdf",
+          "basename": "08-05.pdf"
+        },
+        {
+          "issue": 6,
+          "page_no": 8,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-08.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/08-06.pdf",
+          "basename": "08-06.pdf"
+        },
+        {
+          "issue": 7,
+          "page_no": 8,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-08.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/08-07.pdf",
+          "basename": "08-07.pdf"
+        },
+        {
+          "issue": 8,
+          "page_no": 8,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-08.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/08-08.pdf",
+          "basename": "08-08.pdf"
+        },
+        {
+          "issue": 9,
+          "page_no": 8,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-08.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/08-09.pdf",
+          "basename": "08-09.pdf"
+        },
+        {
+          "issue": 10,
+          "page_no": 8,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-08.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/08-10.pdf",
+          "basename": "08-10.pdf"
+        }
+      ],
+      "index": {
+        "page_no": 1,
+        "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-01.php",
+        "anchor": "Index pdf",
+        "url": "https://biblicalstudies.org.uk/pdf/jurchs/index-08.pdf",
+        "basename": "index-08.pdf"
+      }
+    },
+    "9": {
+      "issues": [
+        {
+          "issue": 1,
+          "page_no": 9,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-09.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/09-01.pdf",
+          "basename": "09-01.pdf"
+        },
+        {
+          "issue": 2,
+          "page_no": 9,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-09.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/09-02.pdf",
+          "basename": "09-02.pdf"
+        },
+        {
+          "issue": 3,
+          "page_no": 9,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-09.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/09-03.pdf",
+          "basename": "09-03.pdf"
+        },
+        {
+          "issue": 4,
+          "page_no": 9,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-09.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/09-04.pdf",
+          "basename": "09-04.pdf"
+        },
+        {
+          "issue": 5,
+          "page_no": 9,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-09.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/09-05.pdf",
+          "basename": "09-05.pdf"
+        },
+        {
+          "issue": 6,
+          "page_no": 9,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-09.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/09-06.pdf",
+          "basename": "09-06.pdf"
+        },
+        {
+          "issue": 7,
+          "page_no": 9,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-09.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/09-07.pdf",
+          "basename": "09-07.pdf"
+        },
+        {
+          "issue": 8,
+          "page_no": 9,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-09.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/09-08.pdf",
+          "basename": "09-08.pdf"
+        },
+        {
+          "issue": 9,
+          "page_no": 9,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-09.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/09-09.pdf",
+          "basename": "09-09.pdf"
+        },
+        {
+          "issue": 10,
+          "page_no": 9,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-09.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/09-10.pdf",
+          "basename": "09-10.pdf"
+        }
+      ],
+      "index": {
+        "page_no": 1,
+        "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-01.php",
+        "anchor": "Index pdf",
+        "url": "https://biblicalstudies.org.uk/pdf/jurchs/index-09.pdf",
+        "basename": "index-09.pdf"
+      }
+    },
+    "10": {
+      "issues": [
+        {
+          "issue": 1,
+          "page_no": 10,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-10.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/10-01.pdf",
+          "basename": "10-01.pdf"
+        },
+        {
+          "issue": 2,
+          "page_no": 10,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-10.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/10-02.pdf",
+          "basename": "10-02.pdf"
+        },
+        {
+          "issue": 3,
+          "page_no": 10,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-10.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/10-03.pdf",
+          "basename": "10-03.pdf"
+        },
+        {
+          "issue": 4,
+          "page_no": 10,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-10.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/10-04.pdf",
+          "basename": "10-04.pdf"
+        },
+        {
+          "issue": 5,
+          "page_no": 10,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-10.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/10-05.pdf",
+          "basename": "10-05.pdf"
+        },
+        {
+          "issue": 6,
+          "page_no": 10,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-10.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/10-06.pdf",
+          "basename": "10-06.pdf"
+        },
+        {
+          "issue": 7,
+          "page_no": 10,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-10.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/10-07.pdf",
+          "basename": "10-07.pdf"
+        },
+        {
+          "issue": 8,
+          "page_no": 10,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-10.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/10-08.pdf",
+          "basename": "10-08.pdf"
+        },
+        {
+          "issue": 9,
+          "page_no": 10,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-10.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/10-09.pdf",
+          "basename": "10-09.pdf"
+        },
+        {
+          "issue": 10,
+          "page_no": 10,
+          "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-10.php",
+          "anchor": "Download Complete Issue pdf",
+          "url": "https://biblicalstudies.org.uk/pdf/jurchs/10-10.pdf",
+          "basename": "10-10.pdf"
+        }
+      ],
+      "index": {
+        "page_no": 1,
+        "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-01.php",
+        "anchor": "Index",
+        "url": "https://biblicalstudies.org.uk/pdf/jurchs/index-10.pdf",
+        "basename": "index-10.pdf"
+      }
+    }
+  },
+  "links": [
+    {
+      "page_no": 1,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-01.php",
+      "anchor": "Index pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/index-01.pdf",
+      "basename": "index-01.pdf"
+    },
+    {
+      "page_no": 1,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-01.php",
+      "anchor": "Index pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/index-02.pdf",
+      "basename": "index-02.pdf"
+    },
+    {
+      "page_no": 1,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-01.php",
+      "anchor": "Index pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/index-03.pdf",
+      "basename": "index-03.pdf"
+    },
+    {
+      "page_no": 1,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-01.php",
+      "anchor": "Index pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/index-04.pdf",
+      "basename": "index-04.pdf"
+    },
+    {
+      "page_no": 1,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-01.php",
+      "anchor": "Index pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/index-05.pdf",
+      "basename": "index-05.pdf"
+    },
+    {
+      "page_no": 1,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-01.php",
+      "anchor": "Index pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/index-06.pdf",
+      "basename": "index-06.pdf"
+    },
+    {
+      "page_no": 1,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-01.php",
+      "anchor": "Index pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/index-07.pdf",
+      "basename": "index-07.pdf"
+    },
+    {
+      "page_no": 1,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-01.php",
+      "anchor": "Index pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/index-08.pdf",
+      "basename": "index-08.pdf"
+    },
+    {
+      "page_no": 1,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-01.php",
+      "anchor": "Index pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/index-09.pdf",
+      "basename": "index-09.pdf"
+    },
+    {
+      "page_no": 1,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-01.php",
+      "anchor": "Index",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/index-10.pdf",
+      "basename": "index-10.pdf"
+    },
+    {
+      "page_no": 1,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-01.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/01-01.pdf",
+      "basename": "01-01.pdf"
+    },
+    {
+      "page_no": 1,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-01.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/01-02.pdf",
+      "basename": "01-02.pdf"
+    },
+    {
+      "page_no": 1,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-01.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/01-03.pdf",
+      "basename": "01-03.pdf"
+    },
+    {
+      "page_no": 1,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-01.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/01-04.pdf",
+      "basename": "01-04.pdf"
+    },
+    {
+      "page_no": 1,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-01.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/01-05.pdf",
+      "basename": "01-05.pdf"
+    },
+    {
+      "page_no": 1,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-01.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/01-06.pdf",
+      "basename": "01-06.pdf"
+    },
+    {
+      "page_no": 1,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-01.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/01-07.pdf",
+      "basename": "01-07.pdf"
+    },
+    {
+      "page_no": 1,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-01.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/01-08.pdf",
+      "basename": "01-08.pdf"
+    },
+    {
+      "page_no": 1,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-01.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/01-09.pdf",
+      "basename": "01-09.pdf"
+    },
+    {
+      "page_no": 1,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-01.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/01-10.pdf",
+      "basename": "01-10.pdf"
+    },
+    {
+      "page_no": 2,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-02.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/02-01.pdf",
+      "basename": "02-01.pdf"
+    },
+    {
+      "page_no": 2,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-02.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/02-02.pdf",
+      "basename": "02-02.pdf"
+    },
+    {
+      "page_no": 2,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-02.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/02-03.pdf",
+      "basename": "02-03.pdf"
+    },
+    {
+      "page_no": 2,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-02.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/02-04.pdf",
+      "basename": "02-04.pdf"
+    },
+    {
+      "page_no": 2,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-02.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/02-05.pdf",
+      "basename": "02-05.pdf"
+    },
+    {
+      "page_no": 2,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-02.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/02-06.pdf",
+      "basename": "02-06.pdf"
+    },
+    {
+      "page_no": 2,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-02.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/02-07.pdf",
+      "basename": "02-07.pdf"
+    },
+    {
+      "page_no": 2,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-02.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/02-08.pdf",
+      "basename": "02-08.pdf"
+    },
+    {
+      "page_no": 2,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-02.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/02-09.pdf",
+      "basename": "02-09.pdf"
+    },
+    {
+      "page_no": 2,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-02.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/02-10.pdf",
+      "basename": "02-10.pdf"
+    },
+    {
+      "page_no": 3,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-03.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/03-01.pdf",
+      "basename": "03-01.pdf"
+    },
+    {
+      "page_no": 3,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-03.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/03-02.pdf",
+      "basename": "03-02.pdf"
+    },
+    {
+      "page_no": 3,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-03.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/03-03.pdf",
+      "basename": "03-03.pdf"
+    },
+    {
+      "page_no": 3,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-03.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/03-04.pdf",
+      "basename": "03-04.pdf"
+    },
+    {
+      "page_no": 3,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-03.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/03-05.pdf",
+      "basename": "03-05.pdf"
+    },
+    {
+      "page_no": 3,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-03.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/03-06.pdf",
+      "basename": "03-06.pdf"
+    },
+    {
+      "page_no": 3,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-03.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/03-07.pdf",
+      "basename": "03-07.pdf"
+    },
+    {
+      "page_no": 3,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-03.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/03-08.pdf",
+      "basename": "03-08.pdf"
+    },
+    {
+      "page_no": 3,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-03.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/03-09.pdf",
+      "basename": "03-09.pdf"
+    },
+    {
+      "page_no": 3,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-03.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/03-10.pdf",
+      "basename": "03-10.pdf"
+    },
+    {
+      "page_no": 4,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-04.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/04-01.pdf",
+      "basename": "04-01.pdf"
+    },
+    {
+      "page_no": 4,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-04.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/04-02.pdf",
+      "basename": "04-02.pdf"
+    },
+    {
+      "page_no": 4,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-04.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/04-03.pdf",
+      "basename": "04-03.pdf"
+    },
+    {
+      "page_no": 4,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-04.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/04-04.pdf",
+      "basename": "04-04.pdf"
+    },
+    {
+      "page_no": 4,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-04.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/04-05.pdf",
+      "basename": "04-05.pdf"
+    },
+    {
+      "page_no": 4,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-04.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/04-06.pdf",
+      "basename": "04-06.pdf"
+    },
+    {
+      "page_no": 4,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-04.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/04-07.pdf",
+      "basename": "04-07.pdf"
+    },
+    {
+      "page_no": 4,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-04.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/04-08.pdf",
+      "basename": "04-08.pdf"
+    },
+    {
+      "page_no": 4,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-04.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/04-09.pdf",
+      "basename": "04-09.pdf"
+    },
+    {
+      "page_no": 4,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-04.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/04-10.pdf",
+      "basename": "04-10.pdf"
+    },
+    {
+      "page_no": 5,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-05.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/05-01.pdf",
+      "basename": "05-01.pdf"
+    },
+    {
+      "page_no": 5,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-05.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/05-02.pdf",
+      "basename": "05-02.pdf"
+    },
+    {
+      "page_no": 5,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-05.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/05-03.pdf",
+      "basename": "05-03.pdf"
+    },
+    {
+      "page_no": 5,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-05.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/05-04.pdf",
+      "basename": "05-04.pdf"
+    },
+    {
+      "page_no": 5,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-05.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/05-05.pdf",
+      "basename": "05-05.pdf"
+    },
+    {
+      "page_no": 5,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-05.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/05-06.pdf",
+      "basename": "05-06.pdf"
+    },
+    {
+      "page_no": 5,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-05.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/05-07.pdf",
+      "basename": "05-07.pdf"
+    },
+    {
+      "page_no": 5,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-05.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/05-08.pdf",
+      "basename": "05-08.pdf"
+    },
+    {
+      "page_no": 5,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-05.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/05-09.pdf",
+      "basename": "05-09.pdf"
+    },
+    {
+      "page_no": 5,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-05.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/05-10.pdf",
+      "basename": "05-10.pdf"
+    },
+    {
+      "page_no": 6,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-06.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/06-01.pdf",
+      "basename": "06-01.pdf"
+    },
+    {
+      "page_no": 6,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-06.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/06-02.pdf",
+      "basename": "06-02.pdf"
+    },
+    {
+      "page_no": 6,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-06.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/06-03.pdf",
+      "basename": "06-03.pdf"
+    },
+    {
+      "page_no": 6,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-06.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/06-04.pdf",
+      "basename": "06-04.pdf"
+    },
+    {
+      "page_no": 6,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-06.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/06-05.pdf",
+      "basename": "06-05.pdf"
+    },
+    {
+      "page_no": 6,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-06.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/06-06.pdf",
+      "basename": "06-06.pdf"
+    },
+    {
+      "page_no": 6,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-06.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/06-07.pdf",
+      "basename": "06-07.pdf"
+    },
+    {
+      "page_no": 6,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-06.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/06-08.pdf",
+      "basename": "06-08.pdf"
+    },
+    {
+      "page_no": 6,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-06.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/06-09.pdf",
+      "basename": "06-09.pdf"
+    },
+    {
+      "page_no": 6,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-06.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/06-10.pdf",
+      "basename": "06-10.pdf"
+    },
+    {
+      "page_no": 7,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-07.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/07-01.pdf",
+      "basename": "07-01.pdf"
+    },
+    {
+      "page_no": 7,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-07.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/07-02.pdf",
+      "basename": "07-02.pdf"
+    },
+    {
+      "page_no": 7,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-07.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/07-03.pdf",
+      "basename": "07-03.pdf"
+    },
+    {
+      "page_no": 7,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-07.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/07-04.pdf",
+      "basename": "07-04.pdf"
+    },
+    {
+      "page_no": 7,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-07.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/07-05.pdf",
+      "basename": "07-05.pdf"
+    },
+    {
+      "page_no": 7,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-07.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/07-06.pdf",
+      "basename": "07-06.pdf"
+    },
+    {
+      "page_no": 7,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-07.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/07-07.pdf",
+      "basename": "07-07.pdf"
+    },
+    {
+      "page_no": 7,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-07.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/07-08.pdf",
+      "basename": "07-08.pdf"
+    },
+    {
+      "page_no": 7,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-07.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/07-09.pdf",
+      "basename": "07-09.pdf"
+    },
+    {
+      "page_no": 7,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-07.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/07-10.pdf",
+      "basename": "07-10.pdf"
+    },
+    {
+      "page_no": 8,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-08.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/08-01.pdf",
+      "basename": "08-01.pdf"
+    },
+    {
+      "page_no": 8,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-08.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/08-02.pdf",
+      "basename": "08-02.pdf"
+    },
+    {
+      "page_no": 8,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-08.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/08-03.pdf",
+      "basename": "08-03.pdf"
+    },
+    {
+      "page_no": 8,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-08.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/08-04.pdf",
+      "basename": "08-04.pdf"
+    },
+    {
+      "page_no": 8,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-08.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/08-05.pdf",
+      "basename": "08-05.pdf"
+    },
+    {
+      "page_no": 8,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-08.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/08-06.pdf",
+      "basename": "08-06.pdf"
+    },
+    {
+      "page_no": 8,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-08.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/08-07.pdf",
+      "basename": "08-07.pdf"
+    },
+    {
+      "page_no": 8,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-08.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/08-08.pdf",
+      "basename": "08-08.pdf"
+    },
+    {
+      "page_no": 8,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-08.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/08-09.pdf",
+      "basename": "08-09.pdf"
+    },
+    {
+      "page_no": 8,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-08.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/08-10.pdf",
+      "basename": "08-10.pdf"
+    },
+    {
+      "page_no": 9,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-09.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/09-01.pdf",
+      "basename": "09-01.pdf"
+    },
+    {
+      "page_no": 9,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-09.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/09-02.pdf",
+      "basename": "09-02.pdf"
+    },
+    {
+      "page_no": 9,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-09.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/09-03.pdf",
+      "basename": "09-03.pdf"
+    },
+    {
+      "page_no": 9,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-09.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/09-04.pdf",
+      "basename": "09-04.pdf"
+    },
+    {
+      "page_no": 9,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-09.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/09-05.pdf",
+      "basename": "09-05.pdf"
+    },
+    {
+      "page_no": 9,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-09.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/09-06.pdf",
+      "basename": "09-06.pdf"
+    },
+    {
+      "page_no": 9,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-09.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/09-07.pdf",
+      "basename": "09-07.pdf"
+    },
+    {
+      "page_no": 9,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-09.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/09-08.pdf",
+      "basename": "09-08.pdf"
+    },
+    {
+      "page_no": 9,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-09.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/09-09.pdf",
+      "basename": "09-09.pdf"
+    },
+    {
+      "page_no": 9,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-09.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/09-10.pdf",
+      "basename": "09-10.pdf"
+    },
+    {
+      "page_no": 10,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-10.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/10-01.pdf",
+      "basename": "10-01.pdf"
+    },
+    {
+      "page_no": 10,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-10.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/10-02.pdf",
+      "basename": "10-02.pdf"
+    },
+    {
+      "page_no": 10,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-10.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/10-03.pdf",
+      "basename": "10-03.pdf"
+    },
+    {
+      "page_no": 10,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-10.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/10-04.pdf",
+      "basename": "10-04.pdf"
+    },
+    {
+      "page_no": 10,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-10.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/10-05.pdf",
+      "basename": "10-05.pdf"
+    },
+    {
+      "page_no": 10,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-10.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/10-06.pdf",
+      "basename": "10-06.pdf"
+    },
+    {
+      "page_no": 10,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-10.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/10-07.pdf",
+      "basename": "10-07.pdf"
+    },
+    {
+      "page_no": 10,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-10.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/10-08.pdf",
+      "basename": "10-08.pdf"
+    },
+    {
+      "page_no": 10,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-10.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/10-09.pdf",
+      "basename": "10-09.pdf"
+    },
+    {
+      "page_no": 10,
+      "page": "https://biblicalstudies.org.uk/articles_urc-historical-society-10.php",
+      "anchor": "Download Complete Issue pdf",
+      "url": "https://biblicalstudies.org.uk/pdf/jurchs/10-10.pdf",
+      "basename": "10-10.pdf"
+    }
+  ]
+}
