@@ -1,4 +1,4 @@
-name: CHSM archive PR
+name: Semanatorul discovery PR
 
 on:
   pull_request:
@@ -8,70 +8,48 @@ permissions:
   contents: read
 
 jobs:
-  fetch:
+  discover:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - name: Discover and download linked CHSM PDFs
+      - name: Discover Semanatorul archive PDFs
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p out/pdfs
           python - <<'PY'
-          import concurrent.futures, hashlib, html, json, os, re
-          import urllib.parse, urllib.request
-          PAGE='https://biblicalstudies.org.uk/articles_congregational-history-circle-01.php'
-          UA={'User-Agent':'Mozilla/5.0 (compatible; BSUK-Drive-Archiver/0.1)'}
-          req=urllib.request.Request(PAGE,headers=UA)
-          with urllib.request.urlopen(req,timeout=60) as r: raw=r.read()
-          text=raw.decode('utf-8','replace')
-          open('out/source-page.html','wb').write(raw)
-          urls=[]; seen=set()
-          for href in re.findall(r'''(?is)href\s*=\s*["']([^"']+)["']''', text):
-              href=html.unescape(href.strip())
-              url=urllib.parse.urljoin(PAGE,href)
-              parsed=urllib.parse.urlparse(url)
-              if '/pdf/chcm/' not in parsed.path.lower() or not parsed.path.lower().endswith('.pdf'): continue
-              if url.lower() in seen: continue
-              seen.add(url.lower()); urls.append(url)
-          urls.sort()
-          print('DISCOVERED_PDFS',len(urls))
-          for u in urls: print('URL',u)
-          if len(urls) != 53: raise SystemExit(f'Expected 53 linked PDFs, found {len(urls)}')
-          def get_one(url):
-              name=os.path.basename(urllib.parse.urlparse(url).path)
-              dest=os.path.join('out','pdfs',name)
-              req=urllib.request.Request(url,headers=UA)
-              with urllib.request.urlopen(req,timeout=120) as r: data=r.read()
-              if data[:5] != b'%PDF-': raise RuntimeError(f'Not PDF: {url}')
-              open(dest,'wb').write(data)
-              m=re.match(r'^(\d{2})[-_]',name)
-              volume=int(m.group(1)) if m else None
-              return {'url':url,'basename':name,'size':len(data),'sha256':hashlib.sha256(data).hexdigest(),'volume':volume}
-          rows=[]
-          with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
-              futs=[ex.submit(get_one,u) for u in urls]
-              for fut in concurrent.futures.as_completed(futs):
-                  row=fut.result(); rows.append(row); print('OK',row['basename'],row['size'])
-          rows.sort(key=lambda x:x['basename'])
-          json.dump(rows,open('out/manifest.json','w',encoding='utf-8'),indent=2)
-          if len(rows)!=53: raise SystemExit('Incomplete download')
-          if any(r['volume'] is None or not 1 <= r['volume'] <= 9 for r in rows): raise SystemExit('Volume classification failed')
-          print('COMPLETE',len(rows))
+          import html, json, re, urllib.parse, urllib.request
+          pages=[
+            'https://semanatorul.emanuel.ro/archive/',
+            'https://biblicalstudies.org.uk/articles_semanatorul-the-sower_01.php'
+          ]
+          UA={'User-Agent':'Mozilla/5.0 (compatible; BSUK-Drive-Archiver/0.1; +https://biblicalstudies.org.uk/)'}
+          out=[]
+          for page in pages:
+              try:
+                  req=urllib.request.Request(page,headers=UA)
+                  with urllib.request.urlopen(req,timeout=60) as r: raw=r.read(); final=r.geturl(); status=getattr(r,'status',200)
+                  text=raw.decode('utf-8','replace')
+                  links=[]
+                  for m in re.finditer(r'''(?is)<a\b[^>]*href\s*=\s*["']([^"']+)["'][^>]*>(.*?)</a>''',text):
+                      href=html.unescape(m.group(1).strip())
+                      label=re.sub(r'(?is)<[^>]+>',' ',m.group(2))
+                      label=html.unescape(re.sub(r'\s+',' ',label)).strip()
+                      url=urllib.parse.urljoin(final,href)
+                      if '.pdf' in urllib.parse.urlparse(url).path.lower():
+                          links.append({'url':url,'label':label})
+                  out.append({'page':page,'status':status,'final':final,'bytes':len(raw),'links':links})
+                  print('PAGE_OK',page,'PDF_LINKS',len(links))
+                  for x in links: print('PDF',x['label'][:120],x['url'])
+              except Exception as e:
+                  out.append({'page':page,'error':repr(e),'links':[]})
+                  print('PAGE_ERROR',page,repr(e))
+          json.dump(out,open('semanatorul-discovery.json','w'),ensure_ascii=False,indent=2)
           PY
-      - name: Upload complete PDFs artifact
+      - name: Upload discovery artifact
         uses: actions/upload-artifact@v4
         with:
-          name: chsm-complete-pdfs
-          path: out/
-          compression-level: 0
-          retention-days: 1
-      - name: Upload The Sower Volume 001 handoff artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: the-sower-volume-001-handoff
-          path: 'bridge/the-sower/Volume 001/The Sower - Volume 001 (1879) - Complete Volume.pdf'
+          name: semanatorul-discovery
+          path: semanatorul-discovery.json
           if-no-files-found: error
-          compression-level: 0
           retention-days: 1
