@@ -1,72 +1,57 @@
-# run trigger 2026-08-21
-import os, re, json, hashlib
-from urllib.parse import urljoin
+import os, json, hashlib
 import requests
-from bs4 import BeautifulSoup
 
-PAGE='https://biblicalstudies.org.uk/articles_tsfbulletin-us.php'
+BASE='https://biblicalstudies.org.uk/pdf/tsf-bulletin-us/issues/'
 OUT='tsf_stage'
 TITLE='Theological Students Fellowship Bulletin (US)'
 os.makedirs(OUT, exist_ok=True)
-
 s=requests.Session(); s.headers.update({'User-Agent':'Mozilla/5.0'})
-r=s.get(PAGE,timeout=60); r.raise_for_status()
-soup=BeautifulSoup(r.text,'html.parser')
 
-items=[]
-current_vol=None
-current_issue=None
-current_year=None
-for tag in soup.find_all(['h2','h3','a']):
-    if tag.name=='h2':
-        txt=' '.join(tag.stripped_strings)
-        m=re.search(r'Vol\.\s*(\d+)\s*\(([^)]+)\)',txt,re.I)
-        if m:
-            current_vol=int(m.group(1)); current_year=m.group(2).strip(); current_issue=None
-    elif tag.name=='h3':
-        txt=' '.join(tag.stripped_strings).strip()
-        if txt and 'Download Complete Issue pdf' not in txt:
-            current_issue=txt
-    elif tag.name=='a':
-        txt=' '.join(tag.stripped_strings)
-        if 'Download Complete Issue pdf' in txt and tag.get('href') and current_vol:
-            url=urljoin(PAGE,tag['href'])
-            items.append({'volume':current_vol,'year':current_year,'issue_label':current_issue,'url':url})
+corpus=[]
+# Vols 1-3 are identified by month on the source page.
+early={
+  1:(1978,[('Jan.',['jan','january']),('April',['apr','april']),('May',['may']),('October',['oct','october']),('Nov.',['nov','november'])]),
+  2:(1979,[('January',['jan','january']),('March',['mar','march']),('May',['may']),('Oct.',['oct','october']),('Nov.',['nov','november'])]),
+  3:(1980,[('March',['mar','march']),('April',['apr','april'])])
+}
+for v,(yr,issues) in early.items():
+    for n,(label,slugs) in enumerate(issues,1):
+        candidates=[f'{BASE}tsf-news-and-reviews_{yr}-{slug}.pdf' for slug in slugs]
+        corpus.append({'volume':v,'issue_number':n,'year':str(yr),'issue_label':label,'candidates':candidates})
 
-seen=set(); clean=[]
-for x in items:
-    if x['url'] in seen: continue
-    seen.add(x['url']); clean.append(x)
-items=clean
+# Vols 4-10: five bimonthly issues per volume, filename uses the volume start-year.
+start_year={4:1980,5:1981,6:1982,7:1983,8:1984,9:1985,10:1986}
+for v,yr in start_year.items():
+    for n in range(1,6):
+        corpus.append({'volume':v,'issue_number':n,'year':f'{yr}/{yr+1}','issue_label':f'{v}.{n}','candidates':[f'{BASE}tsf-bulletin_{v:02d}-{n}_{yr}.pdf']})
 
-counts={}
-manifest={'source_page':PAGE,'title':TITLE,'issues':[],'errors':[]}
-for x in items:
-    v=x['volume']; counts[v]=counts.get(v,0)+1; n=counts[v]
-    name=f'{TITLE} - Volume {v:03d} Issue {n:02d}.pdf'
+manifest={'source_page':'https://biblicalstudies.org.uk/articles_tsfbulletin-us.php','title':TITLE,'expected':len(corpus),'issues':[],'errors':[],'independent_indexes':[]}
+for x in corpus:
+    data=None; used=None; last=None
+    for url in x['candidates']:
+        try:
+            r=s.get(url,timeout=120,allow_redirects=True)
+            if r.status_code==200 and r.content.startswith(b'%PDF'):
+                data=r.content; used=url; break
+            last=f'{r.status_code} {r.headers.get("content-type")} {len(r.content)}'
+        except Exception as e:
+            last=str(e)
+    name=f'{TITLE} - Volume {x["volume"]:03d} Issue {x["issue_number"]:02d}.pdf'
+    if data is None:
+        manifest['errors'].append({**x,'file':name,'error':last})
+        print('ERR',x['volume'],x['issue_number'],last,x['candidates'])
+        continue
     path=os.path.join(OUT,name)
-    try:
-        rr=s.get(x['url'],timeout=120,allow_redirects=True); rr.raise_for_status(); data=rr.content
-        if not data.startswith(b'%PDF'):
-            raise RuntimeError(f'not PDF: {rr.status_code} {rr.headers.get("content-type")} {len(data)} bytes')
-        open(path,'wb').write(data)
-        manifest['issues'].append({**x,'issue_number':n,'file':name,'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest(),'valid_pdf':True})
-        print('OK',v,n,x['issue_label'],len(data),x['url'])
-    except Exception as e:
-        manifest['errors'].append({**x,'issue_number':n,'file':name,'error':str(e)})
-        print('ERR',v,n,x['url'],e)
-
-manifest['independent_indexes']=[]
-for a in soup.find_all('a',href=True):
-    label=' '.join(a.stripped_strings)
-    low=label.lower()
-    if any(k in low for k in ['index','cumulative index','bibliography']) and a['href'].lower().endswith('.pdf'):
-        manifest['independent_indexes'].append({'label':label,'url':urljoin(PAGE,a['href'])})
+    with open(path,'wb') as f: f.write(data)
+    rec={**x,'url':used,'file':name,'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest(),'valid_pdf':True}
+    rec.pop('candidates',None)
+    manifest['issues'].append(rec)
+    print('OK',rec['volume'],rec['issue_number'],rec['issue_label'],rec['bytes'],used)
 
 with open(os.path.join(OUT,'manifest.json'),'w',encoding='utf-8') as f: json.dump(manifest,f,ensure_ascii=False,indent=2)
 with open(os.path.join(OUT,'manifest.txt'),'w',encoding='utf-8') as f:
-    f.write(f"TITLE={TITLE}\nSOURCE={PAGE}\nISSUES={len(manifest['issues'])}\nERRORS={len(manifest['errors'])}\nINDEX_PDFS={len(manifest['independent_indexes'])}\n")
-    for v in sorted(counts):
+    f.write(f"TITLE={TITLE}\nEXPECTED={manifest['expected']}\nISSUES={len(manifest['issues'])}\nERRORS={len(manifest['errors'])}\nINDEX_PDFS=0\n")
+    for v in range(1,11):
         ok=sum(1 for z in manifest['issues'] if z['volume']==v)
         f.write(f"VOLUME {v:03d}: {ok} issues\n")
     f.write('\n')
@@ -75,4 +60,4 @@ with open(os.path.join(OUT,'manifest.txt'),'w',encoding='utf-8') as f:
     if manifest['errors']:
         f.write('\nERRORS\n')
         for e in manifest['errors']: f.write(json.dumps(e,ensure_ascii=False)+'\n')
-print(json.dumps({'issues':len(manifest['issues']),'errors':len(manifest['errors']),'counts':counts,'indexes':len(manifest['independent_indexes'])},indent=2))
+print(json.dumps({'expected':manifest['expected'],'issues':len(manifest['issues']),'errors':len(manifest['errors'])},indent=2))
