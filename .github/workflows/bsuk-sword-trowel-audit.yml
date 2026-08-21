@@ -4,6 +4,10 @@ on:
     paths:
       - bsuk_worker/audit_sword_trowel.py
       - .github/workflows/bsuk-sword-trowel-audit.yml
+  pull_request:
+    paths:
+      - bsuk_worker/audit_sword_trowel.py
+      - .github/workflows/bsuk-sword-trowel-audit.yml
   workflow_dispatch:
 permissions:
   contents: read
