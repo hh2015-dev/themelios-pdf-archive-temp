@@ -2,6 +2,8 @@ name: BSUK Sunday at Home
 on:
   push:
     branches: [sunday-at-home-run1]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 jobs:
   discover:
