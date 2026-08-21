@@ -1,0 +1,85 @@
+name: URC journal inventory
+
+on:
+  push:
+    branches: [urc-inventory-run]
+    paths:
+      - '.github/workflows/urc-inventory.yml'
+      - 'bridge/urc-trigger.txt'
+
+permissions:
+  contents: write
+
+jobs:
+  inventory:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inventory source page
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import html, json, os, re, urllib.parse, urllib.request
+          from html.parser import HTMLParser
+
+          PAGE='https://biblicalstudies.org.uk/articles_urc-historical-society-01.php'
+          UA={'User-Agent':'Mozilla/5.0 (compatible; BSUK-Drive-Archiver/0.1)'}
+          req=urllib.request.Request(PAGE,headers=UA)
+          with urllib.request.urlopen(req,timeout=60) as r:
+              raw=r.read()
+          text=raw.decode('utf-8','replace')
+
+          class P(HTMLParser):
+              def __init__(self):
+                  super().__init__(); self.rows=[]; self.cur=None; self.stack=[]
+              def handle_starttag(self, tag, attrs):
+                  d=dict(attrs); self.stack.append(tag)
+                  if tag=='a' and 'href' in d:
+                      self.cur={'href':d['href'],'text':''}
+              def handle_data(self, data):
+                  if self.cur is not None: self.cur['text'] += data
+              def handle_endtag(self, tag):
+                  if tag=='a' and self.cur is not None:
+                      self.rows.append(self.cur); self.cur=None
+                  if self.stack: self.stack.pop()
+          p=P(); p.feed(text)
+
+          links=[]
+          for x in p.rows:
+              href=html.unescape(x['href'].strip())
+              url=urllib.parse.urljoin(PAGE,href)
+              if not urllib.parse.urlparse(url).path.lower().endswith('.pdf'):
+                  continue
+              anchor=' '.join(x['text'].split())
+              pos=text.find(x['href'])
+              context=''
+              if pos>=0:
+                  snippet=text[max(0,pos-350):pos+500]
+                  snippet=re.sub(r'<[^>]+>',' ',snippet)
+                  context=' '.join(html.unescape(snippet).split())
+              links.append({'anchor':anchor,'url':url,'context':context,'basename':os.path.basename(urllib.parse.urlparse(url).path)})
+
+          # dedupe by URL preserving order
+          seen=set(); out=[]
+          for row in links:
+              k=row['url'].lower()
+              if k in seen: continue
+              seen.add(k); out.append(row)
+
+          os.makedirs('bridge',exist_ok=True)
+          with open('bridge/urc-inventory.json','w',encoding='utf-8') as f:
+              json.dump({'page':PAGE,'pdf_count':len(out),'links':out},f,ensure_ascii=False,indent=2)
+          with open('bridge/urc-source-page.html','wb') as f: f.write(raw)
+          print('PDF_COUNT',len(out))
+          for row in out:
+              print(row['basename'],'|',row['anchor'],'|',row['url'])
+          PY
+      - name: Commit inventory
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add bridge/urc-inventory.json bridge/urc-source-page.html
+          git commit -m 'Record URC journal inventory' || exit 0
+          git push
