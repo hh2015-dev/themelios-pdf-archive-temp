@@ -10,80 +10,42 @@ permissions:
 jobs:
   fetch:
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - name: Download The Sower complete volumes 002-039
+      - name: Diagnose The Sower annual PDFs 1880-1917
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
-          import concurrent.futures, hashlib, json, os, urllib.request
+          import json, urllib.request, urllib.error
+          hosts=['https://biblicalstudies.org.uk','https://www.biblicalstudies.org.uk','https://biblicalstudies.gospelstudies.org.uk']
           UA={'User-Agent':'Mozilla/5.0 (compatible; BSUK-Drive-Archiver/0.1)'}
-          base='https://biblicalstudies.org.uk/pdf/the-sower/the-sower_{year}.pdf'
-          root='out_sower'
-          os.makedirs(root,exist_ok=True)
           rows=[]
-          def fetch(vol):
-              year=1878+vol
-              url=base.format(year=year)
-              batch = '002-010' if vol<=10 else '011-020' if vol<=20 else '021-030' if vol<=30 else '031-039'
-              d=os.path.join(root,batch); os.makedirs(d,exist_ok=True)
-              name=f'The Sower - Volume {vol:03d} ({year}) - Complete Volume.pdf'
-              dest=os.path.join(d,name)
-              req=urllib.request.Request(url,headers=UA)
-              with urllib.request.urlopen(req,timeout=180) as r: data=r.read()
-              if data[:5] != b'%PDF-': raise RuntimeError(f'Not PDF: {url} head={data[:20]!r}')
-              if len(data) < 100000: raise RuntimeError(f'Too small: {url} bytes={len(data)}')
-              open(dest,'wb').write(data)
-              return {'volume':vol,'year':year,'url':url,'filename':name,'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest(),'batch':batch}
-          with concurrent.futures.ThreadPoolExecutor(max_workers=6) as ex:
-              futs={ex.submit(fetch,v):v for v in range(2,40)}
-              for fut in concurrent.futures.as_completed(futs):
-                  row=fut.result(); rows.append(row); print('OK',row['volume'],row['year'],row['bytes'])
-          rows.sort(key=lambda r:r['volume'])
-          if len(rows)!=38 or [r['volume'] for r in rows] != list(range(2,40)):
-              raise SystemExit('Incomplete The Sower corpus')
-          json.dump(rows,open(os.path.join(root,'manifest.json'),'w'),indent=2)
-          print('COMPLETE',len(rows))
+          for year in range(1880,1918):
+              vol=year-1878; found=None; attempts=[]
+              for host in hosts:
+                  url=f'{host}/pdf/the-sower/the-sower_{year}.pdf'
+                  try:
+                      req=urllib.request.Request(url,headers=UA)
+                      with urllib.request.urlopen(req,timeout=45) as r:
+                          head=r.read(5); final=r.geturl(); status=getattr(r,'status',200); length=r.headers.get('Content-Length')
+                      attempts.append({'url':url,'status':status,'head':head.decode('latin1'),'length':length,'final':final})
+                      if head==b'%PDF-': found={'url':final,'status':status,'length':length}; break
+                  except urllib.error.HTTPError as e:
+                      attempts.append({'url':url,'status':e.code})
+                  except Exception as e:
+                      attempts.append({'url':url,'error':repr(e)})
+              row={'volume':vol,'year':year,'found':found,'attempts':attempts}; rows.append(row)
+              print('FOUND' if found else 'MISSING',f'Volume {vol:03d}',year, found['url'] if found else attempts)
+          json.dump(rows,open('sower-url-diagnostic.json','w'),indent=2)
+          print('TOTAL_FOUND',sum(bool(r['found']) for r in rows),'TOTAL_MISSING',sum(not r['found'] for r in rows))
           PY
-      - name: Upload Sower 002-010
+      - name: Upload diagnostic
         uses: actions/upload-artifact@v4
         with:
-          name: sower-002-010
-          path: out_sower/002-010/
-          if-no-files-found: error
-          compression-level: 0
-          retention-days: 1
-      - name: Upload Sower 011-020
-        uses: actions/upload-artifact@v4
-        with:
-          name: sower-011-020
-          path: out_sower/011-020/
-          if-no-files-found: error
-          compression-level: 0
-          retention-days: 1
-      - name: Upload Sower 021-030
-        uses: actions/upload-artifact@v4
-        with:
-          name: sower-021-030
-          path: out_sower/021-030/
-          if-no-files-found: error
-          compression-level: 0
-          retention-days: 1
-      - name: Upload Sower 031-039
-        uses: actions/upload-artifact@v4
-        with:
-          name: sower-031-039
-          path: out_sower/031-039/
-          if-no-files-found: error
-          compression-level: 0
-          retention-days: 1
-      - name: Upload Sower manifest
-        uses: actions/upload-artifact@v4
-        with:
-          name: sower-manifest
-          path: out_sower/manifest.json
+          name: sower-url-diagnostic
+          path: sower-url-diagnostic.json
           if-no-files-found: error
           compression-level: 0
           retention-days: 1
