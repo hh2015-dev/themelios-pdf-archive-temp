@@ -1,3 +1,4 @@
+# TBHS archive run trigger 2026-08-21
 import os, re, json, hashlib, sys
 from urllib.parse import urljoin, urlparse
 import requests
@@ -44,16 +45,12 @@ for page_url, html in pages:
             kind='article_pdf'
         records.append({'page':page_url,'label':label,'url':href,'kind':kind})
 
-# de-duplicate exact URLs
 uniq=[]; seen=set()
 for x in records:
     if x['url'] in seen: continue
     seen.add(x['url']); uniq.append(x)
 records=uniq
-
 selected=[x for x in records if x['kind'] in ('complete_issue_or_volume_pdf','index_or_contents_pdf','external_pdf')]
-
-# If the page exposes complete issue PDFs in /volumes/, those are authoritative; article PDFs are never selected.
 manifest={'pages':[p[0] for p in pages], 'all_pdf_links':records, 'selected':[], 'errors':[]}
 
 for rec in selected:
@@ -69,7 +66,6 @@ for rec in selected:
         with open(dest,'wb') as f: f.write(data)
         rec2=dict(rec)
         rec2.update({'file':fn,'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest(),'valid_pdf':True})
-        # infer volume / issue from canonical filename NN-N(.pdf) or NN-N_M
         m=re.match(r'(?P<vol>\d{2})-(?P<issue>\d(?:_\d)?)\.pdf$',fn,re.I)
         if m:
             rec2['volume']=int(m.group('vol'))
