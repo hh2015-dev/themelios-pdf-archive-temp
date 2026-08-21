@@ -5,6 +5,10 @@ on:
     paths:
       - bsuk_worker/download_themelios_ifes.py
       - .github/workflows/bsuk-themelios-ifes.yml
+  pull_request:
+    paths:
+      - bsuk_worker/download_themelios_ifes.py
+      - .github/workflows/bsuk-themelios-ifes.yml
   workflow_dispatch:
 
 permissions:
