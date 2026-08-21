@@ -1,0 +1,68 @@
+name: URC Volumes 2-10 archive
+
+on:
+  push:
+    branches: [urc-v2-10-archive-run]
+    paths:
+      - '.github/workflows/urc-v2-10-archive.yml'
+      - 'bridge/urc-v2-10-trigger.txt'
+
+permissions:
+  contents: write
+
+jobs:
+  fetch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download complete issues and indexes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import concurrent.futures, hashlib, json, os, urllib.request
+          UA={'User-Agent':'Mozilla/5.0 (compatible; BSUK-Drive-Archiver/0.1)'}
+          base='https://biblicalstudies.org.uk/pdf/jurchs/'
+          targets=[]
+          for v in range(2,11):
+              for i in range(1,11):
+                  targets.append((v,f'{v:02d}-{i:02d}.pdf',base+f'{v:02d}-{i:02d}.pdf'))
+              targets.append((v,f'index-{v:02d}.pdf',base+f'index-{v:02d}.pdf'))
+          assert len(targets)==99
+          os.makedirs('out/pdfs',exist_ok=True)
+          def get_one(t):
+              v,name,url=t
+              req=urllib.request.Request(url,headers=UA)
+              with urllib.request.urlopen(req,timeout=120) as r: data=r.read()
+              if data[:5]!=b'%PDF-': raise RuntimeError(f'Not PDF: {url}')
+              path=os.path.join('out','pdfs',name)
+              open(path,'wb').write(data)
+              return {'volume':v,'basename':name,'url':url,'size':len(data),'sha256':hashlib.sha256(data).hexdigest()}
+          rows=[]
+          with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:
+              futs=[ex.submit(get_one,t) for t in targets]
+              for fut in concurrent.futures.as_completed(futs):
+                  r=fut.result(); rows.append(r); print('OK',r['basename'],r['size'])
+          rows.sort(key=lambda r:r['basename'])
+          if len(rows)!=99: raise SystemExit(f'Expected 99, got {len(rows)}')
+          json.dump(rows,open('out/manifest.json','w'),indent=2)
+          print('COMPLETE',len(rows))
+          PY
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: urc-volumes-2-10-complete-pdfs
+          path: out/
+          compression-level: 0
+          retention-days: 1
+      - name: Record run id
+        shell: bash
+        run: |
+          mkdir -p bridge
+          printf '%s\n' "$GITHUB_RUN_ID" > bridge/urc-v2-10-last-run.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add bridge/urc-v2-10-last-run.txt
+          git commit -m "Record URC v2-10 run $GITHUB_RUN_ID" || exit 0
+          git push
