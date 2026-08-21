@@ -1,0 +1,38 @@
+name: BSUK The Sower bridge test
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/bsuk-the-sower-bridge-test.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch The Sower Volume 001
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p 'bridge/the-sower/Volume 001'
+          url='https://biblicalstudies.org.uk/pdf/the-sower/the-sower_1879.pdf'
+          out='bridge/the-sower/Volume 001/The Sower - Volume 001 (1879) - Complete Volume.pdf'
+          curl -fL --retry 4 --retry-delay 3 -A 'Mozilla/5.0' "$url" -o "$out"
+          test "$(head -c 5 "$out")" = '%PDF-'
+          test "$(stat -c%s "$out")" -gt 10000
+          sha256sum "$out" | tee 'bridge/the-sower/Volume 001/SHA256.txt'
+          ls -lh "$out"
+      - name: Commit bridge file
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- 'bridge/the-sower/Volume 001/'
+          git commit -m 'Temporary The Sower bridge Volume 001' || exit 0
+          git push
