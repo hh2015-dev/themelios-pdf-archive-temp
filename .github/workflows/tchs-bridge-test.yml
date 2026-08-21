@@ -7,22 +7,27 @@ on:
       - '.github/workflows/tchs-bridge-test.yml'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   fetch:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - name: Download one TCHS issue
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p out
-          curl -fL --retry 4 --retry-delay 3 -A 'Mozilla/5.0' 'https://biblicalstudies.org.uk/pdf/congregational-history/01-1.pdf' -o out/01-1.pdf
-          test "$(head -c 5 out/01-1.pdf)" = '%PDF-'
-          ls -lh out/01-1.pdf
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: tchs-01-1
-          path: out/01-1.pdf
-          if-no-files-found: error
-          retention-days: 1
+          mkdir -p bridge/tchs
+          curl -fL --retry 4 --retry-delay 3 -A 'Mozilla/5.0' 'https://biblicalstudies.org.uk/pdf/congregational-history/01-1.pdf' -o bridge/tchs/01-1.pdf
+          test "$(head -c 5 bridge/tchs/01-1.pdf)" = '%PDF-'
+          ls -lh bridge/tchs/01-1.pdf
+      - name: Commit bridge file
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- bridge/tchs/01-1.pdf
+          git commit -m 'Temporary TCHS bridge file 01-1' || exit 0
+          git push
