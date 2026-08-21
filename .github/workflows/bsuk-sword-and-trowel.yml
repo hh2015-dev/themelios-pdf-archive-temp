@@ -1,0 +1,54 @@
+name: BSUK Sword and Trowel archive
+
+on:
+  pull_request:
+    paths:
+      - bsuk_worker/download_sword_and_trowel.py
+      - .github/workflows/bsuk-sword-and-trowel.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install requests
+      - run: python bsuk_worker/download_sword_and_trowel.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sword-and-trowel-batch-1
+          path: sword_and_trowel_archive/batch_1/
+          if-no-files-found: error
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sword-and-trowel-batch-2
+          path: sword_and_trowel_archive/batch_2/
+          if-no-files-found: error
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sword-and-trowel-batch-3
+          path: sword_and_trowel_archive/batch_3/
+          if-no-files-found: error
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sword-and-trowel-batch-4
+          path: sword_and_trowel_archive/batch_4/
+          if-no-files-found: error
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sword-and-trowel-manifest
+          path: |
+            sword_and_trowel_archive/manifest.json
+            sword_and_trowel_archive/errors.json
+          retention-days: 1
