@@ -1,0 +1,5 @@
+﻿Extension,PageUrl,HTTP,Title,PdfLinks,Status
+1,https://biblicalstudies.org.uk/articles_the-sower_01.php,200,BiblicalStudies.org.uk: The Sower Vols. 1-19 (1879-1897),17,OK
+2,https://biblicalstudies.org.uk/articles_the-sower_02.php,200,BiblicalStudies.org.uk: The Sower Vols. 1-19 (1879-1897),3,OK
+3,https://biblicalstudies.org.uk/articles_the-sower_03.php,,,,ERROR <HTTPError 404: 'Not Found'>
+4,https://biblicalstudies.org.uk/articles_the-sower_04.php,,,,ERROR <HTTPError 404: 'Not Found'>
