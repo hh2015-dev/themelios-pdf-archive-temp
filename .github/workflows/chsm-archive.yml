@@ -16,6 +16,16 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - name: Record run id immediately
+        shell: bash
+        run: |
+          mkdir -p bridge
+          printf '%s\n' "$GITHUB_RUN_ID" > bridge/chsm-last-run.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add bridge/chsm-last-run.txt
+          git commit -m "Record CHSM run $GITHUB_RUN_ID" || true
+          git push || true
       - name: Discover and download linked CHSM PDFs
         shell: bash
         run: |
@@ -67,13 +77,3 @@ jobs:
           path: out/
           compression-level: 0
           retention-days: 1
-      - name: Record successful run id
-        shell: bash
-        run: |
-          mkdir -p bridge
-          printf '%s\n' "$GITHUB_RUN_ID" > bridge/chsm-last-run.txt
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add bridge/chsm-last-run.txt
-          git commit -m "Record CHSM run $GITHUB_RUN_ID" || exit 0
-          git push
