@@ -1,0 +1,42 @@
+PAGES
+https://biblicalstudies.org.uk/articles_tbhs_01.php
+https://biblicalstudies.org.uk/articles_tbhs_02.php
+
+ALL_PDF_LINKS=210
+SELECTED=34
+ERRORS=0
+
+1	1	01-1.pdf	3551156	71253858eb4f99d93c67c38ed96ae48bb8f22b0406f000774762768f0dbcc0ff	https://biblicalstudies.org.uk/pdf/tbhs/volumes/01-1.pdf
+1	2	01-2.pdf	2697783	b53a660036f91a77aa8f58889a8573d83d39ec8aef4863036d4d1303045e155d	https://biblicalstudies.org.uk/pdf/tbhs/volumes/01-2.pdf
+1	3	01-3.pdf	3843653	4ae3b9ef9623ec633cc057bf14c648ddabc1542ca5c8d8ed2444ee095f7cf2fa	https://biblicalstudies.org.uk/pdf/tbhs/volumes/01-3.pdf
+1	4	01-4.pdf	3847388	cd0f1d66bb76d1214d1a9c4d7bf5cfeda0df8f5f8fad042f52b283d38559433e	https://biblicalstudies.org.uk/pdf/tbhs/volumes/01-4.pdf
+2	1	02-1.pdf	4932300	95df90d3b2dc9648267243e965744ccce2f11855b9562caceba5b1e9b7a9ad90	https://biblicalstudies.org.uk/pdf/tbhs/volumes/02-1.pdf
+?	?	02-1_257.pdf	921276	623c6e8fed93c3963037bb86b120221390904ce6a60501037032ed33ab61da71	https://biblicalstudies.org.uk/pdf/tbhs/02-1_257.pdf
+2	2	02-2.pdf	3732157	8905fa34e0005f3eb7350d9c37d733f55d18493288663c4c6177b8d75c11f59a	https://biblicalstudies.org.uk/pdf/tbhs/volumes/02-2.pdf
+?	?	02-2_077.pdf	1538260	69305016d648eaa4060c7d330edf44059e1984a2fb42ed3804cb8937c6cb7670	https://biblicalstudies.org.uk/pdf/tbhs/02-2_077.pdf
+2	3	02-3.pdf	4218594	9b08ec5d49e4c7926c7c6df5fcc07e8990179ad9ac9a389cadea4ea9eaca0d11	https://biblicalstudies.org.uk/pdf/tbhs/volumes/02-3.pdf
+2	4	02-4.pdf	3441626	be8062e301fafef745d0eb8a64b9a479a205920941f11b965c9a407abf942312	https://biblicalstudies.org.uk/pdf/tbhs/volumes/02-4.pdf
+?	?	02-4_278.pdf	752622	c681d4b278af527cb936cb663b11894b3e738654b37735c113fd5d096affc6eb	https://biblicalstudies.org.uk/pdf/tbhs/02-4_278.pdf
+3	1	03-1.pdf	4158344	138b6e4e85ecfdf82146b82986170837f65d26e69c4fff2cc75de54957d9d748	https://biblicalstudies.org.uk/pdf/tbhs/volumes/03-1.pdf
+3	2	03-2.pdf	3835675	30ffae344d1ad60735cdd9e805e2f5cf0fc4a43b67a7c0b56235b0eb8b52f003	https://biblicalstudies.org.uk/pdf/tbhs/volumes/03-2.pdf
+3	3	03-3.pdf	3372290	365edd194f8c501c4e5e22ea0ad25911bf76e207c318589e2e8199147edb628e	https://biblicalstudies.org.uk/pdf/tbhs/volumes/03-3.pdf
+3	4	03-4.pdf	3673412	54c3951c36d9e8307f14e627226bcf9b485310c892ae7f32b4b882cee5123d59	https://biblicalstudies.org.uk/pdf/tbhs/volumes/03-4.pdf
+?	?	03-4_263.pdf	862973	c1afe61690d6e21387f925bac7a5c10c01887e9c6b38901b1cc76aff660e1fa5	https://biblicalstudies.org.uk/pdf/tbhs/03-4_263.pdf
+4	1	04-1.pdf	3447777	ed3f806b5c8c031a5de1b23a4542db7d73af31011880c88a832eba5faa78dcad	https://biblicalstudies.org.uk/pdf/tbhs/volumes/04-1.pdf
+4	2	04-2.pdf	3257511	28b6a5d1b983c65124b71334d5a2ff40982bb60f4ca6b79d8895089889e5c345	https://biblicalstudies.org.uk/pdf/tbhs/volumes/04-2.pdf
+4	3	04-3.pdf	2924656	3914a935eec8a39ba71e3d93078f35188ab9bb9c118e2925015908546cd5926a	https://biblicalstudies.org.uk/pdf/tbhs/volumes/04-3.pdf
+4	4	04-4.pdf	4144487	505f45ed6db1aae55cab520821c66db1140ea026d5afb6d22c6b702c719a8c2d	https://biblicalstudies.org.uk/pdf/tbhs/volumes/04-4.pdf
+?	?	04-4_263.pdf	791454	0ec4d08d90743b32127d094a648537fcb517b7ffa1e56f926d5406e10887d9cd	https://biblicalstudies.org.uk/pdf/tbhs/04-4_263.pdf
+5	1	05-1.pdf	4069362	cbe293872b42de0cb4b317ba90b951b2a78da35c904fe7089eda8324ebd1e6c1	https://biblicalstudies.org.uk/pdf/tbhs/volumes/05-1.pdf
+5	3	05-3.pdf	7480856	c33abde4d88baa2a0a7fc1e50c3ccbc4c4b1e7ff1be6931048246c9413ba0296	https://biblicalstudies.org.uk/pdf/tbhs/volumes/05-3.pdf
+?	?	05-3_241.pdf	826818	746c7a937e4d5362ce6e8f9af6db0ca93e7823b870bf32a183aabd9f403e5b5f	https://biblicalstudies.org.uk/pdf/tbhs/05-3_241.pdf
+?	?	05-3_246.pdf	1070140	14be65f9862e459a8b9704d06758cb70521aed41581ae9fcce396305ad3522ce	https://biblicalstudies.org.uk/pdf/tbhs/05-3_246.pdf
+6	1	06-1.pdf	3624764	45ae4eec96919a2c3dedbc6c0419eb4beac94a30db7901bd3e88963e3960c10e	https://biblicalstudies.org.uk/pdf/tbhs/volumes/06-1.pdf
+6	2	06-2.pdf	2968223	2ad7d5be9a7be120bb33d6d2c86aed87f1defcd982cfed057b29d7d8f24ddb58	https://biblicalstudies.org.uk/pdf/tbhs/volumes/06-2.pdf
+6	3	06-3.pdf	2295978	7d4a92e1a8ea26181d50a07c8fb6a34d57658f4f0199c99062e8664bcf47839b	https://biblicalstudies.org.uk/pdf/tbhs/volumes/06-3.pdf
+?	?	06-3_260.pdf	891702	d86831f7b63bcd2ca930b84e724b08582b65fddacacd5746f121e795137dd404	https://biblicalstudies.org.uk/pdf/tbhs/06-3_260.pdf
+?	?	07-1-2.pdf	3513774	67b75eee110d9bcb1d5bc18b6bea1eb9010b28493b7d6f10d4d396f9e53ba951	https://biblicalstudies.org.uk/pdf/tbhs/volumes/07-1-2.pdf
+7	3_4	07-3_4.pdf	3610331	393fe92eb25a14c3deaa8c00ecb1f1d39b19c73da88722edd1f39d2afd09a9d9	https://biblicalstudies.org.uk/pdf/tbhs/volumes/07-3_4.pdf
+?	?	07-3_4_129.pdf	975293	738075a56be3f78bdfddbf943522dac81a45f731e0a7e2cdb58c1f9bf2b7d835	https://biblicalstudies.org.uk/pdf/tbhs/07-3_4_129.pdf
+?	?	07-3_4_182.pdf	2045473	37fa3679201eef07117b20e0d4d2eac43fe3a6250437398c7d6990d8b97092f4	https://biblicalstudies.org.uk/pdf/tbhs/07-3_4_182.pdf
+?	?	07-3_4_245.pdf	914003	96826b452139ef9ca6eeedf60af7759d2cfb1e157edfab60accbb526e8ebb8a9	https://biblicalstudies.org.uk/pdf/tbhs/07-3_4_245.pdf
