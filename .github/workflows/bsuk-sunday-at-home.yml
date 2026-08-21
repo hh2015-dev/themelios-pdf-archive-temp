@@ -1,0 +1,20 @@
+name: BSUK Sunday at Home
+on:
+  push:
+    branches: [sunday-at-home-run1]
+  workflow_dispatch:
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install requests beautifulsoup4
+      - run: python bsuk_worker/discover_sunday_at_home.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bsuk-sunday-at-home
+          path: out_sunday_at_home/
+          if-no-files-found: error
