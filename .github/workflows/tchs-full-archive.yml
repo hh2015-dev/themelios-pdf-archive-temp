@@ -18,13 +18,16 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p out
-          curl -fL --retry 4 --retry-delay 2 -A 'Mozilla/5.0' 'https://biblicalstudies.org.uk/pdf/congregational-history/01_19_index.pdf' -o 'out/Index_Vols_001-019.pdf'
-          test "$(head -c 5 'out/Index_Vols_001-019.pdf')" = '%PDF-'
-          for v in $(seq -w 1 7); do
-            mkdir -p "out/Volume_0${v}"
+          curl -fL --retry 4 --retry-delay 2 -A 'Mozilla/5.0' 'https://biblicalstudies.org.uk/pdf/congregational-history/01_19_index.pdf' -o 'out/Transactions_of_Congregational_Historical_Society_Index_Volumes_001-019.pdf'
+          test "$(head -c 5 'out/Transactions_of_Congregational_Historical_Society_Index_Volumes_001-019.pdf')" = '%PDF-'
+          for n in $(seq 1 7); do
+            v=$(printf '%02d' "$n")
+            vv=$(printf '%03d' "$n")
+            mkdir -p "out/Volume_${vv}"
             for i in $(seq 1 6); do
+              ii=$(printf '%02d' "$i")
               url="https://biblicalstudies.org.uk/pdf/congregational-history/${v}-${i}.pdf"
-              file="out/Volume_0${v}/Transactions_of_Congregational_Historical_Society_Volume_0${v}_Issue_0${i}.pdf"
+              file="out/Volume_${vv}/Transactions_of_Congregational_Historical_Society_Volume_${vv}_Issue_${ii}.pdf"
               echo "GET $url"
               curl -fL --retry 4 --retry-delay 2 -A 'Mozilla/5.0' "$url" -o "$file"
               test "$(head -c 5 "$file")" = '%PDF-'
