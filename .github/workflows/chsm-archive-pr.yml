@@ -1,4 +1,4 @@
-name: Semanatorul discovery PR
+name: Semanatorul archive PR
 
 on:
   pull_request:
@@ -8,48 +8,80 @@ permissions:
   contents: read
 
 jobs:
-  discover:
+  archive:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - name: Discover Semanatorul archive PDFs
+      - name: Download verified Semanatorul complete issues
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
-          import html, json, re, urllib.parse, urllib.request
-          pages=[
-            'https://semanatorul.emanuel.ro/archive/',
-            'https://biblicalstudies.org.uk/articles_semanatorul-the-sower_01.php'
+          import concurrent.futures, hashlib, json, os, urllib.request
+          UA={'User-Agent':'Mozilla/5.0 (compatible; BSUK-Drive-Archiver/0.1)'}
+          items=[
+            (1,1,2020,'https://semanatorul.emanuel.ro/wp-content/uploads/2022/07/16.02.22-Vol.1-No.1.pdf',False),
+            (1,2,2021,'https://semanatorul.emanuel.ro/wp-content/uploads/2022/07/16.02.22-Vol.1-No.2.pdf',False),
+            (2,1,2021,'https://semanatorul.emanuel.ro/wp-content/uploads/2022/07/16.02.22-Vol.2-No.1.pdf',False),
+            (2,2,2022,'https://semanatorul.emanuel.ro/wp-content/uploads/2025/04/Semanatorul-2.2-03.2022.pdf',False),
+            (3,1,2022,'https://semanatorul.emanuel.ro/wp-content/uploads/2023/02/Semanatorul-3.1-09.2022.pdf',False),
+            (3,2,2023,'https://semanatorul.emanuel.ro/wp-content/uploads/2023/12/Semanatorul-3.2-03.2023.pdf',False),
+            (4,1,2023,'https://semanatorul.emanuel.ro/wp-content/uploads/2023/12/Semanatorul-4.1.2023_full.pdf',False),
+            (4,2,2024,'https://semanatorul.emanuel.ro/wp-content/uploads/2024/03/Semanatorul-4.2.2024_no-crops.pdf',False),
+            (4,2,2024,'https://semanatorul.emanuel.ro/wp-content/uploads/2024/12/Semanatorul-4.2.Supp_2024-2.pdf',True),
+            (5,1,2024,'https://semanatorul.emanuel.ro/wp-content/uploads/2024/12/Semanatorul-5.1.2024.pdf',False),
+            (5,2,2025,'https://semanatorul.emanuel.ro/wp-content/uploads/2025/06/Semanatorul-5.2.2025.pdf',False),
+            (6,1,2025,'https://semanatorul.emanuel.ro/wp-content/uploads/2025/12/Semanatorul-6.1.2025.pdf',False),
+            (6,2,2026,'https://semanatorul.emanuel.ro/wp-content/uploads/2026/05/Semanatorul-6.2_spring-2026.pdf',False),
           ]
-          UA={'User-Agent':'Mozilla/5.0 (compatible; BSUK-Drive-Archiver/0.1; +https://biblicalstudies.org.uk/)'}
-          out=[]
-          for page in pages:
-              try:
-                  req=urllib.request.Request(page,headers=UA)
-                  with urllib.request.urlopen(req,timeout=60) as r: raw=r.read(); final=r.geturl(); status=getattr(r,'status',200)
-                  text=raw.decode('utf-8','replace')
-                  links=[]
-                  for m in re.finditer(r'''(?is)<a\b[^>]*href\s*=\s*["']([^"']+)["'][^>]*>(.*?)</a>''',text):
-                      href=html.unescape(m.group(1).strip())
-                      label=re.sub(r'(?is)<[^>]+>',' ',m.group(2))
-                      label=html.unescape(re.sub(r'\s+',' ',label)).strip()
-                      url=urllib.parse.urljoin(final,href)
-                      if '.pdf' in urllib.parse.urlparse(url).path.lower():
-                          links.append({'url':url,'label':label})
-                  out.append({'page':page,'status':status,'final':final,'bytes':len(raw),'links':links})
-                  print('PAGE_OK',page,'PDF_LINKS',len(links))
-                  for x in links: print('PDF',x['label'][:120],x['url'])
-              except Exception as e:
-                  out.append({'page':page,'error':repr(e),'links':[]})
-                  print('PAGE_ERROR',page,repr(e))
-          json.dump(out,open('semanatorul-discovery.json','w'),ensure_ascii=False,indent=2)
+          root='out_semanatorul'; os.makedirs(root,exist_ok=True)
+          def fetch(item):
+              vol,issue,year,url,supp=item
+              batch='volumes-001-003' if vol<=3 else 'volume-004' if vol==4 else 'volumes-005-006'
+              d=os.path.join(root,batch); os.makedirs(d,exist_ok=True)
+              suffix=' Supplement' if supp else ''
+              name=f'Semănătorul (The Sower) - Volume {vol:03d} - Issue {issue:02d}{suffix} ({year}) - Complete Issue.pdf'
+              req=urllib.request.Request(url,headers=UA)
+              with urllib.request.urlopen(req,timeout=180) as r: data=r.read(); final=r.geturl()
+              if data[:5] != b'%PDF-': raise RuntimeError(f'Not PDF: {url} head={data[:20]!r}')
+              if len(data)<100000: raise RuntimeError(f'Too small: {url} bytes={len(data)}')
+              dest=os.path.join(d,name); open(dest,'wb').write(data)
+              return {'volume':vol,'issue':issue,'year':year,'supplement':supp,'source_url':url,'final_url':final,'filename':name,'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest(),'batch':batch}
+          rows=[]
+          with concurrent.futures.ThreadPoolExecutor(max_workers=6) as ex:
+              futs=[ex.submit(fetch,x) for x in items]
+              for fut in concurrent.futures.as_completed(futs):
+                  row=fut.result(); rows.append(row); print('OK',row['volume'],row['issue'],'SUPP' if row['supplement'] else '',row['bytes'])
+          rows.sort(key=lambda r:(r['volume'],r['issue'],r['supplement']))
+          if len(rows)!=13: raise SystemExit(f'Expected 13, got {len(rows)}')
+          json.dump(rows,open(os.path.join(root,'manifest.json'),'w'),ensure_ascii=False,indent=2)
+          print('COMPLETE',len(rows))
           PY
-      - name: Upload discovery artifact
+      - name: Upload volumes 001-003
         uses: actions/upload-artifact@v4
         with:
-          name: semanatorul-discovery
-          path: semanatorul-discovery.json
-          if-no-files-found: error
+          name: semanatorul-volumes-001-003
+          path: out_semanatorul/volumes-001-003/
+          compression-level: 0
+          retention-days: 1
+      - name: Upload volume 004
+        uses: actions/upload-artifact@v4
+        with:
+          name: semanatorul-volume-004
+          path: out_semanatorul/volume-004/
+          compression-level: 0
+          retention-days: 1
+      - name: Upload volumes 005-006
+        uses: actions/upload-artifact@v4
+        with:
+          name: semanatorul-volumes-005-006
+          path: out_semanatorul/volumes-005-006/
+          compression-level: 0
+          retention-days: 1
+      - name: Upload manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: semanatorul-manifest
+          path: out_semanatorul/manifest.json
           retention-days: 1
