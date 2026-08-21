@@ -1,0 +1,82 @@
+name: BSUK The Sower page discovery
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/bsuk-the-sower-page-discovery.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Discover source pages and literal PDF links
+        shell: bash
+        run: |
+          python - <<'PY'
+          import csv, html, json, pathlib, re, urllib.parse, urllib.request
+          from html.parser import HTMLParser
+          UA={'User-Agent':'Mozilla/5.0 BSUK-The-Sower-Discovery/1.0'}
+          base='https://biblicalstudies.org.uk/'
+          outdir=pathlib.Path('bridge/the-sower/page-discovery')
+          outdir.mkdir(parents=True, exist_ok=True)
+          pages=[]; pdfs=[]
+          for n in range(1,21):
+              page=f'https://biblicalstudies.org.uk/articles_the-sower_{n:02d}.php'
+              try:
+                  req=urllib.request.Request(page,headers=UA)
+                  with urllib.request.urlopen(req,timeout=60) as r:
+                      raw=r.read().decode('utf-8','replace')
+                      status=getattr(r,'status',200)
+                  title=''
+                  mt=re.search(r'(?is)<title[^>]*>(.*?)</title>',raw)
+                  if mt: title=html.unescape(re.sub(r'\s+',' ',re.sub(r'<[^>]+>',' ',mt.group(1)))).strip()
+                  links=[]
+                  for href,atext in re.findall(r'(?is)<a\b[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>',raw):
+                      full=urllib.parse.urljoin(page,html.unescape(href))
+                      text=html.unescape(re.sub(r'\s+',' ',re.sub(r'(?is)<[^>]+>',' ',atext))).strip()
+                      if '.pdf' in urllib.parse.urlparse(full).path.lower():
+                          links.append((full,text))
+                  pages.append([n,page,status,title,len(links),'OK'])
+                  for full,text in links:
+                      pdfs.append([n,page,full,text])
+                  print('PAGE',n,status,title,'PDFS',len(links))
+              except Exception as e:
+                  pages.append([n,page,'','','',f'ERROR {e!r}'])
+                  print('PAGE',n,'ERROR',repr(e))
+                  # once two consecutive page-extension 404s/errors occur after at least one page, stop
+                  if n>1 and len(pages)>=2 and all(str(x[-1]).startswith('ERROR') for x in pages[-2:]):
+                      break
+          # de-duplicate exact PDF URLs while retaining first source page/text
+          seen=set(); uniq=[]
+          for row in pdfs:
+              key=row[2]
+              if key in seen: continue
+              seen.add(key); uniq.append(row)
+          with open(outdir/'pages.csv','w',newline='',encoding='utf-8-sig') as f:
+              w=csv.writer(f); w.writerow(['Extension','PageUrl','HTTP','Title','PdfLinks','Status']); w.writerows(pages)
+          with open(outdir/'pdf-links.csv','w',newline='',encoding='utf-8-sig') as f:
+              w=csv.writer(f); w.writerow(['Extension','PageUrl','PdfUrl','AnchorText']); w.writerows(uniq)
+          summary={'pages_attempted':len(pages),'pages_ok':sum(r[-1]=='OK' for r in pages),'unique_pdf_links':len(uniq)}
+          (outdir/'summary.json').write_text(json.dumps(summary,indent=2),encoding='utf-8')
+          print('SUMMARY',json.dumps(summary))
+          if not uniq: raise SystemExit('No PDF links discovered')
+          PY
+      - name: Commit discovery manifests
+        if: always()
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- bridge/the-sower/page-discovery/
+          git commit -m 'The Sower literal page discovery manifest' || exit 0
+          git push
