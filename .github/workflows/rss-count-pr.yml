@@ -1,0 +1,66 @@
+name: RSS live corpus count PR
+on:
+  pull_request:
+    branches: [ main ]
+permissions:
+  contents: read
+jobs:
+  count:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: python -m pip install --disable-pip-version-check beautifulsoup4
+      - shell: bash
+        run: |
+          python - <<'PY'
+          import collections, html, re, urllib.parse, urllib.request
+          from bs4 import BeautifulSoup
+          UA={'User-Agent':'Mozilla/5.0 (compatible; BSUK-Drive-Archiver/0.1)'}
+          volume_counts=collections.Counter(); issue_counts=collections.Counter(); global_urls={}; total_occ=0
+          external=[]; broken_context=[]
+          for i in range(1,5):
+            page=f'https://biblicalstudies.org.uk/articles_rss_{i:02d}.php'
+            req=urllib.request.Request(page,headers=UA)
+            with urllib.request.urlopen(req,timeout=60) as r:
+              raw=r.read(); final=r.geturl(); status=r.status
+            print('PAGE_FETCH',i,status,final,len(raw))
+            soup=BeautifulSoup(raw,'html.parser'); page_urls={}; pc=collections.Counter(); pic=collections.Counter()
+            for a in soup.find_all('a',href=True):
+              href=html.unescape(a['href'].strip())
+              url=urllib.parse.urljoin(final,href)
+              p=urllib.parse.urlparse(url)
+              if not p.path.lower().endswith('.pdf'): continue
+              total_occ += 1
+              text=re.sub(r'\s+',' ',html.unescape(a.get_text(' ',strip=True))).strip()
+              context=text
+              node=a.parent
+              for _ in range(5):
+                if re.search(r'Religion,?\s*State\s*(?:&|and)\s*Society\s+\d+',context,re.I): break
+                if node is None: break
+                context=re.sub(r'\s+',' ',html.unescape(node.get_text(' ',strip=True))).strip()
+                node=node.parent
+              m=re.search(r'Religion,?\s*State\s*(?:&|and)\s*Society\s+(\d+)\.(\d+(?:[-&]\d+)?)',context,re.I)
+              if not m:
+                broken_context.append((i,url,context[:250])); continue
+              v=int(m.group(1)); issue=m.group(2)
+              key=url.lower()
+              page_urls.setdefault(key,(url,v,issue,context))
+              global_urls.setdefault(key,(url,v,issue,context,i))
+              if p.netloc and 'biblicalstudies.org.uk' not in p.netloc and 'gospelstudies.org.uk' not in p.netloc:
+                external.append((i,v,issue,url))
+            for _,(_,v,issue,_) in page_urls.items():
+              pc[v]+=1; pic[(v,issue)]+=1; volume_counts[v]+=1; issue_counts[(v,issue)]+=1
+            print('PAGE',i,'UNIQUE_PDFS',len(page_urls),'VOLUME_COUNTS',dict(sorted(pc.items())))
+            print('PAGE_ISSUES',i,dict(sorted((f'{v}.{iss}',c) for (v,iss),c in pic.items())))
+          print('PDF_LINK_OCCURRENCES',total_occ)
+          print('UNIQUE_PDF_URLS',len(global_urls))
+          print('VOLUME_COUNTS',dict(sorted(volume_counts.items())))
+          print('ISSUE_COUNTS',dict(sorted((f'{v}.{iss}',c) for (v,iss),c in issue_counts.items())))
+          print('EXTERNAL_PDFS',len(external))
+          for x in external: print('EXTERNAL',x)
+          print('UNPARSED_PDF_CONTEXTS',len(broken_context))
+          for x in broken_context: print('UNPARSED',x)
+          expected=set(range(20,40)); actual=set(volume_counts)
+          print('MISSING_VOLUMES',sorted(expected-actual))
+          print('EXTRA_VOLUMES',sorted(actual-expected))
+          PY
