@@ -1,0 +1,59 @@
+name: GTU Arnobius OCR-preserving compression
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  compress:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ocrmypdf poppler-utils
+      - name: Download original
+        run: |
+          curl -fL --retry 5 --retry-delay 2 'https://archive.org/download/adversusgentesli00arno/adversusgentesli00arno.pdf' -o original.pdf
+          test "$(head -c 5 original.pdf)" = '%PDF-'
+      - name: Record original metrics
+        run: |
+          pdfinfo original.pdf | grep '^Pages:' | tee report.txt
+          echo "ORIGINAL_BYTES=$(stat -c%s original.pdf)" | tee -a report.txt
+          pdftotext original.pdf original.txt
+          echo "ORIGINAL_TEXT_BYTES=$(wc -c < original.txt)" | tee -a report.txt
+      - name: Compress while preserving OCR
+        run: |
+          ocrmypdf \
+            --skip-text \
+            --optimize 3 \
+            --jpeg-quality 90 \
+            --png-quality 90 \
+            --output-type pdf \
+            --jobs 4 \
+            --fast-web-view 0 \
+            --quiet \
+            original.pdf arnobius-compressed.pdf
+      - name: Validate result
+        run: |
+          test "$(head -c 5 arnobius-compressed.pdf)" = '%PDF-'
+          pdfinfo arnobius-compressed.pdf | grep '^Pages:' | tee -a report.txt
+          echo "OUTPUT_BYTES=$(stat -c%s arnobius-compressed.pdf)" | tee -a report.txt
+          pdftotext arnobius-compressed.pdf compressed.txt
+          echo "OUTPUT_TEXT_BYTES=$(wc -c < compressed.txt)" | tee -a report.txt
+          python3 - <<'PY' | tee -a report.txt
+          import os
+          n=os.path.getsize('arnobius-compressed.pdf')
+          print(f'OUTPUT_MIB={n/1048576:.2f}')
+          print('TARGET_90_100_MIB=' + ('YES' if 90*1048576 <= n <= 100*1048576 else 'NO'))
+          PY
+      - name: Upload compressed PDF
+        uses: actions/upload-artifact@v4
+        with:
+          name: arnobius-ocr-preserved-compressed
+          path: |
+            arnobius-compressed.pdf
+            report.txt
+          compression-level: 0
+          retention-days: 1
