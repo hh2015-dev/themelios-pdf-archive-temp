@@ -1,0 +1,41 @@
+name: GTU query only 20260823
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  query:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Query GTU only
+        shell: bash
+        run: |
+          python3 - <<'PY' | tee gtu_query.tsv
+          import json,urllib.parse,urllib.request
+          B='https://archive.org'
+          Q=[('syriac OR peshitta OR aramaic OR targum',4),('hebrew OR semitic OR ugaritic OR talmud',7),('septuagint OR textual OR manuscript OR papyri',6),('commentary OR exegesis OR biblical',11),('patristic OR origen OR chrysostom OR augustine',5),('archaeology OR assyrian OR babylonian OR palestine',8),('reformation OR calvin OR luther',9),('lexicon OR grammar OR concordance',10),('theology OR church OR doctrine',15)]
+          D={}
+          def gj(u):
+            req=urllib.request.Request(u,headers={'User-Agent':'GTU-inventory-query/1.0'})
+            with urllib.request.urlopen(req,timeout=25) as r:return json.load(r)
+          for terms,p in Q:
+            q=f'collection:graduatetheologicalunion AND mediatype:texts AND ({terms})'
+            ps={'q':q,'fl[]':['identifier','title','creator','year','date','volume','subject','language','contributor'],'rows':80,'page':p,'output':'json'}
+            try:
+              for d in gj(B+'/advancedsearch.php?'+urllib.parse.urlencode(ps,doseq=True))['response']['docs']:D[d['identifier']]=d
+            except Exception as e:print('ERR',terms,e)
+          for p in (71,83,97):
+            q='collection:graduatetheologicalunion AND mediatype:texts'
+            ps={'q':q,'fl[]':['identifier','title','creator','year','date','volume','subject','language','contributor'],'rows':80,'page':p,'output':'json','sort[]':'identifier asc'}
+            try:
+              for d in gj(B+'/advancedsearch.php?'+urllib.parse.urlencode(ps,doseq=True))['response']['docs']:D[d['identifier']]=d
+            except Exception as e:print('ERRB',p,e)
+          print('CANDIDATES_EXAMINED',len(D))
+          for i,d in list(D.items())[:900]:
+            vals=[i,d.get('title',''),d.get('creator',''),d.get('year',d.get('date','')),d.get('volume',''),d.get('language',''),d.get('subject',''),d.get('contributor','')]
+            vals=['; '.join(map(str,v)) if isinstance(v,list) else str(v or '') for v in vals]
+            print('ROW\t'+'\t'.join(v.replace('\t',' ').replace('\n',' ') for v in vals))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-query-20260823
+          path: gtu_query.tsv
