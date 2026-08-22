@@ -22,11 +22,19 @@ jobs:
       - run: pip install requests beautifulsoup4
       - name: Fetch and validate all 453 WHS PDFs
         run: python bsuk_worker/whs_fetch_all.py
-      - name: Upload corpus artifact
+      - name: Upload corpus part A
         uses: actions/upload-artifact@v4
         with:
-          name: whs-corpus
-          path: whs_corpus/
+          name: whs-corpus-a
+          path: whs_part_a/
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
+      - name: Upload corpus part B
+        uses: actions/upload-artifact@v4
+        with:
+          name: whs-corpus-b
+          path: whs_part_b/
           retention-days: 1
           compression-level: 0
           if-no-files-found: error
