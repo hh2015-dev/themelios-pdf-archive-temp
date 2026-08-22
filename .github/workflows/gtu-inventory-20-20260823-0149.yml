@@ -11,73 +11,55 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import json, urllib.parse, urllib.request, time, re
+          import json, urllib.parse, urllib.request
           queries = [
             'collection:graduatetheologicalunion AND mediatype:texts AND (title:"Dead Sea" OR title:Qumran OR title:pseudepigrapha OR title:apocrypha)',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:targum OR title:targums OR title:rabbinic OR title:talmud OR title:mishnah)',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:targum OR title:rabbinic OR title:talmud)',
             'collection:graduatetheologicalunion AND mediatype:texts AND (title:ugarit OR title:ugaritic OR title:assyrian OR title:babylonian OR title:semitic)',
             'collection:graduatetheologicalunion AND mediatype:texts AND (title:coptic OR title:ethiopic OR title:syriac OR title:aramaic)',
             'collection:graduatetheologicalunion AND mediatype:texts AND (title:philo OR title:josephus OR title:judaism OR title:jewish)',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:septuagint OR title:hexapla OR title:greek OR title:papyrus OR title:papyri)',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:patristic OR title:fathers OR title:athanasius OR title:origen OR title:jerome OR title:augustine OR title:chrysostom)',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:creed OR title:confession OR title:reformation OR title:luther OR title:calvin)',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:mission OR title:missionary OR title:missions)',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:septuagint OR title:hexapla OR title:papyrus OR title:papyri)',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:origen OR title:jerome OR title:augustine OR title:chrysostom)',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:creed OR title:confession OR title:reformation)',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:mission OR title:missionary)',
             'collection:graduatetheologicalunion AND mediatype:texts AND (title:concordance OR title:lexicon OR title:grammar OR title:bibliography)'
           ]
           seen=set(); candidates=[]
           for q in queries:
-            url='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode({'q':q,'fl[]':['identifier','title','creator','date','year','language','subject'],'rows':80,'page':1,'output':'json'}, doseq=True)
-            try:
-              data=json.load(urllib.request.urlopen(url, timeout=30))
-            except Exception as e:
-              print('SEARCHERR',q,e); continue
+            url='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode({'q':q,'fl[]':['identifier','title','creator','date','year','language','subject'],'rows':50,'page':1,'output':'json'}, doseq=True)
+            try: data=json.load(urllib.request.urlopen(url, timeout=20))
+            except Exception as e: print('SEARCHERR',e); continue
             for d in data.get('response',{}).get('docs',[]):
               i=d.get('identifier')
               if i and i not in seen:
                 seen.add(i); candidates.append(d)
           print('DISCOVERED_UNIQUE',len(candidates))
           out=[]
-          for idx,d in enumerate(candidates[:500]):
+          for d in candidates[:140]:
             i=d['identifier']
-            try:
-              m=json.load(urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(i), timeout=30))
-            except Exception:
-              continue
+            try: m=json.load(urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(i), timeout=15))
+            except Exception: continue
             md=m.get('metadata',{})
             coll=md.get('collection',[])
             if isinstance(coll,str): coll=[coll]
             if 'graduatetheologicalunion' not in coll: continue
-            files=m.get('files',[])
             pdfs=[]
-            for f in files:
+            for f in m.get('files',[]):
               n=f.get('name','')
-              if not n.lower().endswith('.pdf'): continue
-              if 'encrypted' in n.lower() or n.lower().endswith('.lcpdf'): continue
-              if str(f.get('private','false')).lower()=='true': continue
-              pdfs.append(f)
+              if n.lower().endswith('.pdf') and 'encrypted' not in n.lower() and not n.lower().endswith('.lcpdf') and str(f.get('private','false')).lower()!='true': pdfs.append(f)
             if not pdfs: continue
-            # choose largest public PDF, usually the main scan
             pdf=max(pdfs,key=lambda f:int(f.get('size') or 0))
-            title=md.get('title') or d.get('title') or ''
             creator=md.get('creator') or d.get('creator') or ''
             if isinstance(creator,list): creator='; '.join(map(str,creator))
-            date=md.get('date') or d.get('date') or md.get('year') or d.get('year') or ''
             lang=md.get('language') or d.get('language') or ''
             if isinstance(lang,list): lang=' | '.join(map(str,lang))
             subj=md.get('subject') or d.get('subject') or ''
             if isinstance(subj,list): subj=' | '.join(map(str,subj[:8]))
-            volume=md.get('volume','')
-            edition=md.get('edition','')
-            series=md.get('series','')
-            contributor=md.get('contributor','') or md.get('scanner','') or 'Internet Archive'
+            contributor=md.get('contributor','') or 'Internet Archive'
             if isinstance(contributor,list): contributor='; '.join(map(str,contributor))
-            pages=md.get('imagecount','')
-            link='https://archive.org/details/'+i
-            direct='https://archive.org/download/'+i+'/'+urllib.parse.quote(pdf.get('name',''))
-            rec={'identifier':i,'title':title,'creator':creator,'date':str(date),'language':str(lang),'subject':str(subj),'volume':str(volume),'edition':str(edition),'series':str(series),'pages':str(pages),'contributor':str(contributor),'pdf':pdf.get('name',''),'pdf_size':pdf.get('size',''),'item_link':link,'direct_pdf':direct}
+            rec={'identifier':i,'title':md.get('title') or d.get('title') or '','creator':creator,'date':str(md.get('date') or d.get('date') or md.get('year') or d.get('year') or ''),'language':str(lang),'subject':str(subj),'volume':str(md.get('volume','')),'edition':str(md.get('edition','')),'series':str(md.get('series','')),'pages':str(md.get('imagecount','')),'contributor':str(contributor),'pdf_size':pdf.get('size',''),'item_link':'https://archive.org/details/'+i,'direct_pdf':'https://archive.org/download/'+i+'/'+urllib.parse.quote(pdf.get('name',''))}
             out.append(rec)
-            if len(out)>=180: break
+            if len(out)>=70: break
           print('VERIFIED_PUBLIC_PDF',len(out))
-          for r in out:
-            print('REC\t'+json.dumps(r,ensure_ascii=False,separators=(',',':')))
+          for r in out: print('REC\t'+json.dumps(r,ensure_ascii=False,separators=(',',':')))
           PY
