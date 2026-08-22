@@ -1,1 +1,1 @@
-Temporary trigger for Religion in Communist Lands discovery on 2026-08-22. Fast inventory rerun. Do not merge.
+Temporary trigger for Religion in Communist Lands transfer on 2026-08-22. Parallel V001-V019 build. Do not merge.
