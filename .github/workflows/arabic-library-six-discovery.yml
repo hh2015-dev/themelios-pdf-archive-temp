@@ -1,31 +1,76 @@
-name: Arabic library six discovery broad
+name: Arabic library five verify and bridge
 on:
   pull_request:
     branches: [ main ]
 jobs:
-  discover:
+  bridge:
     runs-on: ubuntu-latest
     steps:
-      - name: Broad Archive.org discovery
+      - name: Verify exact Archive items and download PDFs
         shell: bash
         run: |
           set -euo pipefail
-          : > results.txt
-          queries=(
-            'title:(الإملاء والترقيم)'
-            'title:(فن التحرير العربي)'
-            'title:(تعلّم النحو والإملاء والترقيم)'
-            'title:(تعلم النحو والإملاء والترقيم)'
-            'title:(معجم الصواب اللغوي)'
-            'creator:(أحمد مختار عمر) AND title:(الصواب اللغوي)'
+          mkdir -p out
+          ids=(
+            moharram1965_gmail_20180323
+            elhilalymohamad_gmail_20170414_2227
+            imlaa
+            t3alm-annahw
+            AAskZad-0182477
           )
-          for q in "${queries[@]}"; do
-            echo "=== $q ===" | tee -a results.txt
-            enc=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "$q")
-            curl -fsSL "https://archive.org/advancedsearch.php?q=$enc&fl[]=identifier,title,creator,year&rows=30&page=1&output=json" -o search.json
-            jq -r '.response.docs[] | [.identifier,.title,(.creator//""),(.year//"")] | @tsv' search.json | tee -a results.txt
+          names=(imlaa_tarqim fan_tahrir qawaid_imlaa taallam_nahw fan_kitaba)
+          : > report.txt
+          for i in ${!ids[@]}; do
+            id=${ids[$i]}; name=${names[$i]}
+            echo "=== $id ===" | tee -a report.txt
+            curl -fsSL "https://archive.org/metadata/$id" -o meta.json
+            title=$(jq -r '.metadata.title // ""' meta.json)
+            creator=$(jq -r '.metadata.creator // "" | if type=="array" then join("; ") else . end' meta.json)
+            restricted=$(jq -r '.metadata["access-restricted-item"] // .metadata.printdisabled // ""' meta.json)
+            pdf=$(jq -r '.files[] | select(.name|test("\\.pdf$";"i")) | select((.private // "false") != "true") | select((.name|test("encrypted\\.pdf$";"i"))|not) | .name' meta.json | head -n1)
+            echo "TITLE=$title" | tee -a report.txt
+            echo "CREATOR=$creator" | tee -a report.txt
+            echo "RESTRICTED=$restricted" | tee -a report.txt
+            echo "PDF=$pdf" | tee -a report.txt
+            if [[ "$restricted" == "true" || -z "$pdf" ]]; then echo "VALID=NO" | tee -a report.txt; continue; fi
+            curl -fL --retry 4 --retry-delay 2 "https://archive.org/download/$id/$pdf" -o "out/$name.pdf"
+            magic=$(head -c 5 "out/$name.pdf" || true)
+            mime=$(file -b --mime-type "out/$name.pdf" || true)
+            size=$(stat -c%s "out/$name.pdf")
+            echo "MAGIC=$magic MIME=$mime SIZE=$size" | tee -a report.txt
+            if [[ "$magic" == "%PDF-" && "$mime" == "application/pdf" ]]; then echo "VALID=YES" | tee -a report.txt; else echo "VALID=NO" | tee -a report.txt; fi
           done
       - uses: actions/upload-artifact@v4
         with:
-          name: arabic-six-discovery-broad
-          path: results.txt
+          name: arabic-imlaa-tarqim
+          path: out/imlaa_tarqim.pdf
+          if-no-files-found: ignore
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arabic-fan-tahrir
+          path: out/fan_tahrir.pdf
+          if-no-files-found: ignore
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arabic-qawaid-imlaa
+          path: out/qawaid_imlaa.pdf
+          if-no-files-found: ignore
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arabic-taallam-nahw
+          path: out/taallam_nahw.pdf
+          if-no-files-found: ignore
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arabic-fan-kitaba
+          path: out/fan_kitaba.pdf
+          if-no-files-found: ignore
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arabic-five-report
+          path: report.txt
