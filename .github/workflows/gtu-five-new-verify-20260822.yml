@@ -6,16 +6,13 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - name: Verify five GTU items
+      - name: Verify GTU candidates
         shell: bash
         run: |
           set -euo pipefail
           ids=(
-            wiewurdendiebuch0000liet
-            diemischna0004unse_j4d0
-            diemischna0005unse
-            horaehebraicaeet0004ligh
-            newtestamentmanu0000merr
+            bookofcommonpray00revs
+            bookofcommonpray00prot_4
           )
           : > results.txt
           for id in "${ids[@]}"; do
@@ -48,5 +45,5 @@ jobs:
           done
       - uses: actions/upload-artifact@v4
         with:
-          name: gtu-five-new-results
+          name: gtu-bcp-results
           path: results.txt
