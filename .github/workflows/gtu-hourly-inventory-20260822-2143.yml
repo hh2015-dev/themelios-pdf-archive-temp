@@ -1,34 +1,57 @@
-name: GTU hourly inventory 20260822 2143
+name: GTU hourly verify 20 20260822 2143
 on:
   pull_request:
     branches: [ main ]
 jobs:
-  mine:
+  verify:
     runs-on: ubuntu-latest
     steps:
-      - name: Mine GTU corpus broadly
+      - name: Verify selected 20 GTU records
         shell: bash
         run: |
           set -euo pipefail
-          : > candidates.tsv
-          queries=(
-            'title:(Bible OR biblical OR testament OR gospel OR psalm OR prophet OR genesis OR exodus)'
-            'title:(Hebrew OR Aramaic OR Syriac OR Greek OR Septuagint OR Talmud OR Mishnah)'
-            'title:(manuscript OR papyri OR codex OR archaeology OR Assyria OR Babylon OR Egypt)'
-            'title:(patristic OR fathers OR Augustine OR Chrysostom OR Jerome OR Origen OR Irenaeus)'
-            'title:(Reformation OR Luther OR Calvin OR Zwingli OR theology OR creed OR confession)'
-            'title:(mission OR missionary OR Judaism OR church history OR apologetic)'
+          ids=(
+            hebrewenglishlex0000edwa
+            hebrewgermanprep0000drth
+            hebrewpassoverfr0012jbse
+            historicalstudyo0000solo
+            jungcodex0000flcr_m4e1
+            newdirectionsinb0000davi
+            palaeographyofgr0000fred
+            religionofancien0000cook_r5c1
+            selectpapyriwith0001ashu
+            near-eastern-archaeology_1973-1982_36-45_index
+            american-academy-of-religion-journal_1940-02_8_1
+            american-academy-of-religion-journal_1940-05_8_2
+            500biblestudies0000revh
+            literatureoftheo0000vari_k5z8
+            lossgaininrecent0000jame
+            american-missionary_1888-02_42_2
+            luther-life_1898-07_11_1
+            islammodernismin0000adam
+            sacredarchaeolog0000mack
+            hebrewreborn0000shal_m7n3
           )
-          page=1
-          for q in "${queries[@]}"; do
-            enc=$(python -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "collection:graduatetheologicalunion AND mediatype:texts AND $q")
-            curl -fsSL "https://archive.org/advancedsearch.php?q=$enc&fl%5B%5D=identifier&fl%5B%5D=title&fl%5B%5D=creator&fl%5B%5D=date&fl%5B%5D=language&rows=80&page=$page&sort%5B%5D=identifier+asc&output=json" -o out.json
-            jq -r '.response.docs[] | [.identifier, (.title//""), ((.creator//"")|if type=="array" then join("; ") else . end), (.date//""), ((.language//"")|if type=="array" then join("; ") else . end)] | @tsv' out.json >> candidates.tsv
-            page=$((page+1))
+          : > verified.tsv
+          for id in "${ids[@]}"; do
+            curl -fsSL "https://archive.org/metadata/$id" -o meta.json
+            coll=$(jq -r '[.metadata.collection]|flatten|join(";")' meta.json)
+            pdf=$(jq -r '.files[]? | select(.name|test("\\.pdf$";"i")) | select((.private//"false")!="true") | .name' meta.json | head -n1)
+            title=$(jq -r '.metadata.title//""' meta.json)
+            creator=$(jq -r '.metadata.creator//"" | if type=="array" then join("; ") else . end' meta.json)
+            date=$(jq -r '.metadata.date//.metadata.year//""' meta.json)
+            volume=$(jq -r '.metadata.volume//""' meta.json)
+            edition=$(jq -r '.metadata.edition//""' meta.json)
+            language=$(jq -r '.metadata.language//"" | if type=="array" then join("; ") else . end' meta.json)
+            contributor=$(jq -r '.metadata.contributor//"" | if type=="array" then join("; ") else . end' meta.json)
+            pages=$(jq -r '.metadata.page-progression // ""' meta.json)
+            if [[ "$coll" == *"graduatetheologicalunion"* && -n "$pdf" ]]; then
+              size=$(jq -r --arg p "$pdf" '.files[] | select(.name==$p) | .size//""' meta.json)
+              printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$id" "$title" "$creator" "$date" "$volume" "$edition" "$language" "$contributor" "$pdf" "$size" >> verified.tsv
+            fi
           done
-          sort -u candidates.tsv > unique.tsv
-          head -n 350 unique.tsv
+          cat verified.tsv
       - uses: actions/upload-artifact@v4
         with:
-          name: gtu-hourly-candidates
-          path: unique.tsv
+          name: gtu-hourly-verified20
+          path: verified.tsv
