@@ -1,0 +1,125 @@
+name: RSS archive PR
+on:
+  pull_request:
+    branches: [ main ]
+permissions:
+  contents: read
+jobs:
+  archive:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - run: python -m pip install --disable-pip-version-check beautifulsoup4
+      - shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import concurrent.futures, collections, hashlib, html, json, os, re, urllib.parse, urllib.request
+          from bs4 import BeautifulSoup
+          UA={'User-Agent':'Mozilla/5.0 (compatible; BSUK-Drive-Archiver/0.1)'}
+          PAGES=[f'https://biblicalstudies.org.uk/articles_rss_{i:02d}.php' for i in range(1,5)]
+          EXPECTED={20:34,21:21,22:44,23:43,24:25,25:36,26:32,27:31,28:31,29:23,30:24,31:24,32:28,33:27,34:18}
+          EXPECTED_TOTAL=441
+          os.makedirs('out',exist_ok=True)
+          def norm(s): return re.sub(r'\s+',' ',html.unescape(s or '')).strip()
+          occurrences=[]; page_status=[]
+          for page_no,page in enumerate(PAGES,1):
+            req=urllib.request.Request(page,headers=UA)
+            with urllib.request.urlopen(req,timeout=90) as r: raw=r.read(); final=r.geturl(); status=r.status
+            soup=BeautifulSoup(raw,'html.parser'); found=0
+            for a in soup.find_all('a',href=True):
+              url=urllib.parse.urljoin(final,html.unescape(a['href'].strip()))
+              if not urllib.parse.urlparse(url).path.lower().endswith('.pdf'): continue
+              text=norm(a.get_text(' ',strip=True)); context=text; node=a.parent
+              for _ in range(5):
+                if re.search(r'Religion,?\s*State\s*(?:&|and)\s*Society\s+\d+',context,re.I): break
+                if node is None: break
+                context=norm(node.get_text(' ',strip=True)); node=node.parent
+              m=re.search(r'Religion,?\s*State\s*(?:&|and)\s*Society\s+(\d+)\.(\d+(?:[-&]\d+)?)',context,re.I)
+              if not m: raise RuntimeError(f'No volume/issue for {url}: {context[:250]}')
+              v=int(m.group(1)); issue=m.group(2); found+=1
+              occurrences.append({'source_page':page,'page_no':page_no,'url':url,'context':text,'volume':v,'issue':issue})
+            page_status.append({'page':page,'status':status,'pdf_link_occurrences':found})
+          seen={}; links=[]; duplicates=[]
+          for r in occurrences:
+            k=r['url'].lower()
+            if k in seen:
+              duplicates.append({'url':r['url'],'kept':seen[k],'duplicate':r}); continue
+            seen[k]=r; links.append(r)
+          counts=collections.Counter(r['volume'] for r in links)
+          if len(links)!=EXPECTED_TOTAL or dict(sorted(counts.items()))!=EXPECTED:
+            raise SystemExit(f'Corpus mismatch total={len(links)} counts={dict(sorted(counts.items()))}')
+          badchars='<>:"/\\|?*'
+          def clean(s,maxlen=150):
+            s=norm(s); s=''.join('-' if c in badchars else c for c in s); s=re.sub(r'\s+',' ',s).strip(' .-')
+            return (s[:maxlen-3].rstrip()+'...') if len(s)>maxlen else (s or 'Untitled')
+          def identity(rec):
+            c=rec['context']; before=re.split(r'\bReligion,?\s*State\s*(?:&|and)\s*Society\s+\d+',c,maxsplit=1,flags=re.I)[0].strip(' |,')
+            before=re.sub(r'\s+pdf\s*$','',before,flags=re.I).strip()
+            m=re.match(r'^(.*?),\s*["“](.+?)["”],?\s*$',before)
+            if m: return clean(m.group(1),90),clean(m.group(2))
+            m=re.match(r'^["“](.+?)["”],?\s*$',before)
+            if m: return '',clean(m.group(1))
+            qm=re.search(r'["“](.+?)["”]',before)
+            if qm:
+              a=clean(before[:qm.start()].strip(' ,'),90) if before[:qm.start()].strip(' ,') else ''
+              return a,clean(qm.group(1))
+            return '',clean(before)
+          used=set()
+          for r in links:
+            author,title=identity(r); parts=['Religion, State & Society',f'Volume {r["volume"]:03d}']
+            if author: parts.append(author)
+            parts.append(title)
+            n=' - '.join(parts)+'.pdf'; key=(r['volume'],n.casefold())
+            if key in used: n=n[:-4]+f' - Issue {clean(r["issue"],20)}.pdf'; key=(r['volume'],n.casefold())
+            used.add(key); r['filename']=n
+          def fetch(rec):
+            d=os.path.join('out',f'Volume {rec["volume"]:03d}'); os.makedirs(d,exist_ok=True)
+            req=urllib.request.Request(rec['url'],headers=UA)
+            with urllib.request.urlopen(req,timeout=240) as rr: data=rr.read(); ctype=rr.headers.get('Content-Type',''); final=rr.geturl(); status=rr.status
+            if data[:5]!=b'%PDF-': raise RuntimeError(f'Not PDF {rec["url"]}')
+            if len(data)<5000: raise RuntimeError(f'Too small {rec["url"]} {len(data)}')
+            dest=os.path.join(d,rec['filename']); open(dest,'wb').write(data)
+            return {**rec,'final_url':final,'http_status':status,'content_type':ctype,'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest()}
+          rows=[]
+          with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:
+            for row in ex.map(fetch,links): rows.append(row); print('OK',row['volume'],row['filename'],row['bytes'])
+          verified=collections.Counter(r['volume'] for r in rows)
+          if len(rows)!=EXPECTED_TOTAL or dict(sorted(verified.items()))!=EXPECTED: raise SystemExit('Verified mismatch')
+          manifest={'journal':'Religion, State & Society','source_pages':page_status,'expected_total':EXPECTED_TOTAL,'volume_counts':EXPECTED,'duplicate_occurrences':duplicates,'files':rows}
+          with open('out/manifest.json','w',encoding='utf-8') as f: json.dump(manifest,f,ensure_ascii=False,indent=2)
+          print('VERIFIED',len(rows)); print('COUNTS',dict(sorted(verified.items()))); print('DUPLICATE_OCCURRENCES',len(duplicates))
+          PY
+      - uses: actions/upload-artifact@v4
+        with: {name: rss-volume-020, path: 'out/Volume 020/', if-no-files-found: error, compression-level: 0, retention-days: 1}
+      - uses: actions/upload-artifact@v4
+        with: {name: rss-volume-021, path: 'out/Volume 021/', if-no-files-found: error, compression-level: 0, retention-days: 1}
+      - uses: actions/upload-artifact@v4
+        with: {name: rss-volume-022, path: 'out/Volume 022/', if-no-files-found: error, compression-level: 0, retention-days: 1}
+      - uses: actions/upload-artifact@v4
+        with: {name: rss-volume-023, path: 'out/Volume 023/', if-no-files-found: error, compression-level: 0, retention-days: 1}
+      - uses: actions/upload-artifact@v4
+        with: {name: rss-volume-024, path: 'out/Volume 024/', if-no-files-found: error, compression-level: 0, retention-days: 1}
+      - uses: actions/upload-artifact@v4
+        with: {name: rss-volume-025, path: 'out/Volume 025/', if-no-files-found: error, compression-level: 0, retention-days: 1}
+      - uses: actions/upload-artifact@v4
+        with: {name: rss-volume-026, path: 'out/Volume 026/', if-no-files-found: error, compression-level: 0, retention-days: 1}
+      - uses: actions/upload-artifact@v4
+        with: {name: rss-volume-027, path: 'out/Volume 027/', if-no-files-found: error, compression-level: 0, retention-days: 1}
+      - uses: actions/upload-artifact@v4
+        with: {name: rss-volume-028, path: 'out/Volume 028/', if-no-files-found: error, compression-level: 0, retention-days: 1}
+      - uses: actions/upload-artifact@v4
+        with: {name: rss-volume-029, path: 'out/Volume 029/', if-no-files-found: error, compression-level: 0, retention-days: 1}
+      - uses: actions/upload-artifact@v4
+        with: {name: rss-volume-030, path: 'out/Volume 030/', if-no-files-found: error, compression-level: 0, retention-days: 1}
+      - uses: actions/upload-artifact@v4
+        with: {name: rss-volume-031, path: 'out/Volume 031/', if-no-files-found: error, compression-level: 0, retention-days: 1}
+      - uses: actions/upload-artifact@v4
+        with: {name: rss-volume-032, path: 'out/Volume 032/', if-no-files-found: error, compression-level: 0, retention-days: 1}
+      - uses: actions/upload-artifact@v4
+        with: {name: rss-volume-033, path: 'out/Volume 033/', if-no-files-found: error, compression-level: 0, retention-days: 1}
+      - uses: actions/upload-artifact@v4
+        with: {name: rss-volume-034, path: 'out/Volume 034/', if-no-files-found: error, compression-level: 0, retention-days: 1}
+      - uses: actions/upload-artifact@v4
+        with: {name: rss-manifest, path: out/manifest.json, if-no-files-found: error, retention-days: 1}
