@@ -1,0 +1,49 @@
+name: GTU five next verify 20260822
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify five GTU items
+        shell: bash
+        run: |
+          set -euo pipefail
+          ids=(
+            agapeinnewtestam0002spic
+            agapeinnewtestam0003spic
+            a-grammar-of-the-old-testament-in-greek-1909-vol-1_1909_1
+            abbreviationsing0000twal
+            accountofprinted0000treg
+          )
+          : > results.txt
+          for id in "${ids[@]}"; do
+            echo "=== $id ===" | tee -a results.txt
+            curl -fsSL "https://archive.org/metadata/$id" -o meta.json
+            title=$(jq -r '.metadata.title // ""' meta.json)
+            collection=$(jq -r '[.metadata.collection] | flatten | join(";")' meta.json)
+            restricted=$(jq -r '.metadata["access-restricted-item"] // .metadata.printdisabled // ""' meta.json)
+            pdf=$(jq -r '.files[] | select(.name|test("\\.pdf$";"i")) | select((.private // "false") != "true") | .name' meta.json | head -n1)
+            size=$(jq -r --arg p "$pdf" '.files[] | select(.name==$p) | .size // ""' meta.json)
+            echo "TITLE=$title" | tee -a results.txt
+            echo "COLLECTION=$collection" | tee -a results.txt
+            echo "RESTRICTED=$restricted" | tee -a results.txt
+            echo "PDF=$pdf" | tee -a results.txt
+            echo "SIZE=$size" | tee -a results.txt
+            if [[ "$collection" != *"graduatetheologicalunion"* || -z "$pdf" ]]; then echo "VALID=NO" | tee -a results.txt; continue; fi
+            url="https://archive.org/download/$id/$pdf"
+            code=$(curl -L -sS -o check.pdf -w '%{http_code}' "$url")
+            magic=$(head -c 5 check.pdf || true)
+            mime=$(file -b --mime-type check.pdf || true)
+            actual=$(stat -c%s check.pdf || echo 0)
+            echo "HTTP=$code" | tee -a results.txt
+            echo "MAGIC=$magic" | tee -a results.txt
+            echo "MIME=$mime" | tee -a results.txt
+            echo "ACTUAL=$actual" | tee -a results.txt
+            if [[ "$code" == "200" && "$magic" == "%PDF-" && "$mime" == "application/pdf" ]]; then echo "VALID=YES"; else echo "VALID=NO"; fi | tee -a results.txt
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-five-next-results
+          path: results.txt
