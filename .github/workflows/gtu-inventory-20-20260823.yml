@@ -1,0 +1,103 @@
+name: GTU inventory 20 discovery 20260823
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mine and verify GTU candidates
+        shell: bash
+        run: |
+          cat > /tmp/discover.py <<'PY'
+          import json, urllib.parse, urllib.request, concurrent.futures, re, time
+          BASE='https://archive.org'
+          queries=[
+            ('syriac OR peshitta OR aramaic OR targum',1),
+            ('hebrew OR semitic OR chaldee OR ugaritic',3),
+            ('septuagint OR lxx OR textual OR manuscript',2),
+            ('papyri OR papyrus OR qumran OR apocrypha OR pseudepigrapha',2),
+            ('commentary OR commentaries OR exegesis OR hermeneutics',5),
+            ('patristic OR origen OR chrysostom OR augustine OR irenaeus',2),
+            ('calvin OR luther OR reformation OR reformers',4),
+            ('archaeology OR assyrian OR babylonian OR palestine',3),
+            ('lexicon OR grammar OR concordance OR bibliography',4),
+            ('theology OR doctrine OR creed OR church history',8),
+          ]
+          docs={}
+          def getjson(url):
+            req=urllib.request.Request(url,headers={'User-Agent':'GTU-inventory-research/1.0'})
+            with urllib.request.urlopen(req,timeout=40) as r: return json.load(r)
+          for terms,page in queries:
+            q=f'collection:graduatetheologicalunion AND mediatype:texts AND ({terms})'
+            params={'q':q,'fl[]':['identifier','title','creator','year','date','volume','subject','language','contributor'],'rows':'100','page':str(page),'output':'json'}
+            url=BASE+'/advancedsearch.php?'+urllib.parse.urlencode(params,doseq=True)
+            try:
+              data=getjson(url)
+              for d in data.get('response',{}).get('docs',[]): docs[d['identifier']]=d
+            except Exception as e: print('SEARCHERR',terms,e)
+          # Broad corpus offsets to avoid top-result bias
+          for page in (7,13,19,29):
+            q='collection:graduatetheologicalunion AND mediatype:texts'
+            params={'q':q,'fl[]':['identifier','title','creator','year','date','volume','subject','language','contributor'],'rows':'100','page':str(page),'output':'json','sort[]':'identifier asc'}
+            try:
+              data=getjson(BASE+'/advancedsearch.php?'+urllib.parse.urlencode(params,doseq=True))
+              for d in data.get('response',{}).get('docs',[]): docs[d['identifier']]=d
+            except Exception as e: print('BROADERR',page,e)
+          print('CANDIDATES_EXAMINED',len(docs))
+          A=re.compile(r'\b(bible|biblical|testament|hebrew|aramaic|syriac|semitic|greek|septuagint|lxx|textual|manuscript|qumran|targum|talmud|mishna|apocry|pseudep|papyri|papyrus|archaeolog|assyri|babylon|ugarit|commentar|exege|hermeneut|lexicon|grammar|concordance|patrist|origen|chrysostom|augustin|irenaeus|calvin|luther)\b',re.I)
+          B=re.compile(r'\b(theology|doctrine|church|reformation|mission|judaism|christianity|creed|confession|apolog|religion)\b',re.I)
+          def verify(item):
+            ident,d=item
+            try:
+              m=getjson(BASE+'/metadata/'+urllib.parse.quote(ident))
+              md=m.get('metadata',{})
+              col=md.get('collection',[]); col=[col] if isinstance(col,str) else col
+              if 'graduatetheologicalunion' not in col: return None
+              if str(md.get('mediatype','texts')) not in ('texts','text'): return None
+              files=m.get('files',[])
+              pdfs=[]
+              for f in files:
+                n=f.get('name',''); low=n.lower()
+                if low.endswith('.pdf') and not low.endswith('.lcpdf') and 'encrypted' not in low and str(f.get('private','false')).lower()!='true':
+                  pdfs.append(f)
+              if not pdfs: return None
+              # prefer original/source-like PDF then Text PDF; avoid derivatives with obvious junk names if possible
+              pdf=sorted(pdfs,key=lambda f:(0 if f.get('source')=='original' else 1, len(f.get('name',''))))[0]
+              title=md.get('title') or d.get('title') or ''
+              creator=md.get('creator') or d.get('creator') or ''
+              if isinstance(creator,list): creator='; '.join(map(str,creator))
+              year=md.get('year') or md.get('date') or d.get('year') or d.get('date') or ''
+              volume=md.get('volume') or d.get('volume') or ''
+              edition=md.get('edition') or ''
+              series=md.get('series') or ''
+              lang=md.get('language') or d.get('language') or ''
+              if isinstance(lang,list): lang=' | '.join(map(str,lang))
+              contrib=md.get('contributor') or d.get('contributor') or ''
+              if isinstance(contrib,list): contrib='; '.join(map(str,contrib))
+              subj=md.get('subject') or d.get('subject') or ''
+              if isinstance(subj,list): subj='; '.join(map(str,subj))
+              pages=md.get('imagecount') or ''
+              text=' '.join(map(str,[title,creator,subj]))
+              pri='A' if A.search(text) else ('B' if B.search(text) else 'C')
+              enc=urllib.parse.quote(pdf['name'])
+              direct=f'{BASE}/download/{ident}/{enc}'
+              return {'priority':pri,'id':ident,'title':title,'creator':creator,'year':year,'volume':volume,'edition':edition,'series':series,'language':lang,'contributor':contrib,'subject':subj,'pages':pages,'pdf':direct,'pdfname':pdf['name']}
+            except Exception as e: return None
+          items=list(docs.items())
+          verified=[]
+          with concurrent.futures.ThreadPoolExecutor(max_workers=14) as ex:
+            for r in ex.map(verify,items):
+              if r: verified.append(r)
+          # Prefer A then B, and diversify by identifier/title; print first 140
+          verified.sort(key=lambda r:({'A':0,'B':1,'C':2}[r['priority']], str(r['year']), r['title']))
+          print('VERIFIED_PUBLIC_PDF',len(verified))
+          for r in verified[:140]:
+            clean={k:(str(v).replace('\t',' ').replace('\n',' ') if v is not None else '') for k,v in r.items()}
+            print('ROW\t'+'\t'.join(clean[k] for k in ['priority','id','title','creator','year','volume','edition','series','language','contributor','pages','pdf','subject']))
+          PY
+          python3 /tmp/discover.py | tee gtu_candidates.tsv
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-candidates-20260823
+          path: gtu_candidates.tsv
