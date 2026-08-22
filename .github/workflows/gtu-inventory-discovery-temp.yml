@@ -10,8 +10,9 @@ jobs:
         shell: bash
         run: |
           cat > /tmp/discover.py <<'PY'
-          import requests, json, re, time
+          import requests, json, re
           from urllib.parse import quote
+          from concurrent.futures import ThreadPoolExecutor, as_completed
           queries = [
             'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Bible OR biblical OR testament OR gospel OR psalm OR Isaiah OR Genesis OR Exodus OR Deuteronomy OR Jeremiah OR Daniel))',
             'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Greek OR Hebrew OR Aramaic OR Syriac OR Septuagint OR lexicon OR grammar OR concordance OR papyri OR manuscript))',
@@ -21,74 +22,52 @@ jobs:
             'collection:graduatetheologicalunion AND mediatype:texts AND (title:(mission OR missionary OR church history OR apologetic OR creed OR confession OR liturgy))'
           ]
           seen=set(); docs=[]
-          for qi,q in enumerate(queries):
-            for page in (1,3,6,10):
+          for q in queries:
+            for page in (1,4,8):
               params={'q':q,'fl[]':['identifier','title','creator','year','date','language','subject'],'rows':50,'page':page,'output':'json','sort[]':'identifier asc'}
-              try:
-                data=requests.get('https://archive.org/advancedsearch.php',params=params,timeout=30).json()
-              except Exception:
-                continue
+              try: data=requests.get('https://archive.org/advancedsearch.php',params=params,timeout=20).json()
+              except Exception: continue
               for d in data.get('response',{}).get('docs',[]):
                 ident=d.get('identifier')
                 if ident and ident not in seen:
                   seen.add(ident); docs.append(d)
-          # verify membership + select public PDF, enrich page count/volume/edition/series/contributor
-          out=[]
-          for d in docs[:700]:
+          def verify(d):
             ident=d['identifier']
-            try:
-              m=requests.get(f'https://archive.org/metadata/{ident}',timeout=30).json()
-            except Exception:
-              continue
+            try: m=requests.get(f'https://archive.org/metadata/{ident}',timeout=20).json()
+            except Exception: return None
             md=m.get('metadata',{}) or {}
             coll=md.get('collection',[])
             if isinstance(coll,str): coll=[coll]
-            if 'graduatetheologicalunion' not in coll: continue
-            files=m.get('files',[]) or []
+            if 'graduatetheologicalunion' not in coll: return None
             pdfs=[]
-            for f in files:
+            for f in m.get('files',[]) or []:
               n=f.get('name','')
-              if re.search(r'\.pdf$',n,re.I) and f.get('private') not in (True,'true') and not re.search(r'encrypted\.pdf$',n,re.I):
-                pdfs.append(f)
-            if not pdfs: continue
-            # prefer original public pdf, then largest non-derived
-            pdf=sorted(pdfs,key=lambda f:(f.get('source')!='original', -int(f.get('size') or 0)))[0]
-            pages=''
-            for key in ('page-progression','page_number_confidence'):
-              pass
-            # derive pages from scandata if metadata has imagecount
-            pages=str(md.get('imagecount') or '')
-            vol=md.get('volume','') or ''
-            ed=md.get('edition','') or ''
-            series=md.get('series','') or ''
-            contrib=md.get('contributor','') or ''
-            if isinstance(contrib,list): contrib='; '.join(map(str,contrib))
-            subj=md.get('subject',d.get('subject','')) or ''
-            if isinstance(subj,list): subj=' | '.join(map(str,subj))
-            lang=md.get('language',d.get('language','')) or ''
-            if isinstance(lang,list): lang=' | '.join(map(str,lang))
-            creator=md.get('creator',d.get('creator','')) or ''
-            if isinstance(creator,list): creator='; '.join(map(str,creator))
-            title=md.get('title',d.get('title','')) or ''
-            date=md.get('date',d.get('date',d.get('year',''))) or ''
-            out.append({
-              'identifier':ident,'title':title,'creator':creator,'date':str(date),'volume':str(vol),'edition':str(ed),'series':str(series),
-              'subject':str(subj),'language':str(lang),'contributor':str(contrib),'pages':pages,
-              'pdf_name':pdf.get('name',''),'pdf_size':pdf.get('size',''),
-              'item_link':f'https://archive.org/details/{ident}',
-              'pdf_link':f'https://archive.org/download/{ident}/'+quote(pdf.get('name',''))
-            })
-            if len(out)>=180: break
+              if re.search(r'\.pdf$',n,re.I) and f.get('private') not in (True,'true') and not re.search(r'encrypted\.pdf$',n,re.I): pdfs.append(f)
+            if not pdfs: return None
+            pdf=sorted(pdfs,key=lambda f:(f.get('source')!='original',-int(f.get('size') or 0)))[0]
+            def txt(v):
+              if isinstance(v,list): return '; '.join(map(str,v))
+              return '' if v is None else str(v)
+            title=txt(md.get('title',d.get('title',''))); creator=txt(md.get('creator',d.get('creator','')))
+            date=txt(md.get('date',d.get('date',d.get('year','')))); subj=txt(md.get('subject',d.get('subject','')))
+            lang=txt(md.get('language',d.get('language',''))); contrib=txt(md.get('contributor',''))
+            return {'identifier':ident,'title':title,'creator':creator,'date':date,'volume':txt(md.get('volume','')),'edition':txt(md.get('edition','')),'series':txt(md.get('series','')),'subject':subj,'language':lang,'contributor':contrib,'pages':txt(md.get('imagecount','')),'pdf_name':pdf.get('name',''),'pdf_size':pdf.get('size',''),'item_link':f'https://archive.org/details/{ident}','pdf_link':f'https://archive.org/download/{ident}/'+quote(pdf.get('name',''))}
+          out=[]
+          with ThreadPoolExecutor(max_workers=24) as ex:
+            futs=[ex.submit(verify,d) for d in docs[:450]]
+            for fut in as_completed(futs):
+              x=fut.result()
+              if x: out.append(x)
+          out.sort(key=lambda x:x['identifier'])
+          out=out[:220]
           with open('gtu_candidates.json','w',encoding='utf-8') as f: json.dump(out,f,ensure_ascii=False,indent=2)
-          print('EXAMINED_UNIQUE',len(docs))
-          print('VERIFIED_WITH_PUBLIC_PDF',len(out))
-          for x in out:
-            print(json.dumps(x,ensure_ascii=False))
+          print('EXAMINED_UNIQUE',len(docs)); print('VERIFIED_WITH_PUBLIC_PDF',len(out))
+          for x in out: print(json.dumps(x,ensure_ascii=False))
           PY
           python /tmp/discover.py | tee discovery.log
       - uses: actions/upload-artifact@v4
         with:
-          name: gtu-inventory-candidates
+          name: gtu-inventory-candidates-fast
           path: |
             gtu_candidates.json
             discovery.log
