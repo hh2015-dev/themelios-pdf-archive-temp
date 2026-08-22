@@ -1,0 +1,39 @@
+name: GTU upload five 20260822c
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  bridge:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download five GTU PDFs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          curl -fL --retry 3 'https://archive.org/download/gtu_32400004227934_1/gtu_32400004227934_1.pdf' -o 'out/burkitt.pdf'
+          curl -fL --retry 3 'https://archive.org/download/selectionsfromgr0000unse_d7m5/selectionsfromgr0000unse_d7m5.pdf' -o 'out/milligan.pdf'
+          curl -fL --retry 3 'https://archive.org/download/dasbuchesternach0000unse/dasbuchesternach0000unse.pdf' -o 'out/ester.pdf'
+          curl -fL --retry 3 'https://archive.org/download/gtu_A32400003017419B/gtu_A32400003017419B.pdf' -o 'out/zimmern.pdf'
+          curl -fL --retry 3 'https://archive.org/download/epistlesofstjohn0000unse_m6y6/epistlesofstjohn0000unse_m6y6.pdf' -o 'out/epistles.pdf'
+          for f in out/*.pdf; do test "$(head -c 5 "$f")" = '%PDF-'; file "$f"; done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-burkitt
+          path: out/burkitt.pdf
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-milligan
+          path: out/milligan.pdf
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-ester
+          path: out/ester.pdf
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-zimmern
+          path: out/zimmern.pdf
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-epistles
+          path: out/epistles.pdf
