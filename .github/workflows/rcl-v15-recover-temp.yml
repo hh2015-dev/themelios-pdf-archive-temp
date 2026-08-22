@@ -26,9 +26,9 @@ jobs:
           echo "6951b382ac3505f263bcff59918cf977521189c7e0b4c6d90a74515eea7d9375  $f" | sha256sum -c -
           base64 -w0 "$f" > /tmp/rcl15.b64
           rm -f tmp-rcl-v15-b64/chunk_*
-          split -b 24000 -d -a 2 /tmp/rcl15.b64 tmp-rcl-v15-b64/chunk_
+          split -b 10000 -d -a 2 /tmp/rcl15.b64 tmp-rcl-v15-b64/chunk_
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add tmp-rcl-v15 tmp-rcl-v15-b64
-          git diff --cached --quiet || git commit -m 'temp: expose recovered RCL v15 PDF chunks'
+          git add -A tmp-rcl-v15 tmp-rcl-v15-b64
+          git diff --cached --quiet || git commit -m 'temp: resize recovered RCL v15 PDF chunks'
           git push
