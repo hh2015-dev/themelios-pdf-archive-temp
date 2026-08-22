@@ -1,0 +1,24 @@
+name: Arabic library exact direct bridge
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  bridge:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download exact direct PDFs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          curl -fL --retry 4 --retry-delay 2 'https://archive.org/download/ftada/ftada.pdf' -o out/fan_tahrir.pdf
+          curl -fL --retry 4 --retry-delay 2 'https://archive.org/download/lis0495_201609/lis0495.pdf' -o out/fan_kitaba.pdf
+          for f in out/*.pdf; do
+            test "$(head -c 5 "$f")" = '%PDF-'
+            test "$(file -b --mime-type "$f")" = 'application/pdf'
+            echo "$f SIZE=$(stat -c%s "$f") SHA256=$(sha256sum "$f" | awk '{print $1}')"
+          done
+      - uses: actions/upload-artifact@v4
+        with: {name: arabic-exact-fan-tahrir, path: out/fan_tahrir.pdf, compression-level: 0}
+      - uses: actions/upload-artifact@v4
+        with: {name: arabic-exact-fan-kitaba, path: out/fan_kitaba.pdf, compression-level: 0}
