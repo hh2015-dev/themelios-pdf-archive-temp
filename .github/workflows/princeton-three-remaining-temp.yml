@@ -1,0 +1,55 @@
+name: Princeton Three Remaining Temp
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Ginsburg Coheleth
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 5 --retry-delay 5 \
+            'https://archive.org/download/cohelethcommonly00gins/cohelethcommonly00gins.pdf' \
+            -o 'Ginsburg Coheleth.pdf'
+          test -s 'Ginsburg Coheleth.pdf'
+      - name: Upload Ginsburg Coheleth
+        uses: actions/upload-artifact@v4
+        with:
+          name: princeton-ginsburg-coheleth-safe
+          path: 'Ginsburg Coheleth.pdf'
+          retention-days: 1
+          compression-level: 0
+
+      - name: Download Hackett Acts
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 5 --retry-delay 5 \
+            'https://archive.org/download/commentaryonor00hack/commentaryonor00hack.pdf' \
+            -o 'Hackett Acts.pdf'
+          test -s 'Hackett Acts.pdf'
+      - name: Upload Hackett Acts
+        uses: actions/upload-artifact@v4
+        with:
+          name: princeton-hackett-acts-safe
+          path: 'Hackett Acts.pdf'
+          retention-days: 1
+          compression-level: 0
+
+      - name: Download Robertson Matthew
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 5 --retry-delay 5 \
+            'https://archive.org/download/commentaryongosp00robe/commentaryongosp00robe.pdf' \
+            -o 'Robertson Matthew.pdf'
+          test -s 'Robertson Matthew.pdf'
+      - name: Upload Robertson Matthew
+        uses: actions/upload-artifact@v4
+        with:
+          name: princeton-robertson-matthew-safe
+          path: 'Robertson Matthew.pdf'
+          retention-days: 1
+          compression-level: 0
