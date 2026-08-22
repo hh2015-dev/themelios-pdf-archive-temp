@@ -1,32 +1,36 @@
-name: GTU five new transfer 20260822
+name: GTU five artifact bridge 20260822
 on:
   pull_request:
     branches: [ main ]
-permissions:
-  contents: write
 jobs:
-  transfer:
+  bridge:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.ref }}
-      - name: Download verified PDFs and commit temporary bridge
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p gtu_temp_pdfs
-          curl -fL --retry 3 'https://archive.org/download/wiewurdendiebuch0000liet/wiewurdendiebuch0000liet.pdf' -o 'gtu_temp_pdfs/wiewurdendiebuch0000liet.pdf'
-          curl -fL --retry 3 'https://archive.org/download/diemischna0004unse_j4d0/diemischna0004unse_j4d0.pdf' -o 'gtu_temp_pdfs/diemischna0004unse_j4d0.pdf'
-          curl -fL --retry 3 'https://archive.org/download/diemischna0005unse/diemischna0005unse.pdf' -o 'gtu_temp_pdfs/diemischna0005unse.pdf'
-          curl -fL --retry 3 'https://archive.org/download/horaehebraicaeet0004ligh/horaehebraicaeet0004ligh.pdf' -o 'gtu_temp_pdfs/horaehebraicaeet0004ligh.pdf'
-          curl -fL --retry 3 'https://archive.org/download/bookofcommonpray00prot_4/bookofcommonpray00prot_4.pdf' -o 'gtu_temp_pdfs/bookofcommonpray00prot_4.pdf'
-          for f in gtu_temp_pdfs/*.pdf; do
-            test "$(head -c 5 "$f")" = '%PDF-'
-            file "$f"
-          done
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add gtu_temp_pdfs/*.pdf
-          git commit -m 'TEMP add five verified GTU PDFs for Drive transfer'
-          git push origin HEAD:${{ github.event.pull_request.head.ref }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-lietzmann
+          path: gtu_temp_pdfs/wiewurdendiebuch0000liet.pdf
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-mischna-v4
+          path: gtu_temp_pdfs/diemischna0004unse_j4d0.pdf
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-mischna-v5
+          path: gtu_temp_pdfs/diemischna0005unse.pdf
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-lightfoot-v4
+          path: gtu_temp_pdfs/horaehebraicaeet0004ligh.pdf
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-bcp-1833
+          path: gtu_temp_pdfs/bookofcommonpray00prot_4.pdf
+          compression-level: 0
