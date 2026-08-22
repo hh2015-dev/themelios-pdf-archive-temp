@@ -13,11 +13,11 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install requests beautifulsoup4
-      - name: Discover RCL corpus
+      - name: Discover RCL corpus links
         shell: bash
         run: |
           python - <<'PY'
-          import requests, json, hashlib, csv, os
+          import requests, json, csv, os
           from bs4 import BeautifulSoup
           from urllib.parse import urljoin
           base='https://biblicalstudies.org.uk/'
@@ -49,25 +49,14 @@ jobs:
                           context=' '.join(p.stripped_strings)
                           if context: break
                   if not context: context=' '.join(a.stripped_strings)
-                  occurrences.append({'page_index':i,'page_url':url,'pdf_url':full,'anchor':' '.join(a.stripped_strings),'context':context[:2000]})
+                  occurrences.append({'page_index':i,'page_url':url,'pdf_url':full,'anchor':' '.join(a.stripped_strings),'context':context[:2200]})
           unique={}
           for row in occurrences: unique.setdefault(row['pdf_url'],row)
-          checks=[]; hashes={}
-          for n,(u,row) in enumerate(unique.items(),1):
-              rec=dict(row)
-              try:
-                  rr=s.get(u,timeout=90,allow_redirects=True); data=rr.content
-                  rec.update({'http_status':rr.status_code,'final_url':rr.url,'content_type':rr.headers.get('content-type',''),'bytes':len(data),'pdf_magic':data.startswith(b'%PDF-')})
-                  if rr.ok and data.startswith(b'%PDF-'):
-                      sha=hashlib.sha256(data).hexdigest(); rec['sha256']=sha; hashes.setdefault(sha,[]).append(u)
-                  else: rec['sha256']=''
-              except Exception as e:
-                  rec.update({'http_status':'ERROR','error':str(e),'bytes':0,'pdf_magic':False,'sha256':''})
-              checks.append(rec); print(f'CHECK {n}/{len(unique)} {rec.get("http_status")} {u}')
-          result={'pages':pages,'pdf_link_occurrences':len(occurrences),'unique_pdf_urls':len(unique),'checks':checks,'duplicate_content':{k:v for k,v in hashes.items() if len(v)>1}}
+          result={'pages':pages,'pdf_link_occurrences':len(occurrences),'unique_pdf_urls':len(unique),'links':list(unique.values())}
           open(f'{out}/inventory.json','w',encoding='utf-8').write(json.dumps(result,ensure_ascii=False,indent=2))
           with open(f'{out}/inventory.csv','w',newline='',encoding='utf-8') as f:
-              w=csv.DictWriter(f,fieldnames=['page_index','page_url','pdf_url','anchor','context','http_status','final_url','content_type','bytes','pdf_magic','sha256'],extrasaction='ignore'); w.writeheader(); w.writerows(checks)
+              w=csv.DictWriter(f,fieldnames=['page_index','page_url','pdf_url','anchor','context']); w.writeheader(); w.writerows(unique.values())
+          print(json.dumps({'pages_ok':[p['index'] for p in pages if p.get('status')==200],'unique_pdf_urls':len(unique)},ensure_ascii=False))
           PY
       - uses: actions/upload-artifact@v4
         with:
