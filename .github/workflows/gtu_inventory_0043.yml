@@ -1,0 +1,93 @@
+name: GTU inventory discovery 0043
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  mine:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mine GTU only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, urllib.parse, urllib.request, re, time
+          base='https://archive.org'
+          q='collection:graduatetheologicalunion AND mediatype:texts'
+          fields=['identifier','title','creator','year','date','language','subject','volume','edition','series']
+          docs=[]
+          # Mine several distant pages across the corpus, not only top results.
+          for page in [3,7,11,17,23,31,41,53,67,83]:
+              params=[('q',q)] + [('fl[]',f) for f in fields] + [('rows','100'),('page',str(page)),('output','json'),('sort[]','identifier asc')]
+              url=base+'/advancedsearch.php?'+urllib.parse.urlencode(params)
+              try:
+                  with urllib.request.urlopen(url, timeout=30) as r: data=json.load(r)
+                  docs.extend(data.get('response',{}).get('docs',[]))
+              except Exception as e: print('PAGEERR',page,e)
+          seen=set(); pool=[]
+          A=re.compile(r'\b(bible|biblical|testament|hebrew|aramaic|syriac|semitic|greek|septuagint|lxx|textual|manuscript|papyri|papyrus|dead sea|qumran|apocryph|pseudepigraph|mishnah|talmud|rabbin|juda|assyri|babylon|archaeolog|exeg|commentar|concordance|lexicon|grammar|prophet|genesis|exodus|leviticus|numbers|deuteronomy|joshua|judges|samuel|kings|chronicles|ezra|nehemiah|esther|job|psalm|proverbs|ecclesiastes|isaiah|jeremiah|ezekiel|daniel|hosea|joel|amos|obadiah|jonah|micah|nahum|habakkuk|zephaniah|haggai|zechariah|malachi|matthew|mark|luke|john|acts|romans|corinthians|galatians|ephesians|philippians|colossians|thessalonians|timothy|titus|philemon|hebrews|james|peter|jude|revelation|patrist|father|irenaeus|origen|augustine|chrysostom|jerome|calvin|luther)\b',re.I)
+          B=re.compile(r'\b(theolog|church history|reformation|doctrine|creed|confession|apolog|mission|christianity|early christian|judaism|religion|ecclesiast|council|heres|scholastic|aquinas)\b',re.I)
+          bad=re.compile(r'\b(audio|video|minutes|annual report|catalogue of courses|commencement|bulletin of the seminary|yearbook|directory|sermon)\b',re.I)
+          for d in docs:
+              i=d.get('identifier',''); t=d.get('title','') or ''; subj=d.get('subject','')
+              if isinstance(subj,list): subj=' ; '.join(map(str,subj))
+              text=t+' '+str(subj)
+              if not i or i in seen or bad.search(text): continue
+              seen.add(i)
+              pri='A' if A.search(text) else ('B' if B.search(text) else None)
+              if pri: pool.append((pri,i,d))
+          # Spread selections through sorted pool to avoid near-duplicate clusters.
+          pool.sort(key=lambda x:(x[0],x[1]))
+          if len(pool)>120:
+              step=max(1,len(pool)//120); pool=pool[::step][:140]
+          out=[]
+          for pri,i,d in pool:
+              try:
+                  with urllib.request.urlopen(base+'/metadata/'+urllib.parse.quote(i), timeout=25) as r: m=json.load(r)
+              except Exception: continue
+              md=m.get('metadata',{})
+              coll=md.get('collection',[])
+              if isinstance(coll,str): coll=[coll]
+              if 'graduatetheologicalunion' not in coll: continue
+              files=m.get('files',[])
+              pdfs=[]
+              for f in files:
+                  n=f.get('name','')
+                  if not n.lower().endswith('.pdf'): continue
+                  if n.lower().endswith('.lcpdf') or 'encrypted' in n.lower(): continue
+                  if str(f.get('private','false')).lower()=='true': continue
+                  pdfs.append(f)
+              if not pdfs: continue
+              # prefer original/non-derived pdf where possible, but never invent filename
+              f=sorted(pdfs,key=lambda x:(x.get('source')!='original', len(x.get('name',''))))[0]
+              def val(k):
+                  v=md.get(k,'')
+                  if isinstance(v,list): return '; '.join(map(str,v))
+                  return str(v) if v is not None else ''
+              title=val('title'); creator=val('creator'); subject=val('subject')
+              # academically useful guard after exact metadata
+              text=title+' '+subject
+              pri2='A' if A.search(text) else ('B' if B.search(text) else pri)
+              pages=''
+              for k in ['page-progression','pages','pagecount','imagecount']:
+                  vv=md.get(k)
+                  if k in ('pages','pagecount','imagecount') and vv not in (None,''):
+                      pages=str(vv); break
+              rec={
+                'priority':pri2,'subject':subject,'author':creator,'title':title,
+                'year':val('year') or val('date'),'volume':val('volume'),'edition':val('edition'),'series':val('series'),
+                'identifier':i,'item_link':base+'/details/'+i,
+                'pdf_link':base+'/download/'+i+'/'+urllib.parse.quote(f.get('name','')),
+                'pages':pages,'contributor':val('contributor'),'language':val('language')
+              }
+              out.append(rec)
+              if len(out)>=60: break
+          with open('gtu_candidates.json','w',encoding='utf-8') as fh: json.dump(out,fh,ensure_ascii=False,indent=2)
+          print('EXAMINED_DOCS',len(docs),'ELIGIBLE_POOL',len(pool),'VERIFIED',len(out))
+          for x in out:
+              print('CAND\t'+x['priority']+'\t'+x['identifier']+'\t'+x['title'][:160].replace('\t',' '))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-candidates-0043
+          path: gtu_candidates.json
