@@ -1,0 +1,42 @@
+name: GTU Selected 20 Verify 1641
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: gtu-inventory-hourly-1641
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify exact selected GTU records
+        run: |
+          python - <<'PY'
+          import json,urllib.request,urllib.parse,concurrent.futures
+          ids=['calvinscommentar0004calv','horaehebraicaeet0002ligh','horaehebraicaeet0003ligh','storyofcreationi0000carm','familypicodexale0000unse','aristeastophiloc0000unse_r7o3','studyofcodexevan0000bakk_n6o3','dasbuchesternach0000unse','reviewguidetonew0000russ','selectionsfromgr0000unse_d7m5','aramaischechrest0001koop','diemedizinimneue0000ebst','diemischna0002unse','diemischna0003unse','diemischna0006unse_u3m9','gtu_A32400003017419B','epistlesofstjohn0000unse_m6y6','gospelaccordingt0001unse_f7p0','gtu_32400004227934_1','gtu_32400004227876_2']
+          def verify(i):
+            url='https://archive.org/metadata/'+urllib.parse.quote(i)
+            req=urllib.request.Request(url,headers={'User-Agent':'GTU-inventory-research/1.0'})
+            with urllib.request.urlopen(req,timeout=30) as r:m=json.load(r)
+            md=m.get('metadata',{}); c=md.get('collection',[])
+            if isinstance(c,str):c=[c]
+            if 'graduatetheologicalunion' not in c:return {'identifier':i,'error':'not GTU'}
+            pdfs=[f for f in m.get('files',[]) if f.get('name','').lower().endswith('.pdf') and f.get('size')]
+            if not pdfs:return {'identifier':i,'error':'no PDF'}
+            pdfs.sort(key=lambda f:(0 if f.get('source')=='original' else 1, len(f.get('name',''))));p=pdfs[0]
+            return {'identifier':i,'title':md.get('title'),'creator':md.get('creator'),'date':md.get('date'),'language':md.get('language'),'subject':md.get('subject'),'volume':md.get('volume'),'edition':md.get('edition'),'series':md.get('series'),'contributor':md.get('contributor'),'description':md.get('description'),'imagecount':md.get('imagecount'),'collection':c,'pdf_name':p.get('name'),'pdf_size':p.get('size'),'item_url':'https://archive.org/details/'+i,'pdf_url':'https://archive.org/download/'+i+'/'+urllib.parse.quote(p.get('name'))}
+          with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex: out=list(ex.map(verify,ids))
+          with open('gtu_selected20_verified_1641.json','w',encoding='utf-8') as f:json.dump(out,f,ensure_ascii=False,indent=2)
+          assert len(out)==20 and all(not x.get('error') for x in out)
+          print('verified',len(out))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-selected20-verified-1641
+          path: gtu_selected20_verified_1641.json
+          retention-days: 1
