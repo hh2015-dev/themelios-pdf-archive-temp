@@ -1,0 +1,80 @@
+name: Hatch Redpath Compress Temp
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  compress:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y ghostscript poppler-utils
+      - name: Download original PDF
+        run: |
+          curl -L --fail --retry 3 -o original.pdf https://archive.org/download/concordancetosep00hatc_0/concordancetosep00hatc_0.pdf
+          ls -lh original.pdf
+          pdfinfo original.pdf | grep '^Pages:'
+          pdftotext original.pdf original.txt
+          wc -c original.txt
+      - name: Compress conservatively
+        run: |
+          set -e
+          TARGET=98000000
+          choose=''
+          make_pdf () {
+            name="$1"; dpi="$2"; jq="$3"
+            gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.6 -dNOPAUSE -dQUIET -dBATCH \
+              -dDetectDuplicateImages=true -dCompressFonts=true -dSubsetFonts=true \
+              -dDownsampleColorImages=true -dColorImageDownsampleType=/Bicubic -dColorImageResolution="$dpi" \
+              -dDownsampleGrayImages=true -dGrayImageDownsampleType=/Bicubic -dGrayImageResolution="$dpi" \
+              -dDownsampleMonoImages=true -dMonoImageDownsampleType=/Subsample -dMonoImageResolution=300 \
+              -dAutoFilterColorImages=false -dColorImageFilter=/DCTEncode -dJPEGQ="$jq" \
+              -dAutoFilterGrayImages=false -dGrayImageFilter=/DCTEncode \
+              -sOutputFile="$name" original.pdf
+            sz=$(stat -c%s "$name")
+            echo "$name $sz"
+            if [ "$sz" -le "$TARGET" ] && [ -z "$choose" ]; then choose="$name"; fi
+          }
+          make_pdf compressed-220.pdf 220 92
+          make_pdf compressed-200.pdf 200 90
+          make_pdf compressed-180.pdf 180 88
+          make_pdf compressed-160.pdf 160 86
+          if [ -z "$choose" ]; then
+            echo 'No candidate under target size'; exit 1
+          fi
+          cp "$choose" final.pdf
+          echo "$choose" > selected.txt
+          stat -c%s original.pdf > original_size.txt
+          stat -c%s final.pdf > final_size.txt
+          pdfinfo final.pdf | grep '^Pages:' | awk '{print $2}' > final_pages.txt
+          pdfinfo original.pdf | grep '^Pages:' | awk '{print $2}' > original_pages.txt
+          pdftotext final.pdf final.txt
+          wc -c < original.txt > original_text_chars.txt
+          wc -c < final.txt > final_text_chars.txt
+          echo "Selected: $choose"
+          echo "Original $(cat original_size.txt) bytes; Final $(cat final_size.txt) bytes"
+          echo "Pages original/final: $(cat original_pages.txt)/$(cat final_pages.txt)"
+          echo "Text chars original/final: $(cat original_text_chars.txt)/$(cat final_text_chars.txt)"
+          test "$(cat original_pages.txt)" = "$(cat final_pages.txt)"
+          python - <<'PY'
+          o=int(open('original_text_chars.txt').read())
+          f=int(open('final_text_chars.txt').read())
+          if o>0 and f < o*0.95:
+              raise SystemExit(f'Text layer loss too large: {o} -> {f}')
+          PY
+      - name: Upload final compressed PDF
+        uses: actions/upload-artifact@v4
+        with:
+          name: hatch-redpath-compressed-final
+          path: final.pdf
+      - name: Upload verification report
+        uses: actions/upload-artifact@v4
+        with:
+          name: hatch-redpath-compression-report
+          path: |
+            selected.txt
+            original_size.txt
+            final_size.txt
+            original_pages.txt
+            final_pages.txt
+            original_text_chars.txt
+            final_text_chars.txt
