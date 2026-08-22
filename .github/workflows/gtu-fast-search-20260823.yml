@@ -1,0 +1,39 @@
+name: GTU fast search 20260823
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  search:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Broad GTU search only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, urllib.parse, urllib.request
+          queries=[
+            'collection:graduatetheologicalunion AND mediatype:texts AND (subject:"Dead Sea Scrolls" OR title:Qumran OR title:pseudepigrapha OR title:apocrypha)',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:targum OR title:rabbinic OR title:talmud)',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:ugarit OR title:ugaritic OR title:assyrian OR title:babylonian OR title:semitic)',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:coptic OR title:ethiopic OR title:syriac OR title:aramaic)',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:philo OR title:josephus OR title:judaism OR title:jewish)',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:septuagint OR title:hexapla OR title:papyrus OR title:papyri)',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:origen OR title:jerome OR title:augustine OR title:chrysostom)',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:creed OR title:confession OR title:reformation)',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:mission OR title:missionary)',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:concordance OR title:lexicon OR title:grammar OR title:bibliography)'
+          ]
+          seen=set(); n=0
+          for qi,q in enumerate(queries):
+            url='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode({'q':q,'fl[]':['identifier','title','creator','date','year','language','subject'],'rows':60,'page':1,'output':'json'},doseq=True)
+            try: docs=json.load(urllib.request.urlopen(url,timeout=20)).get('response',{}).get('docs',[])
+            except Exception as e: print('ERR',qi,e); continue
+            print('QUERY',qi,'COUNT',len(docs))
+            for d in docs:
+              i=d.get('identifier')
+              if not i or i in seen: continue
+              seen.add(i); n+=1
+              print('CAND\t'+json.dumps(d,ensure_ascii=False,separators=(',',':')))
+          print('UNIQUE',n)
+          PY
