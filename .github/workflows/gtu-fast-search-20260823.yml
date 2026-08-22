@@ -6,34 +6,50 @@ jobs:
   search:
     runs-on: ubuntu-latest
     steps:
-      - name: Broad GTU search only
+      - name: Verify exact GTU candidates
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import json, urllib.parse, urllib.request
-          queries=[
-            'collection:graduatetheologicalunion AND mediatype:texts AND (subject:"Dead Sea Scrolls" OR title:Qumran OR title:pseudepigrapha OR title:apocrypha)',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:targum OR title:rabbinic OR title:talmud)',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:ugarit OR title:ugaritic OR title:assyrian OR title:babylonian OR title:semitic)',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:coptic OR title:ethiopic OR title:syriac OR title:aramaic)',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:philo OR title:josephus OR title:judaism OR title:jewish)',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:septuagint OR title:hexapla OR title:papyrus OR title:papyri)',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:origen OR title:jerome OR title:augustine OR title:chrysostom)',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:creed OR title:confession OR title:reformation)',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:mission OR title:missionary)',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:concordance OR title:lexicon OR title:grammar OR title:bibliography)'
-          ]
-          seen=set(); n=0
-          for qi,q in enumerate(queries):
-            url='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode({'q':q,'fl[]':['identifier','title','creator','date','year','language','subject'],'rows':60,'page':1,'output':'json'},doseq=True)
-            try: docs=json.load(urllib.request.urlopen(url,timeout=20)).get('response',{}).get('docs',[])
-            except Exception as e: print('ERR',qi,e); continue
-            print('QUERY',qi,'COUNT',len(docs))
-            for d in docs:
-              i=d.get('identifier')
-              if not i or i in seen: continue
-              seen.add(i); n+=1
-              print('CAND\t'+json.dumps(d,ensure_ascii=False,separators=(',',':')))
-          print('UNIQUE',n)
+          import json,urllib.request,urllib.parse
+          ids='''apocryphapseudep0001rhch_l3b5
+jotargumofcave110000jvan
+phylakterienaush0000kuhn
+newtestamentpale0000mcna_t6g0
+practicalgrammar0000mose
+grammarofaramici0000clev
+valueofugariticf0000mdah
+cuneiformtextsof0000unse
+ethiopicgrammar0000augu_d4k6
+gtu_32400004077206
+copticgospelacco0000wesl
+lexicontosyriacn0000will
+gtu_32400004569020
+copticdictionary0000unse
+unset0000unse_b1u5
+copticgnosticpap0001math
+odesofsolomonsyr0000unse
+philoorallaw0000samu_y6s7
+witnessofvulgate0000sidn_s1l1
+onpresentstateof0000harr
+psalmsingreekacc0000henr
+gtu_32400008235677_2
+philounddermidra0000edmu
+josephusnewtesta0006hugh
+oldtestamentsinc0000emil'''.splitlines()
+          def ss(v):
+            if isinstance(v,list): return '; '.join(map(str,v))
+            return '' if v is None else str(v)
+          for i in ids:
+            try:m=json.load(urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(i),timeout=20))
+            except Exception as e: print('FAIL\t'+i+'\t'+str(e));continue
+            md=m.get('metadata',{}); coll=md.get('collection',[])
+            if isinstance(coll,str):coll=[coll]
+            pdfs=[]
+            for f in m.get('files',[]):
+              n=f.get('name','')
+              if n.lower().endswith('.pdf') and not n.lower().endswith('.lcpdf') and 'encrypted' not in n.lower() and str(f.get('private','false')).lower()!='true': pdfs.append(f)
+            pub=max(pdfs,key=lambda f:int(f.get('size') or 0)) if pdfs else None
+            rec={'identifier':i,'in_gtu':'graduatetheologicalunion' in coll,'title':ss(md.get('title')),'creator':ss(md.get('creator')),'date':ss(md.get('date') or md.get('year')),'volume':ss(md.get('volume')),'edition':ss(md.get('edition')),'series':ss(md.get('series')),'language':ss(md.get('language')),'subject':ss(md.get('subject')),'imagecount':ss(md.get('imagecount')),'contributor':ss(md.get('contributor') or md.get('scanner')),'public_pdf':bool(pub),'pdf_name':pub.get('name','') if pub else '','pdf_size':pub.get('size','') if pub else '','item_link':'https://archive.org/details/'+i,'direct_pdf':('https://archive.org/download/'+i+'/'+urllib.parse.quote(pub.get('name',''))) if pub else ''}
+            print('VER\t'+json.dumps(rec,ensure_ascii=False,separators=(',',':')))
           PY
