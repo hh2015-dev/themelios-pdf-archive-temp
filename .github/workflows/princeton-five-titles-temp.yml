@@ -1,0 +1,85 @@
+name: Princeton Five Titles Transfer Temp
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Green Elementary Hebrew Grammar
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 5 --retry-delay 5 \
+            'https://archive.org/download/elementaryhebrew1890gree/elementaryhebrew1890gree.pdf' \
+            -o 'An Elementary Hebrew Grammar, with Reading and Writing Lessons and Vocabularies - William Henry Green.pdf'
+          test -s 'An Elementary Hebrew Grammar, with Reading and Writing Lessons and Vocabularies - William Henry Green.pdf'
+      - name: Upload Green Elementary Hebrew Grammar
+        uses: actions/upload-artifact@v4
+        with:
+          name: princeton-green-elementary-hebrew-grammar
+          path: 'An Elementary Hebrew Grammar, with Reading and Writing Lessons and Vocabularies - William Henry Green.pdf'
+          retention-days: 1
+          compression-level: 0
+
+      - name: Download Green Old Testament Literature
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 5 --retry-delay 5 \
+            'https://archive.org/download/oldtestamentlite00gree/oldtestamentlite00gree.pdf' \
+            -o 'Old Testament Literature - William Henry Green.pdf'
+          test -s 'Old Testament Literature - William Henry Green.pdf'
+      - name: Upload Green Old Testament Literature
+        uses: actions/upload-artifact@v4
+        with:
+          name: princeton-green-old-testament-literature
+          path: 'Old Testament Literature - William Henry Green.pdf'
+          retention-days: 1
+          compression-level: 0
+
+      - name: Download Hodge Romans
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 5 --retry-delay 5 \
+            'https://archive.org/download/commentaryonepis187100hodg/commentaryonepis187100hodg.pdf' \
+            -o 'Commentary on the Epistle to the Romans - Charles Hodge.pdf'
+          test -s 'Commentary on the Epistle to the Romans - Charles Hodge.pdf'
+      - name: Upload Hodge Romans
+        uses: actions/upload-artifact@v4
+        with:
+          name: princeton-hodge-romans
+          path: 'Commentary on the Epistle to the Romans - Charles Hodge.pdf'
+          retention-days: 1
+          compression-level: 0
+
+      - name: Download Bevan Daniel
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 5 --retry-delay 5 \
+            'https://archive.org/download/shortcommentaryo00beva/shortcommentaryo00beva.pdf' \
+            -o 'A Short Commentary on the Book of Daniel - Anthony Ashley Bevan.pdf'
+          test -s 'A Short Commentary on the Book of Daniel - Anthony Ashley Bevan.pdf'
+      - name: Upload Bevan Daniel
+        uses: actions/upload-artifact@v4
+        with:
+          name: princeton-bevan-daniel
+          path: 'A Short Commentary on the Book of Daniel - Anthony Ashley Bevan.pdf'
+          retention-days: 1
+          compression-level: 0
+
+      - name: Download Gould Mark
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 5 --retry-delay 5 \
+            'https://archive.org/download/criticalexegetic00goul/criticalexegetic00goul.pdf' \
+            -o 'A Critical and Exegetical Commentary on the Gospel According to St. Mark - Ezra Palmer Gould.pdf'
+          test -s 'A Critical and Exegetical Commentary on the Gospel According to St. Mark - Ezra Palmer Gould.pdf'
+      - name: Upload Gould Mark
+        uses: actions/upload-artifact@v4
+        with:
+          name: princeton-gould-mark
+          path: 'A Critical and Exegetical Commentary on the Gospel According to St. Mark - Ezra Palmer Gould.pdf'
+          retention-days: 1
+          compression-level: 0
