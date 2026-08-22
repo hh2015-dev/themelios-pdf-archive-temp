@@ -1,0 +1,72 @@
+name: GTU inventory fast 20260822 2242
+on:
+  pull_request:
+    branches: [main]
+jobs:
+  discover-fast:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mine and verify exact GTU collection concurrently
+        shell: python
+        run: |
+          import json, urllib.parse, urllib.request, re
+          from concurrent.futures import ThreadPoolExecutor, as_completed
+          BASE='https://archive.org'; COLL='graduatetheologicalunion'
+          q='collection:'+COLL+' AND mediatype:texts'
+          fields=['identifier','title','creator','date','volume','subject','contributor','language']
+          docs=[]
+          for page in [3,7,12,18,24,30,36,42]:
+              params=[('q',q)]+[('fl[]',f) for f in fields]+[('rows','200'),('page',str(page)),('output','json'),('sort[]','identifier asc')]
+              with urllib.request.urlopen(BASE+'/advancedsearch.php?'+urllib.parse.urlencode(params),timeout=45) as r: data=json.load(r)
+              docs.extend(data.get('response',{}).get('docs',[]))
+          A=['bible','biblical','testament','genesis','exodus','leviticus','deuteronomy','psalm','isaiah','jeremiah','prophet','gospel','matthew','mark','luke','john','acts','paul','romans','corinth','hebrew','aramaic','syriac','semitic','greek','septuagint','lxx','papyr','manuscript','codex','textual','masorah','talmud','mishna','midrash','rabbin','juda','second temple','apocryph','pseudepig','assyri','babylon','canaan','ugarit','palestine','archaeolog','concordance','lexicon','grammar','exeg','commentar']
+          B=['patrist','eusebi','augustin','chrysostom','jerome','irenae','tertull','origen','cyprian','church history','reformation','luther','calvin','theolog','doctrine','creed','confession','apolog','philosophy of religion','mission','ecumen','liturgy','early christian','jesuit','franciscan','anglican','baptist','methodist','presbyterian','orthodox','catholic']
+          C=['religion','religious history','comparative religion','mythology','ancient history','medieval history','philosophy']
+          def flat(v): return ' '.join(str(x) for x in v) if isinstance(v,list) else str(v or '')
+          def text(d): return (flat(d.get('title'))+' '+flat(d.get('creator'))+' '+flat(d.get('subject'))).lower()
+          ranked=[]
+          for d in docs:
+              t=text(d); score=sum(5 for k in A if k in t)+sum(2 for k in B if k in t)+sum(1 for k in C if k in t)
+              if score: ranked.append((score,d))
+          ranked.sort(key=lambda x:(-x[0],str(x[1].get('identifier',''))))
+          # diversified pool: top + evenly spaced corpus hits
+          unique=[]; seen=set()
+          for x in ranked:
+              i=x[1].get('identifier')
+              if i and i not in seen: seen.add(i); unique.append(x)
+          pool=unique[:100]
+          if unique:
+              stride=max(1,len(unique)//120); pool += unique[100::stride][:120]
+          ded=[]; seen=set()
+          for x in pool:
+              i=x[1].get('identifier')
+              if i not in seen: seen.add(i); ded.append(x)
+          def verify(pair):
+              score,d=pair; ident=d['identifier']
+              try:
+                  with urllib.request.urlopen(BASE+'/metadata/'+urllib.parse.quote(ident),timeout=30) as r: m=json.load(r)
+              except Exception: return None
+              md=m.get('metadata',{}) or {}; coll=md.get('collection',[]); coll=[coll] if isinstance(coll,str) else coll
+              if COLL not in coll: return None
+              files=m.get('files',[]) or []; pdfs=[f for f in files if str(f.get('name','')).lower().endswith('.pdf')]
+              if not pdfs: return None
+              def rankpdf(f):
+                  n=str(f.get('name','')); return (0 if n==ident+'.pdf' else 1,1 if ('encrypted' in n.lower() or n.lower().endswith('.lcpdf')) else 0,len(n))
+              pdf=sorted(pdfs,key=rankpdf)[0]
+              t=text({'title':md.get('title',d.get('title','')),'creator':md.get('creator',d.get('creator','')),'subject':md.get('subject',d.get('subject',''))})
+              pri='A' if any(k in t for k in A) else ('B' if any(k in t for k in B) else 'C')
+              return {'priority':pri,'identifier':ident,'title':md.get('title',d.get('title','')),'creator':md.get('creator',d.get('creator','')),'date':md.get('date',d.get('date','')),'volume':md.get('volume',d.get('volume','')),'edition':md.get('edition',''),'series':md.get('series',''),'subject':md.get('subject',d.get('subject','')),'contributor':md.get('contributor',d.get('contributor','')),'pages':md.get('imagecount',''),'pdf_name':pdf.get('name',''),'item_link':BASE+'/details/'+ident,'pdf_link':BASE+'/download/'+ident+'/'+urllib.parse.quote(pdf.get('name','')),'collection':coll,'score':score}
+          verified=[]
+          with ThreadPoolExecutor(max_workers=24) as ex:
+              futs=[ex.submit(verify,x) for x in ded]
+              for f in as_completed(futs):
+                  v=f.result()
+                  if v: verified.append(v)
+          verified.sort(key=lambda x:(x['priority'], -x['score'], x['identifier']))
+          with open('gtu_candidates_fast.json','w',encoding='utf-8') as f: json.dump({'examined_docs':len(docs),'scored_docs':len(ranked),'verified_candidates':len(verified),'candidates':verified},f,ensure_ascii=False,indent=2)
+          print(json.dumps({'examined_docs':len(docs),'scored_docs':len(ranked),'verified_candidates':len(verified)}))
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-inventory-candidates-fast
+          path: gtu_candidates_fast.json
+          retention-days: 2
