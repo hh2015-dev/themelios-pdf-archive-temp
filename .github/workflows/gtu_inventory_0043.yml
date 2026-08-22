@@ -1,4 +1,4 @@
-name: GTU inventory discovery 0043 diverse
+name: GTU inventory discovery 0043 parallel
 on:
   pull_request:
     branches: [ main ]
@@ -6,43 +6,44 @@ jobs:
   mine:
     runs-on: ubuntu-latest
     steps:
-      - name: Mine GTU only across diverse topics
+      - name: Mine and verify GTU diverse topics in parallel
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import json, urllib.parse, urllib.request, re
+          import json, urllib.parse, urllib.request, re, concurrent.futures
           base='https://archive.org'
           topics=['hebrew','aramaic','syriac','greek','septuagint','manuscript','textual criticism','rabbinic','talmud','archaeology','assyrian','babylonian','psalms','isaiah','jeremiah','gospels','paul','patristic','origen','reformation','missions','church history']
           fields=['identifier','title','creator','year','date','language','subject','volume','edition','series']
-          docs=[]; seen=set()
-          for topic in topics:
+          def search_topic(topic):
               q=f'collection:graduatetheologicalunion AND mediatype:texts AND ({topic})'
-              params=[('q',q)] + [('fl[]',f) for f in fields] + [('rows','8'),('page','2'),('output','json'),('sort[]','identifier desc')]
+              params=[('q',q)] + [('fl[]',f) for f in fields] + [('rows','5'),('page','2'),('output','json'),('sort[]','identifier desc')]
               try:
-                  with urllib.request.urlopen(base+'/advancedsearch.php?'+urllib.parse.urlencode(params),timeout=25) as r: js=json.load(r)
-              except Exception as e:
-                  print('QUERYERR',topic,e); continue
-              for d in js.get('response',{}).get('docs',[]):
-                  i=d.get('identifier','')
-                  if i and i not in seen:
-                      seen.add(i); docs.append((topic,d))
-          out=[]
-          bad=re.compile(r'\b(audio|video|minutes|annual report|commencement|yearbook|directory)\b',re.I)
+                  with urllib.request.urlopen(base+'/advancedsearch.php?'+urllib.parse.urlencode(params),timeout=12) as r: js=json.load(r)
+                  return [(topic,d) for d in js.get('response',{}).get('docs',[])]
+              except Exception: return []
+          docs=[]
+          with concurrent.futures.ThreadPoolExecutor(max_workers=12) as ex:
+              for part in ex.map(search_topic,topics): docs.extend(part)
+          seen=set(); uniq=[]
           for topic,d in docs:
-              i=d.get('identifier',''); title=d.get('title','') or ''
-              if bad.search(title): continue
+              i=d.get('identifier','')
+              if i and i not in seen: seen.add(i); uniq.append((topic,d))
+          bad=re.compile(r'\b(audio|video|minutes|annual report|commencement|yearbook|directory)\b',re.I)
+          def verify(td):
+              topic,d=td; i=d.get('identifier',''); title=d.get('title','') or ''
+              if bad.search(title): return None
               try:
-                  with urllib.request.urlopen(base+'/metadata/'+urllib.parse.quote(i),timeout=25) as r: m=json.load(r)
-              except Exception: continue
+                  with urllib.request.urlopen(base+'/metadata/'+urllib.parse.quote(i),timeout=15) as r: m=json.load(r)
+              except Exception: return None
               md=m.get('metadata',{}); coll=md.get('collection',[])
               if isinstance(coll,str): coll=[coll]
-              if 'graduatetheologicalunion' not in coll: continue
+              if 'graduatetheologicalunion' not in coll: return None
               pdfs=[]
               for f in m.get('files',[]):
                   n=f.get('name','')
                   if n.lower().endswith('.pdf') and not n.lower().endswith('.lcpdf') and 'encrypted' not in n.lower() and str(f.get('private','false')).lower()!='true': pdfs.append(f)
-              if not pdfs: continue
+              if not pdfs: return None
               f=sorted(pdfs,key=lambda x:(x.get('source')!='original',len(x.get('name',''))))[0]
               def val(k):
                   v=md.get(k,'')
@@ -51,13 +52,16 @@ jobs:
               pages=''
               for k in ['pages','pagecount','imagecount']:
                   if md.get(k) not in (None,''): pages=str(md[k]); break
-              out.append({'topic':topic,'priority':'A' if topic not in ['missions','church history'] else 'B','subject':val('subject'),'author':val('creator'),'title':val('title'),'year':val('year') or val('date'),'volume':val('volume'),'edition':val('edition'),'series':val('series'),'identifier':i,'item_link':base+'/details/'+i,'pdf_link':base+'/download/'+i+'/'+urllib.parse.quote(f.get('name','')),'pages':pages,'contributor':val('contributor'),'language':val('language')})
-              if len(out)>=70: break
-          with open('gtu_candidates_diverse.json','w',encoding='utf-8') as fh: json.dump(out,fh,ensure_ascii=False,indent=2)
-          print('EXAMINED',len(docs),'VERIFIED',len(out))
+              return {'topic':topic,'priority':'B' if topic in ['missions','church history'] else 'A','subject':val('subject'),'author':val('creator'),'title':val('title'),'year':val('year') or val('date'),'volume':val('volume'),'edition':val('edition'),'series':val('series'),'identifier':i,'item_link':base+'/details/'+i,'pdf_link':base+'/download/'+i+'/'+urllib.parse.quote(f.get('name','')),'pages':pages,'contributor':val('contributor'),'language':val('language')}
+          out=[]
+          with concurrent.futures.ThreadPoolExecutor(max_workers=16) as ex:
+              for r in ex.map(verify,uniq):
+                  if r: out.append(r)
+          with open('gtu_candidates_parallel.json','w',encoding='utf-8') as fh: json.dump(out,fh,ensure_ascii=False,indent=2)
+          print('EXAMINED',len(uniq),'VERIFIED',len(out))
           for x in out: print('CAND\t'+x['topic']+'\t'+x['identifier']+'\t'+x['title'][:150].replace('\t',' '))
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: gtu-candidates-diverse-0043
-          path: gtu_candidates_diverse.json
+          name: gtu-candidates-parallel-0043
+          path: gtu_candidates_parallel.json
