@@ -1,0 +1,70 @@
+name: GTU selected verify 20260823
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify selected exact GTU items
+        shell: bash
+        run: |
+          python3 - <<'PY' | tee selected.tsv
+          import json,urllib.parse,urllib.request,concurrent.futures
+          B='https://archive.org'
+          ids='''ugaritichandbook0000cyru
+bibliahebraica0000augu
+contributionofis00unse
+evolutionofhebre0000edki
+veteristestament0000mand_p4g3
+bibleinaramaic0003alex
+lapophonieensemi0000kury
+melangesdelunive0005univ
+studiesinbibleje0000mena
+semitischesprach0000broc
+biblical-repertory-and-princeton-review_1846-07_18_3
+gtu_32400004001149_1901
+cyclopaediaofbib0010unse
+pentateuchitscom0000mhse
+internationalcri0000will
+criticalexegetic0001geor
+cyclopaediaofbib0008revj
+gtu_A32400006310530B
+calvinscommentar0012calv
+autographsofnewt00geor
+americancommenta0001alva
+semeiaexperiment0000pete
+semeiaexperiment0000joan
+biblicalmotifsor0003alex
+catholic-biblical-quarterly_1939-04_1_2
+sim_journal-of-biblical-literature_1909_28_1
+biblicalcommenta0000cfke_e8q2
+archivesfromerec0001doug
+assyriandictiona0001unse_w8p3
+journal-of-the-palestine-oriental-society_1926_6
+atlasofmesopotam0000hhro
+atonementingrego00unse
+atlaskartaliteku0000aviy
+atlasofbible0000unse
+melangesdelunive0004univ'''.splitlines()
+          def gj(u):
+            req=urllib.request.Request(u,headers={'User-Agent':'GTU-inventory-verify/1.0'})
+            with urllib.request.urlopen(req,timeout=30) as r:return json.load(r)
+          def v(i):
+            try:
+              m=gj(B+'/metadata/'+urllib.parse.quote(i));md=m.get('metadata',{})
+              c=md.get('collection',[]);c=[c] if isinstance(c,str) else c
+              if 'graduatetheologicalunion' not in c:return ['FAIL',i,'NOT_GTU']
+              if str(md.get('access-restricted-item','false')).lower()=='true' or str(md.get('printdisabled','false')).lower()=='true': return ['FAIL',i,'RESTRICTED']
+              fs=[f for f in m.get('files',[]) if f.get('name','').lower().endswith('.pdf') and not f.get('name','').lower().endswith('.lcpdf') and 'encrypted' not in f.get('name','').lower() and str(f.get('private','false')).lower()!='true']
+              if not fs:return ['FAIL',i,'NO_PUBLIC_PDF']
+              f=sorted(fs,key=lambda z:(0 if z.get('source')=='original' else 1,len(z.get('name',''))))[0]
+              def S(k):
+                z=md.get(k,'');return '; '.join(map(str,z)) if isinstance(z,list) else str(z or '')
+              return ['OK',i,S('title'),S('creator'),S('year') or S('date'),S('volume'),S('edition'),S('series'),S('language'),S('contributor'),S('imagecount'),B+'/download/'+i+'/'+urllib.parse.quote(f['name']),S('subject')]
+            except Exception as e:return ['FAIL',i,type(e).__name__]
+          with concurrent.futures.ThreadPoolExecutor(max_workers=16) as ex:
+            rs=list(ex.map(v,ids))
+          print('EXAMINED',len(ids),'OK',sum(r[0]=='OK' for r in rs))
+          for r in rs:print('ROW\t'+'\t'.join(x.replace('\t',' ').replace('\n',' ') for x in r))
+          PY
