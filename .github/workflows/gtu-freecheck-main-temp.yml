@@ -3,6 +3,8 @@ on:
   push:
     paths:
       - '.github/workflows/gtu-freecheck-main-temp.yml'
+  pull_request:
+    branches: [main]
 permissions:
   contents: write
 jobs:
