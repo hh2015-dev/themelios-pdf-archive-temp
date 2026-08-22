@@ -1,0 +1,34 @@
+name: GTU hourly inventory 20260822 2143
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  mine:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mine GTU corpus broadly
+        shell: bash
+        run: |
+          set -euo pipefail
+          : > candidates.tsv
+          queries=(
+            'title:(Bible OR biblical OR testament OR gospel OR psalm OR prophet OR genesis OR exodus)'
+            'title:(Hebrew OR Aramaic OR Syriac OR Greek OR Septuagint OR Talmud OR Mishnah)'
+            'title:(manuscript OR papyri OR codex OR archaeology OR Assyria OR Babylon OR Egypt)'
+            'title:(patristic OR fathers OR Augustine OR Chrysostom OR Jerome OR Origen OR Irenaeus)'
+            'title:(Reformation OR Luther OR Calvin OR Zwingli OR theology OR creed OR confession)'
+            'title:(mission OR missionary OR Judaism OR church history OR apologetic)'
+          )
+          page=1
+          for q in "${queries[@]}"; do
+            enc=$(python -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "collection:graduatetheologicalunion AND mediatype:texts AND $q")
+            curl -fsSL "https://archive.org/advancedsearch.php?q=$enc&fl%5B%5D=identifier&fl%5B%5D=title&fl%5B%5D=creator&fl%5B%5D=date&fl%5B%5D=language&rows=80&page=$page&sort%5B%5D=identifier+asc&output=json" -o out.json
+            jq -r '.response.docs[] | [.identifier, (.title//""), ((.creator//"")|if type=="array" then join("; ") else . end), (.date//""), ((.language//"")|if type=="array" then join("; ") else . end)] | @tsv' out.json >> candidates.tsv
+            page=$((page+1))
+          done
+          sort -u candidates.tsv > unique.tsv
+          head -n 350 unique.tsv
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-hourly-candidates
+          path: unique.tsv
