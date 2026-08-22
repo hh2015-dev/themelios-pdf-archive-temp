@@ -1,0 +1,20 @@
+name: GTU Arnobius File Probe
+on:
+  pull_request:
+    branches: [main]
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: List PDF files
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, urllib.request
+          u='https://archive.org/metadata/adversusgentesli00arno'
+          data=json.load(urllib.request.urlopen(u, timeout=30))
+          for f in data.get('files',[]):
+              n=f.get('name','')
+              if n.lower().endswith('.pdf'):
+                  print(n, f.get('size'), f.get('source'), f.get('format'))
+          PY
