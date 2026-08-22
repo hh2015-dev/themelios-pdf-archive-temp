@@ -1,4 +1,4 @@
-name: GTU next five strict verify 20260822b
+name: GTU replacement strict verify 20260822b
 on:
   pull_request:
     branches: [ main ]
@@ -6,18 +6,15 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - name: Verify GTU candidates strictly
+      - name: Verify replacement candidates strictly
         shell: bash
         run: |
           set -euo pipefail
           ids=(
-            gtu_32400004227934_1
-            selectionsfromgr0000unse_d7m5
-            familypicodexale0000unse
-            aristeastophiloc0000unse_r7o3
-            studyofcodexevan0000bakk_n6o3
-            aramaischechrest0001koop
-            dasbuchesternach0000unse
+            horaehebraicaeet0002ligh
+            horaehebraicaeet0003ligh
+            gtu_A32400003017419B
+            epistlesofstjohn0000unse_m6y6
           )
           : > results.txt
           for id in "${ids[@]}"; do
@@ -47,5 +44,5 @@ jobs:
           done
       - uses: actions/upload-artifact@v4
         with:
-          name: gtu-next-five-strict-results
+          name: gtu-replacement-strict-results
           path: results.txt
