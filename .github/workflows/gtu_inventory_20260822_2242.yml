@@ -1,0 +1,98 @@
+name: GTU inventory 20260822 2242
+on:
+  pull_request:
+    branches: [main]
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mine exact GTU collection
+        shell: python
+        run: |
+          import json, urllib.parse, urllib.request, time, re
+          BASE='https://archive.org'
+          q='collection:graduatetheologicalunion AND mediatype:texts'
+          fields=['identifier','title','creator','date','volume','subject','contributor','language']
+          docs=[]
+          for page in [2,5,8,11,14,17,20,23]:
+              params=[('q',q)]+[( 'fl[]', f) for f in fields]+[('rows','200'),('page',str(page)),('output','json'),('sort[]','identifier asc')]
+              url=BASE+'/advancedsearch.php?'+urllib.parse.urlencode(params)
+              with urllib.request.urlopen(url,timeout=45) as r:
+                  data=json.load(r)
+              docs.extend(data.get('response',{}).get('docs',[]))
+              time.sleep(.2)
+          A=['bible','biblical','testament','genesis','exodus','leviticus','numbers','deuteronomy','joshua','judges','samuel','kings','chronicles','ezra','nehemiah','esther','job','psalm','proverb','ecclesiastes','isaiah','jeremiah','lamentations','ezekiel','daniel','prophet','gospel','matthew','mark','luke','john','acts','romans','corinthians','galatians','ephesians','philippians','colossians','thessalonians','timothy','titus','philemon','hebrews','james','peter','jude','revelation','apocalypse','hebrew','aramaic','syriac','semitic','greek','septuagint','lxx','papyr','manuscript','codex','textual','masorah','talmud','mishna','midrash','rabbin','juda','second temple','apocryph','pseudepig','assyri','babylon','canaan','ugarit','palestine','archaeolog','concordance','lexicon','grammar','exeg','commentar']
+          B=['patrist','father','eusebi','augustin','chrysostom','jerome','irenae','tertull','origen','cyprian','church history','reformation','luther','calvin','theolog','doctrine','creed','confession','apolog','philosophy of religion','mission','ecumen','liturgy','christian history','early christian','medieval church','jesuit','franciscan','anglican','baptist','methodist','presbyterian','orthodox','catholic']
+          C=['religion','religious history','comparative religion','mythology','ancient history','medieval history','philosophy']
+          def txt(d):
+              vals=[]
+              for k in ('title','creator','subject'):
+                  v=d.get(k,'')
+                  if isinstance(v,list): vals += [str(x) for x in v]
+                  else: vals.append(str(v))
+              return ' '.join(vals).lower()
+          scored=[]
+          for d in docs:
+              t=txt(d)
+              score=sum(4 for k in A if k in t)+sum(2 for k in B if k in t)+sum(1 for k in C if k in t)
+              if score>0: scored.append((score,d))
+          scored.sort(key=lambda x:(-x[0], str(x[1].get('identifier',''))))
+          # spread selection across sorted list, not only top results
+          pool=[]; seen=set()
+          for score,d in scored:
+              ident=d.get('identifier')
+              if ident and ident not in seen:
+                  seen.add(ident); pool.append((score,d))
+          sample=[]
+          if pool:
+              stride=max(1,len(pool)//180)
+              sample=pool[::stride][:180]
+              # also include a slice of highest-scoring records
+              sample=(pool[:80]+sample)
+          final=[]; done=set()
+          for score,d in sample:
+              ident=d.get('identifier')
+              if ident in done: continue
+              done.add(ident)
+              try:
+                  with urllib.request.urlopen(BASE+'/metadata/'+urllib.parse.quote(ident),timeout=45) as r:
+                      m=json.load(r)
+              except Exception:
+                  continue
+              md=m.get('metadata',{}) or {}
+              coll=md.get('collection',[])
+              if isinstance(coll,str): coll=[coll]
+              if 'graduatetheologicalunion' not in coll: continue
+              files=m.get('files',[]) or []
+              pdfs=[f for f in files if str(f.get('name','')).lower().endswith('.pdf')]
+              if not pdfs: continue
+              # prefer canonical identifier.pdf, then non-encrypted/lcpdf, otherwise first PDF
+              def rank(f):
+                  n=str(f.get('name',''))
+                  return (0 if n==ident+'.pdf' else 1, 1 if ('encrypted' in n.lower() or n.lower().endswith('.lcpdf')) else 0, len(n))
+              pdf=sorted(pdfs,key=rank)[0]
+              title=md.get('title',d.get('title',''))
+              creator=md.get('creator',d.get('creator',''))
+              date=md.get('date',d.get('date',''))
+              volume=md.get('volume',d.get('volume',''))
+              edition=md.get('edition','')
+              series=md.get('series','')
+              contributor=md.get('contributor',d.get('contributor',''))
+              subject=md.get('subject',d.get('subject',''))
+              pages=md.get('imagecount','')
+              if not pages:
+                  for f in files:
+                      if f.get('name')==ident+'_scandata.xml' and f.get('size'):
+                          pass
+              t=txt({'title':title,'creator':creator,'subject':subject})
+              pri='A' if any(k in t for k in A) else ('B' if any(k in t for k in B) else 'C')
+              final.append({'priority':pri,'identifier':ident,'title':title,'creator':creator,'date':date,'volume':volume,'edition':edition,'series':series,'subject':subject,'contributor':contributor,'pages':pages,'pdf_name':pdf.get('name',''),'pdf_size':pdf.get('size',''),'item_link':BASE+'/details/'+ident,'pdf_link':BASE+'/download/'+ident+'/'+urllib.parse.quote(pdf.get('name','')),'collection':coll,'score':score})
+              if len(final)>=120: break
+              time.sleep(.08)
+          with open('gtu_candidates.json','w',encoding='utf-8') as f: json.dump({'examined_docs':len(docs),'scored_docs':len(scored),'verified_candidates':len(final),'candidates':final},f,ensure_ascii=False,indent=2)
+          print(json.dumps({'examined_docs':len(docs),'scored_docs':len(scored),'verified_candidates':len(final)}))
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-inventory-candidates
+          path: gtu_candidates.json
+          retention-days: 2
