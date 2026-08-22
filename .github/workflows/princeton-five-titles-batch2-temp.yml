@@ -1,0 +1,85 @@
+name: Princeton Five Titles Batch 2 Temp
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Green Old Testament Canon and Philology
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 5 --retry-delay 5 \
+            'https://archive.org/download/oldtestamentcano00greerich/oldtestamentcano00greerich.pdf' \
+            -o 'Old Testament Canon and Philology - William Henry Green.pdf'
+          test -s 'Old Testament Canon and Philology - William Henry Green.pdf'
+      - name: Upload Green Old Testament Canon and Philology
+        uses: actions/upload-artifact@v4
+        with:
+          name: princeton-green-old-testament-canon-philology
+          path: 'Old Testament Canon and Philology - William Henry Green.pdf'
+          retention-days: 1
+          compression-level: 0
+
+      - name: Download Driver Notes on Hebrew Text of Samuel
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 5 --retry-delay 5 \
+            'https://archive.org/download/notesonhebrewte00driv/notesonhebrewte00driv.pdf' \
+            -o 'Notes on the Hebrew Text of the Books of Samuel - S. R. Driver.pdf'
+          test -s 'Notes on the Hebrew Text of the Books of Samuel - S. R. Driver.pdf'
+      - name: Upload Driver Notes on Hebrew Text of Samuel
+        uses: actions/upload-artifact@v4
+        with:
+          name: princeton-driver-notes-hebrew-samuel
+          path: 'Notes on the Hebrew Text of the Books of Samuel - S. R. Driver.pdf'
+          retention-days: 1
+          compression-level: 0
+
+      - name: Download Ginsburg Coheleth
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 5 --retry-delay 5 \
+            'https://archive.org/download/cohelethcommonly00gins/cohelethcommonly00gins.pdf' \
+            -o 'Coheleth, Commonly Called the Book of Ecclesiastes: Translated from the Original Hebrew, with a Commentary, Historical and Critical - Christian D. Ginsburg.pdf'
+          test -s 'Coheleth, Commonly Called the Book of Ecclesiastes: Translated from the Original Hebrew, with a Commentary, Historical and Critical - Christian D. Ginsburg.pdf'
+      - name: Upload Ginsburg Coheleth
+        uses: actions/upload-artifact@v4
+        with:
+          name: princeton-ginsburg-coheleth
+          path: 'Coheleth, Commonly Called the Book of Ecclesiastes: Translated from the Original Hebrew, with a Commentary, Historical and Critical - Christian D. Ginsburg.pdf'
+          retention-days: 1
+          compression-level: 0
+
+      - name: Download Hackett Acts
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 5 --retry-delay 5 \
+            'https://archive.org/download/commentaryonor00hack/commentaryonor00hack.pdf' \
+            -o 'A Commentary on the Original Text of the Acts of the Apostles - Horatio B. Hackett.pdf'
+          test -s 'A Commentary on the Original Text of the Acts of the Apostles - Horatio B. Hackett.pdf'
+      - name: Upload Hackett Acts
+        uses: actions/upload-artifact@v4
+        with:
+          name: princeton-hackett-acts
+          path: 'A Commentary on the Original Text of the Acts of the Apostles - Horatio B. Hackett.pdf'
+          retention-days: 1
+          compression-level: 0
+
+      - name: Download Robertson Matthew
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 5 --retry-delay 5 \
+            'https://archive.org/download/commentaryongosp00robe/commentaryongosp00robe.pdf' \
+            -o 'Commentary on the Gospel According to Matthew - A. T. Robertson.pdf'
+          test -s 'Commentary on the Gospel According to Matthew - A. T. Robertson.pdf'
+      - name: Upload Robertson Matthew
+        uses: actions/upload-artifact@v4
+        with:
+          name: princeton-robertson-matthew
+          path: 'Commentary on the Gospel According to Matthew - A. T. Robertson.pdf'
+          retention-days: 1
+          compression-level: 0
