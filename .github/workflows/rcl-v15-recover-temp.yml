@@ -6,21 +6,23 @@ on:
       - '.github/workflows/rcl-v15-recover-temp.yml'
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 jobs:
   recover:
     runs-on: ubuntu-latest
     steps:
-      - name: Download and validate missing PDF
+      - name: Recover, validate and persist missing PDF
         shell: bash
         run: |
           set -euo pipefail
-          curl -fL --retry 4 --retry-delay 2 'https://biblicalstudies.org.uk/pdf/rcl/15-2_204.pdf' -o 'Religion in Communist Lands - Volume 015 - The Hungarian Minority in Romania - pp204-206.pdf'
-          test "$(head -c 5 'Religion in Communist Lands - Volume 015 - The Hungarian Minority in Romania - pp204-206.pdf')" = '%PDF-'
-          test "$(stat -c%s 'Religion in Communist Lands - Volume 015 - The Hungarian Minority in Romania - pp204-206.pdf')" -eq 89184
-          echo '6951b382ac3505f263bcff59918cf977521189c7e0b4c6d90a74515eea7d9375  Religion in Communist Lands - Volume 015 - The Hungarian Minority in Romania - pp204-206.pdf' | sha256sum -c -
-      - uses: actions/upload-artifact@v4
-        with:
-          name: rcl-v15-recovered-204
-          path: Religion in Communist Lands - Volume 015 - The Hungarian Minority in Romania - pp204-206.pdf
-          if-no-files-found: error
+          mkdir -p tmp-rcl-v15
+          f='tmp-rcl-v15/Religion in Communist Lands - Volume 015 - The Hungarian Minority in Romania - pp204-206.pdf'
+          curl -fL --retry 4 --retry-delay 2 'https://biblicalstudies.org.uk/pdf/rcl/15-2_204.pdf' -o "$f"
+          test "$(head -c 5 "$f")" = '%PDF-'
+          test "$(stat -c%s "$f")" -eq 89184
+          echo "6951b382ac3505f263bcff59918cf977521189c7e0b4c6d90a74515eea7d9375  $f" | sha256sum -c -
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add "$f"
+          git commit -m 'temp: persist recovered RCL v15 PDF'
+          git push
