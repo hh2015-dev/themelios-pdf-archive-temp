@@ -1,4 +1,4 @@
-name: Arabic library six discovery
+name: Arabic library six discovery broad
 on:
   pull_request:
     branches: [ main ]
@@ -6,26 +6,26 @@ jobs:
   discover:
     runs-on: ubuntu-latest
     steps:
-      - name: Search Archive.org by title and creator
+      - name: Broad Archive.org discovery
         shell: bash
         run: |
           set -euo pipefail
           : > results.txt
           queries=(
-            'title:"الإملاء والترقيم في الكتابة العربية" AND creator:"عبد العليم إبراهيم"'
-            'title:"فن التحرير العربي" AND creator:"محمد صالح الشنطي"'
-            'title:"قواعد الإملاء" AND creator:"عبد السلام محمد هارون"'
-            'title:"تعلّم النحو والإملاء والترقيم" AND creator:"عبد الرحمن الهاشمي"'
-            'title:"معجم الصواب اللغوي" AND creator:"أحمد مختار عمر"'
-            'title:"فن الكتابة الصحيحة" AND creator:"محمود سليمان ياقوت"'
+            'title:(الإملاء والترقيم)'
+            'title:(فن التحرير العربي)'
+            'title:(تعلّم النحو والإملاء والترقيم)'
+            'title:(تعلم النحو والإملاء والترقيم)'
+            'title:(معجم الصواب اللغوي)'
+            'creator:(أحمد مختار عمر) AND title:(الصواب اللغوي)'
           )
           for q in "${queries[@]}"; do
             echo "=== $q ===" | tee -a results.txt
             enc=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "$q")
-            curl -fsSL "https://archive.org/advancedsearch.php?q=$enc&fl[]=identifier,title,creator&rows=10&page=1&output=json" -o search.json
-            jq -r '.response.docs[] | [.identifier,.title,(.creator//"")] | @tsv' search.json | tee -a results.txt
+            curl -fsSL "https://archive.org/advancedsearch.php?q=$enc&fl[]=identifier,title,creator,year&rows=30&page=1&output=json" -o search.json
+            jq -r '.response.docs[] | [.identifier,.title,(.creator//""),(.year//"")] | @tsv' search.json | tee -a results.txt
           done
       - uses: actions/upload-artifact@v4
         with:
-          name: arabic-six-discovery
+          name: arabic-six-discovery-broad
           path: results.txt
