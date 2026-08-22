@@ -11,7 +11,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p out
+          mkdir -p out split
           curl -fL --retry 5 --retry-delay 2 'https://archive.org/download/apologyforbiblei00wats_3/apologyforbiblei00wats_3.pdf' -o out/01_Watson.pdf
           curl -fL --retry 5 --retry-delay 2 'https://archive.org/download/adversusgentesli00arno/adversusgentesli00arno.pdf' -o out/02_Arnobius.pdf
           curl -fL --retry 5 --retry-delay 2 'https://archive.org/download/bibliothecapatru04unse/bibliothecapatru04unse.pdf' -o out/03_Bibliotheca_Vol4.pdf
@@ -21,10 +21,56 @@ jobs:
             test -s "$f"
             test "$(head -c 5 "$f")" = '%PDF-'
             file --mime-type "$f" | grep -q 'application/pdf'
+            stat -c '%n %s' "$f"
           done
-      - name: Upload PDFs
+          split -b 280M -d -a 2 out/04_Dilthey.pdf split/Dilthey.part.
+          sha256sum out/04_Dilthey.pdf > split/Dilthey.sha256
+          stat -c '%n %s' split/Dilthey.part.*
+      - name: Upload Watson
         uses: actions/upload-artifact@v4
         with:
-          name: gtu-batch3-five-pdfs
-          path: out/*.pdf
+          name: gtu3-watson
+          path: out/01_Watson.pdf
+          retention-days: 1
+      - name: Upload Arnobius
+        uses: actions/upload-artifact@v4
+        with:
+          name: gtu3-arnobius
+          path: out/02_Arnobius.pdf
+          retention-days: 1
+      - name: Upload Bibliotheca
+        uses: actions/upload-artifact@v4
+        with:
+          name: gtu3-bibliotheca
+          path: out/03_Bibliotheca_Vol4.pdf
+          retention-days: 1
+      - name: Upload Dilthey part 1
+        uses: actions/upload-artifact@v4
+        with:
+          name: gtu3-dilthey-part1
+          path: split/Dilthey.part.00
+          retention-days: 1
+      - name: Upload Dilthey part 2
+        uses: actions/upload-artifact@v4
+        with:
+          name: gtu3-dilthey-part2
+          path: split/Dilthey.part.01
+          retention-days: 1
+      - name: Upload Dilthey part 3
+        uses: actions/upload-artifact@v4
+        with:
+          name: gtu3-dilthey-part3
+          path: split/Dilthey.part.02
+          retention-days: 1
+      - name: Upload Dilthey checksum
+        uses: actions/upload-artifact@v4
+        with:
+          name: gtu3-dilthey-sha256
+          path: split/Dilthey.sha256
+          retention-days: 1
+      - name: Upload Bible Society Record
+        uses: actions/upload-artifact@v4
+        with:
+          name: gtu3-bible-society-record
+          path: out/05_Bible_Society_Record.pdf
           retention-days: 1
