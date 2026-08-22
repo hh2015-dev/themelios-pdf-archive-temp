@@ -16,15 +16,15 @@ jobs:
           from concurrent.futures import ThreadPoolExecutor, as_completed
           base='https://archive.org/advancedsearch.php'; q='collection:graduatetheologicalunion AND mediatype:texts'
           docs={}; examined=0
-          for page in (1,10,20,30,40,50):
-            p={'q':q,'fl[]':['identifier','title','creator','date','year','language','subject'],'rows':20,'page':page,'output':'json','sort[]':'identifier asc'}
-            arr=requests.get(base,params=p,timeout=25).json()['response']['docs']; examined += len(arr)
+          for page in (1,5,10,15,20,25):
+            p={'q':q,'fl[]':['identifier','title','creator','date','year','language','subject'],'rows':20,'page':page,'output':'json'}
+            arr=requests.get(base,params=p,timeout=20).json()['response']['docs']; examined += len(arr)
             for d in arr: docs.setdefault(d['identifier'],d)
           def flat(v): return '; '.join(map(str,v)) if isinstance(v,list) else (v or '')
           def verify(pair):
             ident,d=pair
             try:
-              m=requests.get('https://archive.org/metadata/'+ident,timeout=20).json(); md=m.get('metadata',{})
+              m=requests.get('https://archive.org/metadata/'+ident,timeout=15).json(); md=m.get('metadata',{})
               coll=md.get('collection',[]); coll=[coll] if isinstance(coll,str) else coll
               if 'graduatetheologicalunion' not in coll: return None
               files=m.get('files',[])
@@ -35,7 +35,7 @@ jobs:
               return {'identifier':ident,'title':flat(md.get('title') or d.get('title')),'creator':flat(md.get('creator') or d.get('creator')),'date':flat(md.get('date') or md.get('year') or d.get('year')),'volume':flat(md.get('volume')),'edition':flat(md.get('edition')),'series':flat(md.get('series')),'subject':flat(md.get('subject') or d.get('subject')),'language':flat(md.get('language') or d.get('language')),'contributor':flat(md.get('contributor') or md.get('contributor-sponsor') or md.get('sponsor')),'pages':flat(md.get('imagecount') or md.get('page-count') or md.get('pages')),'pdf_name':pdf.get('name',''),'pdf_size':pdf.get('size',''),'item_link':'https://archive.org/details/'+ident,'pdf_link':'https://archive.org/download/'+ident+'/'+requests.utils.quote(pdf.get('name','')),'collection_verified':True}
             except Exception: return None
           out=[]
-          with ThreadPoolExecutor(max_workers=24) as ex:
+          with ThreadPoolExecutor(max_workers=32) as ex:
             futs=[ex.submit(verify,x) for x in docs.items()]
             for f in as_completed(futs):
               r=f.result()
