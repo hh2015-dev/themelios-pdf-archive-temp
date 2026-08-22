@@ -15,11 +15,15 @@ jobs:
           import requests, json
           from concurrent.futures import ThreadPoolExecutor, as_completed
           base='https://archive.org/advancedsearch.php'; q='collection:graduatetheologicalunion AND mediatype:texts'
-          docs={}; examined=0
-          for page in (1,5,10,15,20,25):
+          pages=(1,5,10,15,20,25)
+          def search_page(page):
             p={'q':q,'fl[]':['identifier','title','creator','date','year','language','subject'],'rows':20,'page':page,'output':'json'}
-            arr=requests.get(base,params=p,timeout=20).json()['response']['docs']; examined += len(arr)
-            for d in arr: docs.setdefault(d['identifier'],d)
+            return requests.get(base,params=p,timeout=20).json()['response']['docs']
+          docs={}; examined=0
+          with ThreadPoolExecutor(max_workers=6) as ex:
+            for arr in ex.map(search_page,pages):
+              examined += len(arr)
+              for d in arr: docs.setdefault(d['identifier'],d)
           def flat(v): return '; '.join(map(str,v)) if isinstance(v,list) else (v or '')
           def verify(pair):
             ident,d=pair
