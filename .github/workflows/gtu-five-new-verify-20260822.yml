@@ -1,49 +1,32 @@
-name: GTU five new verify 20260822
+name: GTU five new transfer 20260822
 on:
   pull_request:
     branches: [ main ]
+permissions:
+  contents: write
 jobs:
-  verify:
+  transfer:
     runs-on: ubuntu-latest
     steps:
-      - name: Verify GTU candidates
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+      - name: Download verified PDFs and commit temporary bridge
         shell: bash
         run: |
           set -euo pipefail
-          ids=(
-            bookofcommonpray00revs
-            bookofcommonpray00prot_4
-          )
-          : > results.txt
-          for id in "${ids[@]}"; do
-            echo "=== $id ===" | tee -a results.txt
-            curl -fsSL "https://archive.org/metadata/$id" -o meta.json
-            title=$(jq -r '.metadata.title // ""' meta.json)
-            collection=$(jq -r '[.metadata.collection] | flatten | join(";")' meta.json)
-            restricted=$(jq -r '.metadata["access-restricted-item"] // .metadata.printdisabled // ""' meta.json)
-            pdf=$(jq -r '.files[] | select(.name|test("\\.pdf$";"i")) | select((.private // "false") != "true") | .name' meta.json | head -n1)
-            size=$(jq -r --arg p "$pdf" '.files[] | select(.name==$p) | .size // ""' meta.json)
-            echo "TITLE=$title" | tee -a results.txt
-            echo "COLLECTION=$collection" | tee -a results.txt
-            echo "RESTRICTED=$restricted" | tee -a results.txt
-            echo "PDF=$pdf" | tee -a results.txt
-            echo "SIZE=$size" | tee -a results.txt
-            if [[ "$collection" != *"graduatetheologicalunion"* || -z "$pdf" ]]; then
-              echo "VALID=NO" | tee -a results.txt
-              continue
-            fi
-            url="https://archive.org/download/$id/$pdf"
-            code=$(curl -L -sS -o check.pdf -w '%{http_code}' "$url")
-            magic=$(head -c 5 check.pdf || true)
-            mime=$(file -b --mime-type check.pdf || true)
-            actual=$(stat -c%s check.pdf || echo 0)
-            echo "HTTP=$code" | tee -a results.txt
-            echo "MAGIC=$magic" | tee -a results.txt
-            echo "MIME=$mime" | tee -a results.txt
-            echo "ACTUAL=$actual" | tee -a results.txt
-            if [[ "$code" == "200" && "$magic" == "%PDF-" && "$mime" == "application/pdf" ]]; then echo "VALID=YES"; else echo "VALID=NO"; fi | tee -a results.txt
+          mkdir -p gtu_temp_pdfs
+          curl -fL --retry 3 'https://archive.org/download/wiewurdendiebuch0000liet/wiewurdendiebuch0000liet.pdf' -o 'gtu_temp_pdfs/wiewurdendiebuch0000liet.pdf'
+          curl -fL --retry 3 'https://archive.org/download/diemischna0004unse_j4d0/diemischna0004unse_j4d0.pdf' -o 'gtu_temp_pdfs/diemischna0004unse_j4d0.pdf'
+          curl -fL --retry 3 'https://archive.org/download/diemischna0005unse/diemischna0005unse.pdf' -o 'gtu_temp_pdfs/diemischna0005unse.pdf'
+          curl -fL --retry 3 'https://archive.org/download/horaehebraicaeet0004ligh/horaehebraicaeet0004ligh.pdf' -o 'gtu_temp_pdfs/horaehebraicaeet0004ligh.pdf'
+          curl -fL --retry 3 'https://archive.org/download/bookofcommonpray00prot_4/bookofcommonpray00prot_4.pdf' -o 'gtu_temp_pdfs/bookofcommonpray00prot_4.pdf'
+          for f in gtu_temp_pdfs/*.pdf; do
+            test "$(head -c 5 "$f")" = '%PDF-'
+            file "$f"
           done
-      - uses: actions/upload-artifact@v4
-        with:
-          name: gtu-bcp-results
-          path: results.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add gtu_temp_pdfs/*.pdf
+          git commit -m 'TEMP add five verified GTU PDFs for Drive transfer'
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
