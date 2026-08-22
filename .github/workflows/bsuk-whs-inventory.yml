@@ -5,6 +5,10 @@ on:
     paths:
       - 'bsuk_worker/whs_inventory.py'
       - '.github/workflows/bsuk-whs-inventory.yml'
+  pull_request:
+    paths:
+      - 'bsuk_worker/whs_inventory.py'
+      - '.github/workflows/bsuk-whs-inventory.yml'
   workflow_dispatch:
 
 permissions:
