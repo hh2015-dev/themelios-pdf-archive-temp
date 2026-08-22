@@ -1,0 +1,75 @@
+name: Princeton Five Titles Batch 4 Temp
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Green Grammar 1892
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 5 --retry-delay 5 'https://archive.org/download/grammarofhebrewl001892gree/grammarofhebrewl001892gree.pdf' -o 'Green Grammar 1892.pdf'
+          test -s 'Green Grammar 1892.pdf'
+      - name: Upload Green Grammar 1892
+        uses: actions/upload-artifact@v4
+        with:
+          name: princeton-green-grammar-1892
+          path: 'Green Grammar 1892.pdf'
+          retention-days: 1
+          compression-level: 0
+
+      - name: Download Smith Samuel ICC
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 5 --retry-delay 5 'https://archive.org/download/criticalexegetic09smit/criticalexegetic09smit.pdf' -o 'Smith Samuel ICC.pdf'
+          test -s 'Smith Samuel ICC.pdf'
+      - name: Upload Smith Samuel ICC
+        uses: actions/upload-artifact@v4
+        with:
+          name: princeton-smith-samuel-icc
+          path: 'Smith Samuel ICC.pdf'
+          retention-days: 1
+          compression-level: 0
+
+      - name: Download Keil Samuel
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 5 --retry-delay 5 'https://archive.org/download/biblicalcomment00keil/biblicalcomment00keil.pdf' -o 'Keil Samuel.pdf'
+          test -s 'Keil Samuel.pdf'
+      - name: Upload Keil Samuel
+        uses: actions/upload-artifact@v4
+        with:
+          name: princeton-keil-samuel
+          path: 'Keil Samuel.pdf'
+          retention-days: 1
+          compression-level: 0
+
+      - name: Download Cyril John Vol 1
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 5 --retry-delay 5 'https://archive.org/download/commentaryongosp01cyri/commentaryongosp01cyri.pdf' -o 'Cyril John Vol 1.pdf'
+          test -s 'Cyril John Vol 1.pdf'
+      - name: Upload Cyril John Vol 1
+        uses: actions/upload-artifact@v4
+        with:
+          name: princeton-cyril-john-vol1
+          path: 'Cyril John Vol 1.pdf'
+          retention-days: 1
+          compression-level: 0
+
+      - name: Download Bernard John Vol 2
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 5 --retry-delay 5 'https://archive.org/download/criticalexegetic02bern_0/criticalexegetic02bern_0.pdf' -o 'Bernard John Vol 2.pdf'
+          test -s 'Bernard John Vol 2.pdf'
+      - name: Upload Bernard John Vol 2
+        uses: actions/upload-artifact@v4
+        with:
+          name: princeton-bernard-john-vol2
+          path: 'Bernard John Vol 2.pdf'
+          retention-days: 1
+          compression-level: 0
