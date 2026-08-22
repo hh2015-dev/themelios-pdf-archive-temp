@@ -1,4 +1,4 @@
-# temporary GTU-only 120-candidate broad sampling workflow
+# temporary GTU-only search-only broad sample
 name: GTU Inventory Discovery Temp
 on:
   pull_request:
@@ -8,45 +8,34 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Mine verified GTU metadata
+      - name: Search GTU PDF items broadly
         shell: bash
         run: |
           cat > /tmp/mine.py <<'PY'
           import requests, json
-          from concurrent.futures import ThreadPoolExecutor, as_completed
-          base='https://archive.org/advancedsearch.php'; q='collection:graduatetheologicalunion AND mediatype:texts'
-          pages=(1,5,10,15,20,25)
-          def search_page(page):
-            p={'q':q,'fl[]':['identifier','title','creator','date','year','language','subject'],'rows':20,'page':page,'output':'json'}
-            return requests.get(base,params=p,timeout=20).json()['response']['docs']
+          from concurrent.futures import ThreadPoolExecutor
+          base='https://archive.org/advancedsearch.php'
+          q='collection:graduatetheologicalunion AND mediatype:texts AND format:PDF'
+          pages=(1,10,20,30,40,50,75,100,125,150)
+          fields=['identifier','title','creator','date','year','language','subject','volume','edition','series','contributor']
+          def one(page):
+            p={'q':q,'fl[]':fields,'rows':20,'page':page,'output':'json'}
+            return requests.get(base,params=p,timeout=25).json()['response']['docs']
           docs={}; examined=0
-          with ThreadPoolExecutor(max_workers=6) as ex:
-            for arr in ex.map(search_page,pages):
+          with ThreadPoolExecutor(max_workers=10) as ex:
+            for arr in ex.map(one,pages):
               examined += len(arr)
               for d in arr: docs.setdefault(d['identifier'],d)
-          def flat(v): return '; '.join(map(str,v)) if isinstance(v,list) else (v or '')
-          def verify(pair):
-            ident,d=pair
-            try:
-              m=requests.get('https://archive.org/metadata/'+ident,timeout=15).json(); md=m.get('metadata',{})
-              coll=md.get('collection',[]); coll=[coll] if isinstance(coll,str) else coll
-              if 'graduatetheologicalunion' not in coll: return None
-              files=m.get('files',[])
-              pdfs=[f for f in files if str(f.get('name','')).lower().endswith('.pdf') and '_text.pdf' not in str(f.get('name','')).lower()]
-              if not pdfs: pdfs=[f for f in files if str(f.get('name','')).lower().endswith('.pdf')]
-              if not pdfs: return None
-              pdf=sorted(pdfs,key=lambda f:(('_text.pdf' in f.get('name','')),len(f.get('name',''))))[0]
-              return {'identifier':ident,'title':flat(md.get('title') or d.get('title')),'creator':flat(md.get('creator') or d.get('creator')),'date':flat(md.get('date') or md.get('year') or d.get('year')),'volume':flat(md.get('volume')),'edition':flat(md.get('edition')),'series':flat(md.get('series')),'subject':flat(md.get('subject') or d.get('subject')),'language':flat(md.get('language') or d.get('language')),'contributor':flat(md.get('contributor') or md.get('contributor-sponsor') or md.get('sponsor')),'pages':flat(md.get('imagecount') or md.get('page-count') or md.get('pages')),'pdf_name':pdf.get('name',''),'pdf_size':pdf.get('size',''),'item_link':'https://archive.org/details/'+ident,'pdf_link':'https://archive.org/download/'+ident+'/'+requests.utils.quote(pdf.get('name','')),'collection_verified':True}
-            except Exception: return None
-          out=[]
-          with ThreadPoolExecutor(max_workers=32) as ex:
-            futs=[ex.submit(verify,x) for x in docs.items()]
-            for f in as_completed(futs):
-              r=f.result()
-              if r: out.append(r)
-          out.sort(key=lambda r:r['identifier'])
-          with open('gtu_candidates.json','w',encoding='utf-8') as f: json.dump({'search_results_examined':examined,'unique_candidates':len(docs),'metadata_candidates_checked':len(docs),'verified_records':len(out),'records':out},f,ensure_ascii=False,indent=2)
-          print('examined',examined,'unique',len(docs),'verified',len(out))
+          recs=[]
+          for d in docs.values():
+            d=dict(d)
+            d['item_link']='https://archive.org/details/'+d['identifier']
+            d['collection_query_verified']=True
+            d['pdf_format_query_verified']=True
+            recs.append(d)
+          with open('gtu_candidates.json','w',encoding='utf-8') as f:
+            json.dump({'search_results_examined':examined,'unique_candidates':len(recs),'records':recs},f,ensure_ascii=False,indent=2)
+          print('examined',examined,'unique',len(recs))
           PY
           python /tmp/mine.py
       - uses: actions/upload-artifact@v4
