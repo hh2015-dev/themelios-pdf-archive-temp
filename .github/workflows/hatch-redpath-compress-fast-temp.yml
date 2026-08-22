@@ -13,15 +13,12 @@ jobs:
           curl -L --fail --retry 3 -o original.pdf https://archive.org/download/concordancetosep00hatc_0/concordancetosep00hatc_0.pdf
           pdfinfo original.pdf | grep '^Pages:'
           pdftotext original.pdf original.txt
-      - name: Compress high quality single pass
+          pdfimages -list original.pdf | head -40 || true
+      - name: Compress with ebook profile
         run: |
-          gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.6 -dNOPAUSE -dQUIET -dBATCH \
-            -dDetectDuplicateImages=true -dCompressFonts=true -dSubsetFonts=true \
-            -dDownsampleColorImages=true -dColorImageDownsampleType=/Bicubic -dColorImageResolution=190 \
-            -dDownsampleGrayImages=true -dGrayImageDownsampleType=/Bicubic -dGrayImageResolution=190 \
-            -dDownsampleMonoImages=true -dMonoImageDownsampleType=/Subsample -dMonoImageResolution=300 \
-            -dAutoFilterColorImages=false -dColorImageFilter=/DCTEncode -dJPEGQ=90 \
-            -dAutoFilterGrayImages=false -dGrayImageFilter=/DCTEncode \
+          gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.6 -dPDFSETTINGS=/ebook \
+            -dNOPAUSE -dQUIET -dBATCH -dDetectDuplicateImages=true \
+            -dCompressFonts=true -dSubsetFonts=true \
             -sOutputFile=final.pdf original.pdf
           stat -c%s original.pdf > original_size.txt
           stat -c%s final.pdf > final_size.txt
@@ -42,12 +39,12 @@ jobs:
       - name: Upload compressed PDF
         uses: actions/upload-artifact@v4
         with:
-          name: hatch-redpath-compressed-fast
+          name: hatch-redpath-compressed-ebook
           path: final.pdf
       - name: Upload report
         uses: actions/upload-artifact@v4
         with:
-          name: hatch-redpath-compress-fast-report
+          name: hatch-redpath-compress-ebook-report
           path: |
             original_size.txt
             final_size.txt
