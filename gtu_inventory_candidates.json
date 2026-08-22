@@ -3712,24 +3712,6 @@
       "collection_verified": true
     },
     {
-      "identifier": "analyticalgreekl0000vari_f4v8",
-      "title": "THE ANALYTICAL GREEK LEXICON",
-      "creator": "VARIOUS",
-      "date": "1950",
-      "volume": "",
-      "edition": "",
-      "series": "",
-      "subject": "",
-      "language": "eng",
-      "contributor": "Internet Archive",
-      "pages": "522",
-      "pdf_name": "analyticalgreekl0000vari_f4v8.pdf",
-      "pdf_size": "31332872",
-      "item_link": "https://archive.org/details/analyticalgreekl0000vari_f4v8",
-      "pdf_link": "https://archive.org/download/analyticalgreekl0000vari_f4v8/analyticalgreekl0000vari_f4v8.pdf",
-      "collection_verified": true
-    },
-    {
       "identifier": "apocalypseofezra0008unse",
       "title": "The Apocalypse of Ezra (II Esdras III-XIV) : translated from the Syriac text, with brief annotations by G.H. Box (1917)",
       "creator": "Various Authors",
@@ -3961,6 +3943,24 @@
       "pdf_size": "6296749",
       "item_link": "https://archive.org/details/b14106395",
       "pdf_link": "https://archive.org/download/b14106395/b14106395.pdf",
+      "collection_verified": true
+    },
+    {
+      "identifier": "babylonianhebrew00unse",
+      "title": "Babylonian and Hebrew views of life after death",
+      "creator": "",
+      "date": "1935",
+      "volume": "",
+      "edition": "",
+      "series": "",
+      "subject": "",
+      "language": "eng",
+      "contributor": "Graduate Theological Union",
+      "pages": "152",
+      "pdf_name": "babylonianhebrew00unse.pdf",
+      "pdf_size": "5906103",
+      "item_link": "https://archive.org/details/babylonianhebrew00unse",
+      "pdf_link": "https://archive.org/download/babylonianhebrew00unse/babylonianhebrew00unse.pdf",
       "collection_verified": true
     }
   ]
