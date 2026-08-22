@@ -1,0 +1,51 @@
+name: GTU Free Download Check
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: gtu-freecheck-20260822
+      - name: Check direct PDF access
+        shell: bash
+        run: |
+          set -u
+          cat > /tmp/candidates.tsv <<'EOF'
+Fitzmyer_Kaufman	https://archive.org/download/aramaicbibliogra0000jose/aramaicbibliogra0000jose.pdf
+Parvis	https://archive.org/download/newtestamentmanu0000merr/newtestamentmanu0000merr.pdf
+Mayser_Vol2	https://archive.org/download/grammatikdergrie0002mays_a4j8/grammatikdergrie0002mays_a4j8.pdf
+Souter	https://archive.org/download/pocketlexicontog0000alex/pocketlexicontog0000alex.pdf
+Gesenius	https://archive.org/download/geseniushebrewgr0000benj/geseniushebrewgr0000benj.pdf
+Liddell_Scott_Vol1	https://archive.org/download/greekenglishlexi0001unse_w5e3/greekenglishlexi0001unse_w5e3.pdf
+Parkhurst	https://archive.org/download/hebrewenglishlex0000john/hebrewenglishlex0000john.pdf
+Buxtorf	https://archive.org/download/lexiconhebraicum0000buxt/lexiconhebraicum0000buxt.pdf
+Lightfoot_Vol1	https://archive.org/download/horaehebraicaeet0001ligh/horaehebraicaeet0001ligh.pdf
+Bezold	https://archive.org/download/diebabylonischas0000bezo/diebabylonischas0000bezo.pdf
+Dunand	https://archive.org/download/papyrusgrecsbibl0000duna_u6o5/papyrusgrecsbibl0000duna_u6o5.pdf
+EOF
+          : > gtu_freecheck_results.txt
+          while IFS=$'\t' read -r name url; do
+            tmp="/tmp/${name}.bin"
+            code=$(curl -L -sS --fail --connect-timeout 15 --max-time 45 -r 0-4095 -o "$tmp" -w '%{http_code}' "$url" 2>/tmp/curlerr || true)
+            magic=$(head -c 5 "$tmp" 2>/dev/null || true)
+            bytes=$(wc -c < "$tmp" 2>/dev/null || echo 0)
+            if [ "$magic" = '%PDF-' ]; then
+              echo -e "$name\tPASS\thttp=$code\tbytes=$bytes\tmagic=$magic\t$url" >> gtu_freecheck_results.txt
+            else
+              err=$(tr '\n' ' ' < /tmp/curlerr | head -c 180)
+              echo -e "$name\tFAIL\thttp=$code\tbytes=$bytes\tmagic=$magic\terror=$err\t$url" >> gtu_freecheck_results.txt
+            fi
+            rm -f "$tmp" /tmp/curlerr
+          done < /tmp/candidates.tsv
+          cat gtu_freecheck_results.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add gtu_freecheck_results.txt
+          git commit -m 'Record GTU free PDF access check' || true
+          git push origin HEAD:gtu-freecheck-20260822
