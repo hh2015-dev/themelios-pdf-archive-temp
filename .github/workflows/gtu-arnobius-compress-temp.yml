@@ -6,11 +6,11 @@ jobs:
   compress:
     runs-on: ubuntu-latest
     steps:
-      - name: Install tools
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq ghostscript poppler-utils
       - name: Download original
         run: |
           set -euo pipefail
+          command -v gs
+          command -v pdfinfo
           curl -fL --retry 5 --retry-delay 2 'https://archive.org/download/adversusgentesli00arno/adversusgentesli00arno.pdf' -o original.pdf
           test "$(head -c 5 original.pdf)" = '%PDF-'
           pdfinfo original.pdf | grep '^Pages:'
