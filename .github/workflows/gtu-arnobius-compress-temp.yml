@@ -1,0 +1,41 @@
+name: GTU Arnobius Compress Temp
+on:
+  pull_request:
+    branches: [main]
+jobs:
+  compress:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ghostscript poppler-utils
+      - name: Download original
+        run: |
+          set -euo pipefail
+          curl -fL --retry 5 --retry-delay 2 'https://archive.org/download/adversusgentesli00arno/adversusgentesli00arno.pdf' -o original.pdf
+          test "$(head -c 5 original.pdf)" = '%PDF-'
+          pdfinfo original.pdf | grep '^Pages:'
+          ls -lh original.pdf
+      - name: Compress
+        run: |
+          set -euo pipefail
+          gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.6 -dNOPAUSE -dQUIET -dBATCH \
+            -sColorConversionStrategy=Gray -dProcessColorModel=/DeviceGray \
+            -dDetectDuplicateImages=true -dCompressFonts=true -dSubsetFonts=true \
+            -dDownsampleColorImages=true -dColorImageDownsampleType=/Bicubic -dColorImageResolution=110 \
+            -dDownsampleGrayImages=true -dGrayImageDownsampleType=/Bicubic -dGrayImageResolution=110 \
+            -dDownsampleMonoImages=true -dMonoImageDownsampleType=/Subsample -dMonoImageResolution=300 \
+            -dJPEGQ=72 -sOutputFile=compressed.pdf original.pdf
+          test "$(head -c 5 compressed.pdf)" = '%PDF-'
+          P1=$(pdfinfo original.pdf | awk '/^Pages:/{print $2}')
+          P2=$(pdfinfo compressed.pdf | awk '/^Pages:/{print $2}')
+          test "$P1" = "$P2"
+          echo "PAGES=$P2"
+          stat -c 'BYTES=%s' compressed.pdf
+          ls -lh compressed.pdf
+      - name: Upload compressed PDF
+        uses: actions/upload-artifact@v4
+        with:
+          name: gtu-arnobius-compressed
+          path: compressed.pdf
+          retention-days: 1
+          compression-level: 0
