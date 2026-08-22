@@ -1,4 +1,5 @@
 # temporary GTU-only discovery workflow
+# synchronize after base trigger enabled
 name: GTU Inventory Discovery Temp
 on:
   pull_request:
