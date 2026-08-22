@@ -1,4 +1,4 @@
-name: Arabic library five verify and bridge
+name: Arabic library exact IDs verify
 on:
   pull_request:
     branches: [ main ]
@@ -6,19 +6,13 @@ jobs:
   bridge:
     runs-on: ubuntu-latest
     steps:
-      - name: Verify exact Archive items and download PDFs
+      - name: Verify exact Archive IDs and download
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p out
-          ids=(
-            moharram1965_gmail_20180323
-            elhilalymohamad_gmail_20170414_2227
-            imlaa
-            t3alm-annahw
-            AAskZad-0182477
-          )
-          names=(imlaa_tarqim fan_tahrir qawaid_imlaa taallam_nahw fan_kitaba)
+          ids=(FP0178 imlaa ftada t3alm-annahw lis0495_201609)
+          names=(imlaa_tarqim qawaid_imlaa fan_tahrir taallam_nahw fan_kitaba)
           : > report.txt
           for i in ${!ids[@]}; do
             id=${ids[$i]}; name=${names[$i]}
@@ -38,40 +32,19 @@ jobs:
             magic=$(head -c 5 "out/$name.pdf" || true)
             mime=$(file -b --mime-type "out/$name.pdf" || true)
             size=$(stat -c%s "out/$name.pdf")
-            echo "MAGIC=$magic MIME=$mime SIZE=$size" | tee -a report.txt
+            sha=$(sha256sum "out/$name.pdf" | awk '{print $1}')
+            echo "MAGIC=$magic MIME=$mime SIZE=$size SHA256=$sha" | tee -a report.txt
             if [[ "$magic" == "%PDF-" && "$mime" == "application/pdf" ]]; then echo "VALID=YES" | tee -a report.txt; else echo "VALID=NO" | tee -a report.txt; fi
           done
       - uses: actions/upload-artifact@v4
-        with:
-          name: arabic-imlaa-tarqim
-          path: out/imlaa_tarqim.pdf
-          if-no-files-found: ignore
-          compression-level: 0
+        with: {name: arabic-exact-imlaa-tarqim, path: out/imlaa_tarqim.pdf, if-no-files-found: ignore, compression-level: 0}
       - uses: actions/upload-artifact@v4
-        with:
-          name: arabic-fan-tahrir
-          path: out/fan_tahrir.pdf
-          if-no-files-found: ignore
-          compression-level: 0
+        with: {name: arabic-exact-qawaid-imlaa, path: out/qawaid_imlaa.pdf, if-no-files-found: ignore, compression-level: 0}
       - uses: actions/upload-artifact@v4
-        with:
-          name: arabic-qawaid-imlaa
-          path: out/qawaid_imlaa.pdf
-          if-no-files-found: ignore
-          compression-level: 0
+        with: {name: arabic-exact-fan-tahrir, path: out/fan_tahrir.pdf, if-no-files-found: ignore, compression-level: 0}
       - uses: actions/upload-artifact@v4
-        with:
-          name: arabic-taallam-nahw
-          path: out/taallam_nahw.pdf
-          if-no-files-found: ignore
-          compression-level: 0
+        with: {name: arabic-exact-taallam-nahw, path: out/taallam_nahw.pdf, if-no-files-found: ignore, compression-level: 0}
       - uses: actions/upload-artifact@v4
-        with:
-          name: arabic-fan-kitaba
-          path: out/fan_kitaba.pdf
-          if-no-files-found: ignore
-          compression-level: 0
+        with: {name: arabic-exact-fan-kitaba, path: out/fan_kitaba.pdf, if-no-files-found: ignore, compression-level: 0}
       - uses: actions/upload-artifact@v4
-        with:
-          name: arabic-five-report
-          path: report.txt
+        with: {name: arabic-exact-report, path: report.txt}
