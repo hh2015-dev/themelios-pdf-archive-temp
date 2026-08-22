@@ -1,0 +1,74 @@
+name: GTU Inventory Discovery Temp
+on:
+  pull_request:
+    branches: [main]
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Mine verified GTU metadata
+        shell: bash
+        run: |
+          cat > /tmp/mine.py <<'PY'
+          import requests, json, time, re
+          base='https://archive.org/advancedsearch.php'
+          queries=[
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(bible OR biblical OR testament OR genesis OR psalms OR prophets OR gospel OR epistle))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(hebrew OR aramaic OR syriac OR semitic OR greek OR septuagint OR lexicon OR grammar OR concordance))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(manuscript OR codex OR papyri OR textual OR apocrypha OR pseudepigrapha OR mishnah OR talmud OR judaica OR archaeology))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(calvin OR luther OR augustine OR origen OR chrysostom OR irenaeus OR patristic OR reformation OR commentary))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(theology OR doctrine OR church OR christianity OR creed OR confession OR apologetic OR mission OR judaism))'
+          ]
+          docs={}
+          examined=0
+          for qi,q in enumerate(queries):
+            for page in (1,2):
+              p={'q':q,'fl[]':['identifier','title','creator','date','year','language','subject'],'rows':100,'page':page,'output':'json','sort[]':'identifier asc'}
+              r=requests.get(base,params=p,timeout=45); r.raise_for_status()
+              arr=r.json()['response']['docs']; examined += len(arr)
+              for d in arr:
+                docs.setdefault(d['identifier'],d)
+          out=[]
+          for ident,d in list(docs.items()):
+            if len(out)>=160: break
+            try:
+              m=requests.get('https://archive.org/metadata/'+ident,timeout=45).json()
+              md=m.get('metadata',{})
+              coll=md.get('collection',[])
+              if isinstance(coll,str): coll=[coll]
+              if 'graduatetheologicalunion' not in coll: continue
+              files=m.get('files',[])
+              pdfs=[f for f in files if str(f.get('name','')).lower().endswith('.pdf') and not str(f.get('name','')).lower().endswith('_text.pdf')]
+              if not pdfs:
+                pdfs=[f for f in files if str(f.get('name','')).lower().endswith('.pdf')]
+              if not pdfs: continue
+              # Prefer original/primary PDF over text derivatives.
+              pdf=sorted(pdfs,key=lambda f:(('_text.pdf' in f.get('name','')), len(f.get('name',''))))[0]
+              title=md.get('title') or d.get('title') or ''
+              creator=md.get('creator') or d.get('creator') or ''
+              if isinstance(creator,list): creator='; '.join(map(str,creator))
+              subj=md.get('subject') or d.get('subject') or ''
+              if isinstance(subj,list): subj='; '.join(map(str,subj[:12]))
+              desc=md.get('description','')
+              if isinstance(desc,list): desc='; '.join(map(str,desc[:3]))
+              volume=md.get('volume','')
+              edition=md.get('edition','')
+              series=md.get('series','')
+              contrib=md.get('contributor') or md.get('contributor-sponsor') or md.get('sponsor') or ''
+              lang=md.get('language') or d.get('language') or ''
+              if isinstance(lang,list): lang='; '.join(map(str,lang))
+              year=md.get('date') or md.get('year') or d.get('year') or ''
+              pages=md.get('imagecount') or md.get('page-count') or md.get('pages') or ''
+              out.append({'identifier':ident,'title':title,'creator':creator,'date':year,'volume':volume,'edition':edition,'series':series,'subject':subj,'language':lang,'contributor':contrib,'pages':pages,'pdf_name':pdf.get('name',''),'pdf_size':pdf.get('size',''),'item_link':'https://archive.org/details/'+ident,'pdf_link':'https://archive.org/download/'+ident+'/'+requests.utils.quote(pdf.get('name','')),'collection_verified':True,'description':str(desc)[:500]})
+            except Exception as e:
+              continue
+          with open('gtu_candidates.json','w',encoding='utf-8') as f: json.dump({'search_results_examined':examined,'unique_candidates':len(docs),'verified_records':len(out),'records':out},f,ensure_ascii=False,indent=2)
+          print('examined',examined,'unique',len(docs),'verified',len(out))
+          PY
+          python /tmp/mine.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-inventory-candidates
+          path: gtu_candidates.json
+          retention-days: 1
