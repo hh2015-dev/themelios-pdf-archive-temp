@@ -1,4 +1,4 @@
-name: GTU hourly verify 20 20260822 2143
+name: GTU hourly verify replacements 20260822 2143
 on:
   pull_request:
     branches: [ main ]
@@ -6,11 +6,11 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - name: Verify selected 20 GTU records
+      - name: Verify two replacement GTU records
         shell: bash
         run: |
           set -euo pipefail
-          ids=(hebrewenglishlex0000edwa hebrewgermanprep0000drth hebrewpassoverfr0012jbse historicalstudyo0000solo jungcodex0000flcr_m4e1 newdirectionsinb0000davi palaeographyofgr0000fred religionofancien0000cook_r5c1 selectpapyriwith0001ashu near-eastern-archaeology_1973-1982_36-45_index american-academy-of-religion-journal_1940-02_8_1 american-academy-of-religion-journal_1940-05_8_2 500biblestudies0000revh literatureoftheo0000vari_k5z8 lossgaininrecent0000jame american-missionary_1888-02_42_2 luther-life_1898-07_11_1 islammodernismin0000adam sacredarchaeolog0000mack hebrewreborn0000shal_m7n3)
+          ids=(american-academy-of-religion-journal_1940-08_8_3 american-academy-of-religion-journal_1940-11_8_4)
           : > verified.tsv
           for id in "${ids[@]}"; do
             curl -fsSL "https://archive.org/metadata/$id" -o meta.json
@@ -30,5 +30,5 @@ jobs:
           cat verified.tsv
       - uses: actions/upload-artifact@v4
         with:
-          name: gtu-hourly-verified20
+          name: gtu-hourly-replacements
           path: verified.tsv
