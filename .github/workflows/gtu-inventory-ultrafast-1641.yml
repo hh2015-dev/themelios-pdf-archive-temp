@@ -1,0 +1,60 @@
+name: GTU Inventory Ultrafast Miner 1641
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  mine:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: gtu-inventory-hourly-1641
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Exact GTU collection PDF search only
+        run: |
+          python - <<'PY'
+          import json,urllib.parse,urllib.request,concurrent.futures
+          BASE='https://archive.org/advancedsearch.php'
+          groups=[
+            ['genesis','exodus','deuteronomy','psalms','isaiah','jeremiah'],
+            ['gospel','romans','corinthians','paul','acts','revelation'],
+            ['hebrew','aramaic','syriac','semitic','greek','septuagint'],
+            ['manuscript','textual criticism','papyri','codex','inscriptions'],
+            ['josephus','philo','rabbinic','talmud','mishnah','judaism'],
+            ['assyrian','babylonian','archaeology','ancient near east'],
+            ['patristic','church fathers','early christian','reformation','calvin','luther'],
+            ['theology','creed','confession','apologetics','missions','church history']]
+          def fetch(group):
+            ors=' OR '.join([f'title:"{t}" OR subject:"{t}"' for t in group])
+            q=f'collection:graduatetheologicalunion AND mediatype:texts AND format:"PDF" AND ({ors})'
+            params={'q':q,'fl[]':['identifier','title','creator','date','year','language','subject','volume','description','contributor','format'],'rows':75,'page':1,'output':'json'}
+            url=BASE+'?'+urllib.parse.urlencode(params,doseq=True)
+            req=urllib.request.Request(url,headers={'User-Agent':'GTU-inventory-research/1.0'})
+            with urllib.request.urlopen(req,timeout=30) as r:return json.load(r)['response']['docs']
+          found={}
+          with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
+            for docs in ex.map(fetch,groups):
+              for d in docs:
+                i=d.get('identifier')
+                if i: found[i]=d
+          keysA=['bible','biblical','hebrew','aramaic','syriac','semit','greek','septuagint','genesis','exodus','deuteronomy','psalm','isaiah','jeremiah','prophet','gospel','romans','corinth','paul','acts','revelation','manuscript','textual','papyri','codex','josephus','philo','rabbin','talmud','mishnah','assyri','babylon','archaeolog','exeg','commentary']
+          keysB=['patrist','father','early christian','reformation','calvin','luther','theology','creed','confession','apolog','mission','church history','judaism']
+          out=[]
+          for d in found.values():
+            blob=' '.join(str(d.get(k,'')) for k in ['title','subject','description']).lower()
+            score=20*sum(k in blob for k in keysA)+7*sum(k in blob for k in keysB)
+            d['score']=score
+            out.append(d)
+          out.sort(key=lambda x:(-x.get('score',0),str(x.get('title',''))))
+          with open('gtu_ultrafast_candidates_1641.json','w',encoding='utf-8') as f:json.dump(out,f,ensure_ascii=False,indent=2)
+          print('examined unique exact-collection PDF candidates',len(out))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-ultrafast-candidates-1641
+          path: gtu_ultrafast_candidates_1641.json
+          retention-days: 1
