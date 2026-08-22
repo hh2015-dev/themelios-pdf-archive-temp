@@ -1,4 +1,4 @@
-name: Arabic library exact IDs verify
+name: Arabic library exact direct bridge
 on:
   pull_request:
     branches: [ main ]
@@ -6,45 +6,19 @@ jobs:
   bridge:
     runs-on: ubuntu-latest
     steps:
-      - name: Verify exact Archive IDs and download
+      - name: Download exact direct PDFs
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p out
-          ids=(FP0178 imlaa ftada t3alm-annahw lis0495_201609)
-          names=(imlaa_tarqim qawaid_imlaa fan_tahrir taallam_nahw fan_kitaba)
-          : > report.txt
-          for i in ${!ids[@]}; do
-            id=${ids[$i]}; name=${names[$i]}
-            echo "=== $id ===" | tee -a report.txt
-            curl -fsSL "https://archive.org/metadata/$id" -o meta.json
-            title=$(jq -r '.metadata.title // ""' meta.json)
-            creator=$(jq -r '.metadata.creator // "" | if type=="array" then join("; ") else . end' meta.json)
-            restricted=$(jq -r '.metadata["access-restricted-item"] // .metadata.printdisabled // ""' meta.json)
-            pdf=$(jq -r '.files[] | select(.name|test("\\.pdf$";"i")) | select((.private // "false") != "true") | select((.name|test("encrypted\\.pdf$";"i"))|not) | .name' meta.json | head -n1)
-            echo "TITLE=$title" | tee -a report.txt
-            echo "CREATOR=$creator" | tee -a report.txt
-            echo "RESTRICTED=$restricted" | tee -a report.txt
-            echo "PDF=$pdf" | tee -a report.txt
-            if [[ "$restricted" == "true" || -z "$pdf" ]]; then echo "VALID=NO" | tee -a report.txt; continue; fi
-            encpdf=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "$pdf")
-            curl -fL --retry 4 --retry-delay 2 "https://archive.org/download/$id/$encpdf" -o "out/$name.pdf"
-            magic=$(head -c 5 "out/$name.pdf" || true)
-            mime=$(file -b --mime-type "out/$name.pdf" || true)
-            size=$(stat -c%s "out/$name.pdf")
-            sha=$(sha256sum "out/$name.pdf" | awk '{print $1}')
-            echo "MAGIC=$magic MIME=$mime SIZE=$size SHA256=$sha" | tee -a report.txt
-            if [[ "$magic" == "%PDF-" && "$mime" == "application/pdf" ]]; then echo "VALID=YES" | tee -a report.txt; else echo "VALID=NO" | tee -a report.txt; fi
+          curl -fL --retry 4 --retry-delay 2 'https://archive.org/download/ftada/ftada.pdf' -o out/fan_tahrir.pdf
+          curl -fL --retry 4 --retry-delay 2 'https://archive.org/download/lis0495_201609/lis0495.pdf' -o out/fan_kitaba.pdf
+          for f in out/*.pdf; do
+            test "$(head -c 5 "$f")" = '%PDF-'
+            test "$(file -b --mime-type "$f")" = 'application/pdf'
+            echo "$f SIZE=$(stat -c%s "$f") SHA256=$(sha256sum "$f" | awk '{print $1}')"
           done
       - uses: actions/upload-artifact@v4
-        with: {name: arabic-exact-imlaa-tarqim, path: out/imlaa_tarqim.pdf, if-no-files-found: ignore, compression-level: 0}
+        with: {name: arabic-exact-fan-tahrir, path: out/fan_tahrir.pdf, compression-level: 0}
       - uses: actions/upload-artifact@v4
-        with: {name: arabic-exact-qawaid-imlaa, path: out/qawaid_imlaa.pdf, if-no-files-found: ignore, compression-level: 0}
-      - uses: actions/upload-artifact@v4
-        with: {name: arabic-exact-fan-tahrir, path: out/fan_tahrir.pdf, if-no-files-found: ignore, compression-level: 0}
-      - uses: actions/upload-artifact@v4
-        with: {name: arabic-exact-taallam-nahw, path: out/taallam_nahw.pdf, if-no-files-found: ignore, compression-level: 0}
-      - uses: actions/upload-artifact@v4
-        with: {name: arabic-exact-fan-kitaba, path: out/fan_kitaba.pdf, if-no-files-found: ignore, compression-level: 0}
-      - uses: actions/upload-artifact@v4
-        with: {name: arabic-exact-report, path: report.txt}
+        with: {name: arabic-exact-fan-kitaba, path: out/fan_kitaba.pdf, compression-level: 0}
