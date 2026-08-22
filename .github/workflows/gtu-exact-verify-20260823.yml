@@ -1,0 +1,62 @@
+name: GTU exact verify 20260823
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify selected GTU records
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,urllib.request,urllib.parse
+          ids='''apocryphapseudep0001rhch_l3b5
+jotargumofcave110000jvan
+phylakterienaush0000kuhn
+newtestamentpale0000mcna_t6g0
+practicalgrammar0000mose
+grammarofaramici0000clev
+valueofugariticf0000mdah
+cuneiformtextsof0000unse
+ethiopicgrammar0000augu_d4k6
+gtu_32400004077206
+copticgospelacco0000wesl
+lexicontosyriacn0000will
+gtu_32400004569020
+copticdictionary0000unse
+unset0000unse_b1u5
+copticgnosticpap0001math
+odesofsolomonsyr0000unse
+philoorallaw0000samu_y6s7
+witnessofvulgate0000sidn_s1l1
+onpresentstateof0000harr
+psalmsingreekacc0000henr
+gtu_32400008235677_2
+philounddermidra0000edmu
+josephusnewtesta0006hugh
+oldtestamentsinc0000emil'''.splitlines()
+          for i in ids:
+            try:m=json.load(urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(i),timeout=20))
+            except Exception as e: print('FAIL\t'+i+'\t'+str(e));continue
+            md=m.get('metadata',{}); coll=md.get('collection',[])
+            if isinstance(coll,str):coll=[coll]
+            pdfs=[]
+            for f in m.get('files',[]):
+              n=f.get('name','')
+              if n.lower().endswith('.pdf') and not n.lower().endswith('.lcpdf') and 'encrypted' not in n.lower() and str(f.get('private','false')).lower()!='true':pdfs.append(f)
+            pub=max(pdfs,key=lambda f:int(f.get('size') or 0)) if pdfs else None
+            def s(v):
+              if isinstance(v,list):return '; '.join(map(str,v))
+              return '' if v is None else str(v)
+            rec={
+             'identifier':i,'in_gtu':'graduatetheologicalunion' in coll,'title':s(md.get('title')),'creator':s(md.get('creator')),
+             'date':s(md.get('date') or md.get('year')),'volume':s(md.get('volume')),'edition':s(md.get('edition')),'series':s(md.get('series')),
+             'language':s(md.get('language')),'subject':s(md.get('subject')),'imagecount':s(md.get('imagecount')),
+             'contributor':s(md.get('contributor') or md.get('scanner')),'public_pdf':bool(pub),
+             'pdf_name':pub.get('name','') if pub else '','pdf_size':pub.get('size','') if pub else '',
+             'item_link':'https://archive.org/details/'+i,
+             'direct_pdf':('https://archive.org/download/'+i+'/'+urllib.parse.quote(pub.get('name',''))) if pub else ''}
+            print('VER\t'+json.dumps(rec,ensure_ascii=False,separators=(',',':')))
+          PY
