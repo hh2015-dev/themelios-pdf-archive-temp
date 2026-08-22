@@ -1,8 +1,7 @@
 name: GTU Free Download Check
 on:
-  pull_request:
-    branches: [main]
-  workflow_dispatch:
+  push:
+    branches: [gtu-freecheck-20260822]
 permissions:
   contents: write
 jobs:
