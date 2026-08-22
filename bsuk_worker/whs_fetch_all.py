@@ -20,7 +20,7 @@ for pi in range(1,14):
   if not href: continue
   if '.pdf' not in (href+' '+txt).lower(): continue
   u=urljoin(BASE.format(pi),href)
-  if '/pdf/whs/' not in u: continue
+  if not u.startswith(('http://','https://')) or '/pdf/whs/' not in u: continue
   urls.setdefault(u,{'vol':vol,'anchor':txt})
 print('TARGET_URLS',len(urls),flush=True)
 assert len(urls)==453, len(urls)
