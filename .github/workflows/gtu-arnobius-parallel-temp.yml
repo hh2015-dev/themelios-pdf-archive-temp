@@ -1,0 +1,64 @@
+name: GTU Arnobius Parallel Compress Temp
+on:
+  pull_request:
+    branches: [main]
+jobs:
+  compress:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {idx: 1, first: 1, last: 127}
+          - {idx: 2, first: 128, last: 254}
+          - {idx: 3, first: 255, last: 381}
+          - {idx: 4, first: 382, last: 508}
+          - {idx: 5, first: 509, last: 635}
+          - {idx: 6, first: 636, last: 762}
+          - {idx: 7, first: 763, last: 889}
+          - {idx: 8, first: 890, last: 1016}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Ghostscript
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ghostscript
+      - name: Download original
+        run: curl -fL --retry 4 --retry-delay 1 'https://archive.org/download/adversusgentesli00arno/adversusgentesli00arno.pdf' -o original.pdf
+      - name: Compress range
+        run: |
+          gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.6 -dNOPAUSE -dQUIET -dBATCH \
+            -dFirstPage=${{ matrix.first }} -dLastPage=${{ matrix.last }} \
+            -sColorConversionStrategy=Gray -dProcessColorModel=/DeviceGray \
+            -dDetectDuplicateImages=true -dCompressFonts=true -dSubsetFonts=true \
+            -dDownsampleColorImages=true -dColorImageDownsampleType=/Bicubic -dColorImageResolution=110 \
+            -dDownsampleGrayImages=true -dGrayImageDownsampleType=/Bicubic -dGrayImageResolution=110 \
+            -dDownsampleMonoImages=true -dMonoImageDownsampleType=/Subsample -dMonoImageResolution=300 \
+            -dJPEGQ=72 -sOutputFile=chunk-${{ matrix.idx }}.pdf original.pdf
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arn-chunk-${{ matrix.idx }}
+          path: chunk-${{ matrix.idx }}.pdf
+          retention-days: 1
+          compression-level: 0
+  merge:
+    needs: compress
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: arn-chunk-*
+          path: chunks
+          merge-multiple: true
+      - name: Install poppler
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils
+      - name: Merge and verify
+        run: |
+          pdfunite chunks/chunk-1.pdf chunks/chunk-2.pdf chunks/chunk-3.pdf chunks/chunk-4.pdf chunks/chunk-5.pdf chunks/chunk-6.pdf chunks/chunk-7.pdf chunks/chunk-8.pdf Arnobius-compressed.pdf
+          test "$(head -c 5 Arnobius-compressed.pdf)" = '%PDF-'
+          test "$(pdfinfo Arnobius-compressed.pdf | awk '/^Pages:/{print $2}')" = '1016'
+          stat -c 'BYTES=%s' Arnobius-compressed.pdf
+          ls -lh Arnobius-compressed.pdf
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-arnobius-parallel-final
+          path: Arnobius-compressed.pdf
+          retention-days: 1
+          compression-level: 0
