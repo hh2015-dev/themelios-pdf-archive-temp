@@ -1,0 +1,70 @@
+name: Hatch Redpath Simple Optimize Temp
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  optimize:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install free PDF tools
+        run: sudo apt-get update && sudo apt-get install -y mupdf-tools poppler-utils ocrmypdf
+      - name: Download complete original PDF
+        run: |
+          curl -L --fail --retry 3 -o original.pdf https://archive.org/download/concordancetosep00hatc_0/concordancetosep00hatc_0.pdf
+          pdfinfo original.pdf | grep '^Pages:'
+          pdftotext original.pdf original.txt
+      - name: Optimize without splitting
+        run: |
+          set -e
+          mutool clean -gggg -z -f original.pdf lossless.pdf
+          lossless_size=$(stat -c%s lossless.pdf)
+          echo "Lossless size: $lossless_size"
+          if [ "$lossless_size" -lt 98000000 ]; then
+            cp lossless.pdf final.pdf
+            echo lossless > method.txt
+          else
+            ocrmypdf --skip-text --optimize 3 --jpeg-quality 88 --png-quality 88 --output-type pdf --jobs 2 lossless.pdf optimized88.pdf || true
+            if [ -f optimized88.pdf ] && [ "$(stat -c%s optimized88.pdf)" -lt 98000000 ]; then
+              cp optimized88.pdf final.pdf
+              echo ocrmypdf_q88 > method.txt
+            else
+              ocrmypdf --skip-text --optimize 3 --jpeg-quality 82 --png-quality 82 --output-type pdf --jobs 2 lossless.pdf optimized82.pdf
+              cp optimized82.pdf final.pdf
+              echo ocrmypdf_q82 > method.txt
+            fi
+          fi
+          stat -c%s original.pdf > original_size.txt
+          stat -c%s final.pdf > final_size.txt
+          pdfinfo original.pdf | grep '^Pages:' | awk '{print $2}' > original_pages.txt
+          pdfinfo final.pdf | grep '^Pages:' | awk '{print $2}' > final_pages.txt
+          pdftotext final.pdf final.txt
+          wc -c < original.txt > original_text_chars.txt
+          wc -c < final.txt > final_text_chars.txt
+          echo "Method: $(cat method.txt)"
+          echo "Original: $(cat original_size.txt); Final: $(cat final_size.txt)"
+          echo "Pages: $(cat original_pages.txt)/$(cat final_pages.txt)"
+          echo "Text chars: $(cat original_text_chars.txt)/$(cat final_text_chars.txt)"
+          test "$(cat original_pages.txt)" = "$(cat final_pages.txt)"
+          test "$(cat final_size.txt)" -lt 100000000
+          python - <<'PY'
+          o=int(open('original_text_chars.txt').read()); f=int(open('final_text_chars.txt').read())
+          if o and f < o*0.95:
+              raise SystemExit(f'Text layer loss: {o}->{f}')
+          PY
+      - name: Upload optimized complete PDF
+        uses: actions/upload-artifact@v4
+        with:
+          name: hatch-redpath-complete-optimized
+          path: final.pdf
+      - name: Upload verification report
+        uses: actions/upload-artifact@v4
+        with:
+          name: hatch-redpath-simple-opt-report
+          path: |
+            method.txt
+            original_size.txt
+            final_size.txt
+            original_pages.txt
+            final_pages.txt
+            original_text_chars.txt
+            final_text_chars.txt
