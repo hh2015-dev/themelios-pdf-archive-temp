@@ -1,0 +1,28 @@
+name: GTU Five Check
+on:
+  pull_request:
+    branches: [main]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify five unrestricted PDFs
+        shell: bash
+        run: |
+          set -euo pipefail
+          urls=(
+            'https://archive.org/download/wiewurdendiebuch0000liet/wiewurdendiebuch0000liet.pdf'
+            'https://archive.org/download/labibletraductio0001unse/labibletraductio0001unse.pdf'
+            'https://archive.org/download/labibletraductio0004unse/labibletraductio0004unse.pdf'
+            'https://archive.org/download/diemischna0004unse_j4d0/diemischna0004unse_j4d0.pdf'
+            'https://archive.org/download/diemischna0005unse/diemischna0005unse.pdf'
+          )
+          i=0
+          for u in "${urls[@]}"; do
+            i=$((i+1)); f="/tmp/x$i.pdf"
+            curl -fL --retry 3 --connect-timeout 15 --max-time 120 "$u" -o "$f"
+            test -s "$f"
+            test "$(head -c 5 "$f")" = '%PDF-'
+            file --mime-type "$f" | grep -q 'application/pdf'
+            echo "PASS $i $(stat -c%s "$f") $u"
+          done
