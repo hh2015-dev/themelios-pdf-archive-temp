@@ -1,0 +1,75 @@
+name: Princeton Five Batch 7 Temp
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Warfield Textual Criticism
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 5 --retry-delay 5 'https://archive.org/download/introductiontote00warf/introductiontote00warf.pdf' -o 'Warfield Textual Criticism.pdf'
+          test -s 'Warfield Textual Criticism.pdf'
+      - name: Upload Warfield Textual Criticism
+        uses: actions/upload-artifact@v4
+        with:
+          name: princeton-warfield-textual-criticism
+          path: 'Warfield Textual Criticism.pdf'
+          retention-days: 1
+          compression-level: 0
+
+      - name: Download Warfield Revelation Inspiration
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 5 --retry-delay 5 'https://archive.org/download/revelationinspir00warf/revelationinspir00warf.pdf' -o 'Warfield Revelation and Inspiration.pdf'
+          test -s 'Warfield Revelation and Inspiration.pdf'
+      - name: Upload Warfield Revelation Inspiration
+        uses: actions/upload-artifact@v4
+        with:
+          name: princeton-warfield-revelation-inspiration
+          path: 'Warfield Revelation and Inspiration.pdf'
+          retention-days: 1
+          compression-level: 0
+
+      - name: Download Terry Biblical Dogmatics
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 5 --retry-delay 5 'https://archive.org/download/biblicaldogmatic00terr/biblicaldogmatic00terr.pdf' -o 'Terry Biblical Dogmatics.pdf'
+          test -s 'Terry Biblical Dogmatics.pdf'
+      - name: Upload Terry Biblical Dogmatics
+        uses: actions/upload-artifact@v4
+        with:
+          name: princeton-terry-biblical-dogmatics
+          path: 'Terry Biblical Dogmatics.pdf'
+          retention-days: 1
+          compression-level: 0
+
+      - name: Download Robinson Biblical Researches Vol 2
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 5 --retry-delay 5 'https://archive.org/download/biblicalresearch02robi_0/biblicalresearch02robi_0.pdf' -o 'Robinson Biblical Researches Vol 2.pdf'
+          test -s 'Robinson Biblical Researches Vol 2.pdf'
+      - name: Upload Robinson Biblical Researches Vol 2
+        uses: actions/upload-artifact@v4
+        with:
+          name: princeton-robinson-biblical-researches-vol2
+          path: 'Robinson Biblical Researches Vol 2.pdf'
+          retention-days: 1
+          compression-level: 0
+
+      - name: Download Kyle Moses Monuments
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 5 --retry-delay 5 'https://archive.org/download/mosesmonumentsli1920kyle/mosesmonumentsli1920kyle.pdf' -o 'Kyle Moses and the Monuments.pdf'
+          test -s 'Kyle Moses and the Monuments.pdf'
+      - name: Upload Kyle Moses Monuments
+        uses: actions/upload-artifact@v4
+        with:
+          name: princeton-kyle-moses-monuments
+          path: 'Kyle Moses and the Monuments.pdf'
+          retention-days: 1
+          compression-level: 0
