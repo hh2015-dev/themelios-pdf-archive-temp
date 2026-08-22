@@ -1,0 +1,30 @@
+name: GTU Batch 3
+on:
+  pull_request:
+    branches: [main]
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download and verify PDFs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          curl -fL --retry 5 --retry-delay 2 'https://archive.org/download/apologyforbiblei00wats_3/apologyforbiblei00wats_3.pdf' -o out/01_Watson.pdf
+          curl -fL --retry 5 --retry-delay 2 'https://archive.org/download/adversusgentesli00arno/adversusgentesli00arno.pdf' -o out/02_Arnobius.pdf
+          curl -fL --retry 5 --retry-delay 2 'https://archive.org/download/bibliothecapatru04unse/bibliothecapatru04unse.pdf' -o out/03_Bibliotheca_Vol4.pdf
+          curl -fL --retry 5 --retry-delay 2 'https://archive.org/download/bim_early-english-books-1475-1640_leben-shleiermamers_wilhelm-dilthey_1870/bim_early-english-books-1475-1640_leben-shleiermamers_wilhelm-dilthey_1870.pdf' -o out/04_Dilthey.pdf
+          curl -fL --retry 5 --retry-delay 2 'https://archive.org/download/american-bible-society-record_1866-04_11_4/american-bible-society-record_1866-04_11_4.pdf' -o out/05_Bible_Society_Record.pdf
+          for f in out/*.pdf; do
+            test -s "$f"
+            test "$(head -c 5 "$f")" = '%PDF-'
+            file --mime-type "$f" | grep -q 'application/pdf'
+          done
+      - name: Upload PDFs
+        uses: actions/upload-artifact@v4
+        with:
+          name: gtu-batch3-five-pdfs
+          path: out/*.pdf
+          retention-days: 1
