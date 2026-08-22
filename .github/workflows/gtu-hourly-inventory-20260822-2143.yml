@@ -10,28 +10,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ids=(
-            hebrewenglishlex0000edwa
-            hebrewgermanprep0000drth
-            hebrewpassoverfr0012jbse
-            historicalstudyo0000solo
-            jungcodex0000flcr_m4e1
-            newdirectionsinb0000davi
-            palaeographyofgr0000fred
-            religionofancien0000cook_r5c1
-            selectpapyriwith0001ashu
-            near-eastern-archaeology_1973-1982_36-45_index
-            american-academy-of-religion-journal_1940-02_8_1
-            american-academy-of-religion-journal_1940-05_8_2
-            500biblestudies0000revh
-            literatureoftheo0000vari_k5z8
-            lossgaininrecent0000jame
-            american-missionary_1888-02_42_2
-            luther-life_1898-07_11_1
-            islammodernismin0000adam
-            sacredarchaeolog0000mack
-            hebrewreborn0000shal_m7n3
-          )
+          ids=(hebrewenglishlex0000edwa hebrewgermanprep0000drth hebrewpassoverfr0012jbse historicalstudyo0000solo jungcodex0000flcr_m4e1 newdirectionsinb0000davi palaeographyofgr0000fred religionofancien0000cook_r5c1 selectpapyriwith0001ashu near-eastern-archaeology_1973-1982_36-45_index american-academy-of-religion-journal_1940-02_8_1 american-academy-of-religion-journal_1940-05_8_2 500biblestudies0000revh literatureoftheo0000vari_k5z8 lossgaininrecent0000jame american-missionary_1888-02_42_2 luther-life_1898-07_11_1 islammodernismin0000adam sacredarchaeolog0000mack hebrewreborn0000shal_m7n3)
           : > verified.tsv
           for id in "${ids[@]}"; do
             curl -fsSL "https://archive.org/metadata/$id" -o meta.json
@@ -44,10 +23,8 @@ jobs:
             edition=$(jq -r '.metadata.edition//""' meta.json)
             language=$(jq -r '.metadata.language//"" | if type=="array" then join("; ") else . end' meta.json)
             contributor=$(jq -r '.metadata.contributor//"" | if type=="array" then join("; ") else . end' meta.json)
-            pages=$(jq -r '.metadata.page-progression // ""' meta.json)
             if [[ "$coll" == *"graduatetheologicalunion"* && -n "$pdf" ]]; then
-              size=$(jq -r --arg p "$pdf" '.files[] | select(.name==$p) | .size//""' meta.json)
-              printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$id" "$title" "$creator" "$date" "$volume" "$edition" "$language" "$contributor" "$pdf" "$size" >> verified.tsv
+              printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$id" "$title" "$creator" "$date" "$volume" "$edition" "$language" "$contributor" "$pdf" >> verified.tsv
             fi
           done
           cat verified.tsv
