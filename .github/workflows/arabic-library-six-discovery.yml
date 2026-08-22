@@ -33,7 +33,8 @@ jobs:
             echo "RESTRICTED=$restricted" | tee -a report.txt
             echo "PDF=$pdf" | tee -a report.txt
             if [[ "$restricted" == "true" || -z "$pdf" ]]; then echo "VALID=NO" | tee -a report.txt; continue; fi
-            curl -fL --retry 4 --retry-delay 2 "https://archive.org/download/$id/$pdf" -o "out/$name.pdf"
+            encpdf=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "$pdf")
+            curl -fL --retry 4 --retry-delay 2 "https://archive.org/download/$id/$encpdf" -o "out/$name.pdf"
             magic=$(head -c 5 "out/$name.pdf" || true)
             mime=$(file -b --mime-type "out/$name.pdf" || true)
             size=$(stat -c%s "out/$name.pdf")
