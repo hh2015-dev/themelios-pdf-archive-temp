@@ -1,0 +1,39 @@
+name: GTU upload five 20260822
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  bridge:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download five GTU PDFs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          curl -fL --retry 3 'https://archive.org/download/a-grammar-of-the-old-testament-in-greek-1909-vol-1_1909_1/a-grammar-of-the-old-testament-in-greek-1909-vol-1_1909_1.pdf' -o 'out/thackeray.pdf'
+          curl -fL --retry 3 'https://archive.org/download/abbreviationsing0000twal/abbreviationsing0000twal.pdf' -o 'out/allen.pdf'
+          curl -fL --retry 3 'https://archive.org/download/accountofprinted0000treg/accountofprinted0000treg.pdf' -o 'out/tregelles.pdf'
+          curl -fL --retry 3 'https://archive.org/download/aboutoldtestamen0000alba/aboutoldtestamen0000alba.pdf' -o 'out/goodier.pdf'
+          curl -fL --retry 3 'https://archive.org/download/agreementbetween0009henr/agreementbetween0009henr.pdf' -o 'out/lutz.pdf'
+          for f in out/*.pdf; do test "$(head -c 5 "$f")" = '%PDF-'; file "$f"; done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-thackeray
+          path: out/thackeray.pdf
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-allen
+          path: out/allen.pdf
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-tregelles
+          path: out/tregelles.pdf
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-goodier
+          path: out/goodier.pdf
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-lutz
+          path: out/lutz.pdf
