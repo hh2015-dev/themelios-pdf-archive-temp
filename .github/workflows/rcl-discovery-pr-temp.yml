@@ -1,0 +1,76 @@
+name: RCL Discovery PR Temp
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install requests beautifulsoup4
+      - name: Discover RCL corpus
+        shell: bash
+        run: |
+          python - <<'PY'
+          import requests, json, hashlib, csv, os
+          from bs4 import BeautifulSoup
+          from urllib.parse import urljoin
+          base='https://biblicalstudies.org.uk/'
+          out='rcl_discovery'; os.makedirs(out,exist_ok=True)
+          s=requests.Session(); s.headers.update({'User-Agent':'Mozilla/5.0 (compatible; BSUK-Archive-Audit/1.0)'})
+          pages=[]; occurrences=[]; misses=0
+          for i in range(1,31):
+              url=f'{base}articles_rcl_{i:02d}.php'
+              try:
+                  r=s.get(url,timeout=30,allow_redirects=True); status=r.status_code
+              except Exception as e:
+                  pages.append({'index':i,'url':url,'status':'ERROR','error':str(e)}); continue
+              if status==404:
+                  misses+=1; pages.append({'index':i,'url':url,'status':404})
+                  if misses>=3 and i>4: break
+                  continue
+              misses=0
+              soup=BeautifulSoup(r.text,'html.parser')
+              pages.append({'index':i,'url':url,'final_url':r.url,'status':status,'bytes':len(r.content),'title':soup.title.get_text(' ',strip=True) if soup.title else '', 'headings':' | '.join(x.get_text(' ',strip=True) for x in soup.find_all(['h1','h2','h3'])[:12])})
+              open(f'{out}/page_{i:02d}.html','wb').write(r.content)
+              for a in soup.find_all('a',href=True):
+                  href=a['href'].strip()
+                  if '.pdf' not in href.lower(): continue
+                  full=urljoin(r.url,href)
+                  context=''
+                  for parent_name in ['tr','li','p','div']:
+                      p=a.find_parent(parent_name)
+                      if p:
+                          context=' '.join(p.stripped_strings)
+                          if context: break
+                  if not context: context=' '.join(a.stripped_strings)
+                  occurrences.append({'page_index':i,'page_url':url,'pdf_url':full,'anchor':' '.join(a.stripped_strings),'context':context[:2000]})
+          unique={}
+          for row in occurrences: unique.setdefault(row['pdf_url'],row)
+          checks=[]; hashes={}
+          for n,(u,row) in enumerate(unique.items(),1):
+              rec=dict(row)
+              try:
+                  rr=s.get(u,timeout=90,allow_redirects=True); data=rr.content
+                  rec.update({'http_status':rr.status_code,'final_url':rr.url,'content_type':rr.headers.get('content-type',''),'bytes':len(data),'pdf_magic':data.startswith(b'%PDF-')})
+                  if rr.ok and data.startswith(b'%PDF-'):
+                      sha=hashlib.sha256(data).hexdigest(); rec['sha256']=sha; hashes.setdefault(sha,[]).append(u)
+                  else: rec['sha256']=''
+              except Exception as e:
+                  rec.update({'http_status':'ERROR','error':str(e),'bytes':0,'pdf_magic':False,'sha256':''})
+              checks.append(rec); print(f'CHECK {n}/{len(unique)} {rec.get("http_status")} {u}')
+          result={'pages':pages,'pdf_link_occurrences':len(occurrences),'unique_pdf_urls':len(unique),'checks':checks,'duplicate_content':{k:v for k,v in hashes.items() if len(v)>1}}
+          open(f'{out}/inventory.json','w',encoding='utf-8').write(json.dumps(result,ensure_ascii=False,indent=2))
+          with open(f'{out}/inventory.csv','w',newline='',encoding='utf-8') as f:
+              w=csv.DictWriter(f,fieldnames=['page_index','page_url','pdf_url','anchor','context','http_status','final_url','content_type','bytes','pdf_magic','sha256'],extrasaction='ignore'); w.writeheader(); w.writerows(checks)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rcl-discovery
+          path: rcl_discovery/
+          retention-days: 2
