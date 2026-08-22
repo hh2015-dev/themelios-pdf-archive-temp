@@ -1,0 +1,70 @@
+name: GTU verify temp
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify GTU candidates
+        shell: bash
+        run: |
+          cat > /tmp/verify.py <<'PY'
+          import requests,json,re
+          from urllib.parse import quote
+          from concurrent.futures import ThreadPoolExecutor,as_completed
+          ids = [x.strip() for x in '''interlinearliter0000unse_p1f1
+comparativelexic0000lesl
+elementsofnewtes0000nunn_s3p9
+gtu_A32400007918240B
+catalogueogsyria0002will
+catalogueofsyria0003wwri_u7g2
+criticalexegetic0000jame_y5m2
+babylonianhebrew00unse
+pirkeabothtracta00abot
+completeconcorda0000mcha
+britishacademyco0000unse
+biblicalarchaeol0000paul_p2k4
+calvinscommentar0000calv_t7a9
+calvinscommentar0001calv_d4p3
+calvinscommentar0000calv_l1l6
+calvinscommentar0000calv_f0b6
+calvinscommentar0000calv_d6n5
+commentaryonsain0000luth_w5x9
+biblicalcommenta0001fdel
+biblicalcommenta0001cfke_q6u5
+biblicalcommenta0000cfke_e8q2
+copticgnosticpap0001math
+boreickejewishda0000unse
+contributionofis00unse
+gtu_A32400000614762B
+conccordanceofhe0000bdav
+hibehpapyri0000bern
+origengreekpatri0000will
+handbookofaramai0000ross
+interlinearlinea0000geor'''.splitlines() if x.strip()]
+          def text(v):
+            if isinstance(v,list): return '; '.join(str(x) for x in v)
+            return '' if v is None else str(v)
+          def verify(i):
+            try: m=requests.get('https://archive.org/metadata/'+i,timeout=15).json()
+            except Exception as e: return {'identifier':i,'error':str(e)}
+            md=m.get('metadata') or {}; c=md.get('collection') or []
+            if isinstance(c,str): c=[c]
+            good=[]
+            for f in m.get('files') or []:
+              n=f.get('name','')
+              if re.search(r'\.pdf$',n,re.I) and f.get('private') not in (True,'true') and not re.search(r'(encrypted\.pdf|\.lcpdf)$',n,re.I): good.append(f)
+            pdf=max(good,key=lambda f:int(f.get('size') or 0)) if good else None
+            return {'identifier':i,'gtu_member':'graduatetheologicalunion' in c,'title':text(md.get('title')),'creator':text(md.get('creator')),'date':text(md.get('date') or md.get('year')),'volume':text(md.get('volume')),'edition':text(md.get('edition')),'series':text(md.get('series')),'subject':text(md.get('subject')),'language':text(md.get('language')),'contributor':text(md.get('contributor')),'pages':text(md.get('imagecount')),'mediatype':text(md.get('mediatype')),'pdf_name':pdf.get('name','') if pdf else '','pdf_size':pdf.get('size','') if pdf else '','item_link':'https://archive.org/details/'+i,'pdf_link':('https://archive.org/download/'+i+'/'+quote(pdf.get('name',''))) if pdf else ''}
+          with ThreadPoolExecutor(max_workers=12) as ex:
+            results=list(ex.map(verify,ids))
+          with open('verified.json','w',encoding='utf-8') as f: json.dump(results,f,ensure_ascii=False,indent=2)
+          print('VERIFIED',len(results))
+          for r in results: print(json.dumps(r,ensure_ascii=False))
+          PY
+          python /tmp/verify.py | tee verify.log
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-verified-30
+          path: verified.json
