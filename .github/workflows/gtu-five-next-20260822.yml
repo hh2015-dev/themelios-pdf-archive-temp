@@ -1,4 +1,4 @@
-name: GTU five next verify 20260822
+name: GTU replacement verify 20260822
 on:
   pull_request:
     branches: [ main ]
@@ -6,16 +6,13 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - name: Verify five GTU items
+      - name: Verify replacement GTU items
         shell: bash
         run: |
           set -euo pipefail
           ids=(
-            agapeinnewtestam0002spic
-            agapeinnewtestam0003spic
-            a-grammar-of-the-old-testament-in-greek-1909-vol-1_1909_1
-            abbreviationsing0000twal
-            accountofprinted0000treg
+            abbreviationsing0000mavi
+            aboutoldtestamen0000alba
           )
           : > results.txt
           for id in "${ids[@]}"; do
@@ -31,7 +28,7 @@ jobs:
             echo "RESTRICTED=$restricted" | tee -a results.txt
             echo "PDF=$pdf" | tee -a results.txt
             echo "SIZE=$size" | tee -a results.txt
-            if [[ "$collection" != *"graduatetheologicalunion"* || -z "$pdf" ]]; then echo "VALID=NO" | tee -a results.txt; continue; fi
+            if [[ "$collection" != *"graduatetheologicalunion"* || -z "$pdf" || "$restricted" == "true" ]]; then echo "VALID=NO" | tee -a results.txt; continue; fi
             url="https://archive.org/download/$id/$pdf"
             code=$(curl -L -sS -o check.pdf -w '%{http_code}' "$url")
             magic=$(head -c 5 check.pdf || true)
@@ -45,5 +42,5 @@ jobs:
           done
       - uses: actions/upload-artifact@v4
         with:
-          name: gtu-five-next-results
+          name: gtu-replacement-results
           path: results.txt
