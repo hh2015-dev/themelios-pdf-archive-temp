@@ -1,4 +1,4 @@
-# temporary GTU-only search-only broad sample
+# temporary GTU-only selected-record verification
 name: GTU Inventory Discovery Temp
 on:
   pull_request:
@@ -8,38 +8,75 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Search GTU PDF items broadly
+      - name: Verify 20 selected GTU records
         shell: bash
         run: |
-          cat > /tmp/mine.py <<'PY'
+          cat > /tmp/verify.py <<'PY'
           import requests, json
-          from concurrent.futures import ThreadPoolExecutor
-          base='https://archive.org/advancedsearch.php'
-          q='collection:graduatetheologicalunion AND mediatype:texts AND format:PDF'
-          pages=(1,10,20,30,40,50,75,100,125,150)
-          fields=['identifier','title','creator','date','year','language','subject','volume','edition','series','contributor']
-          def one(page):
-            p={'q':q,'fl[]':fields,'rows':20,'page':page,'output':'json'}
-            return requests.get(base,params=p,timeout=25).json()['response']['docs']
-          docs={}; examined=0
-          with ThreadPoolExecutor(max_workers=10) as ex:
-            for arr in ex.map(one,pages):
-              examined += len(arr)
-              for d in arr: docs.setdefault(d['identifier'],d)
-          recs=[]
-          for d in docs.values():
-            d=dict(d)
-            d['item_link']='https://archive.org/details/'+d['identifier']
-            d['collection_query_verified']=True
-            d['pdf_format_query_verified']=True
-            recs.append(d)
-          with open('gtu_candidates.json','w',encoding='utf-8') as f:
-            json.dump({'search_results_examined':examined,'unique_candidates':len(recs),'records':recs},f,ensure_ascii=False,indent=2)
-          print('examined',examined,'unique',len(recs))
+          from concurrent.futures import ThreadPoolExecutor, as_completed
+          ids = [
+            'bibilicalcomment0002fran_n0b4',
+            'expositor-1875_1928-07',
+            'expository-times_1910-11_22_2',
+            'expository-times_1913-01_24_4',
+            'thascicaecilicyp0000mary',
+            'eusebiipamphilip0000euse',
+            'bibliothecahiero0042vari',
+            'kiekegaardanthol0000robe',
+            'laphilosophiedep0002unse',
+            'historiagenerali0000pmel',
+            'inserviceofsuffe0000clem',
+            'bartonwarrenston0000will',
+            'forschungen-christlichen-literatur-dogmengeschichte_1922_14_4',
+            'institutionesthe0003aemi',
+            'christianitylibe0000jgre',
+            'irenikon_1949_22_1',
+            'compendiodilitur0000unse',
+            'theologicalexist0000eric',
+            'evangelicalmagaz0001vari',
+            'international-philosophical-bibliography_1950_2'
+          ]
+          def flat(v): return '; '.join(map(str,v)) if isinstance(v,list) else ('' if v is None else str(v))
+          def verify(ident):
+            try:
+              m=requests.get('https://archive.org/metadata/'+ident,timeout=25).json(); md=m.get('metadata',{})
+              coll=md.get('collection',[]); coll=[coll] if isinstance(coll,str) else coll
+              files=m.get('files',[])
+              pdfs=[f for f in files if str(f.get('name','')).lower().endswith('.pdf') and '_text.pdf' not in str(f.get('name','')).lower()]
+              if not pdfs: pdfs=[f for f in files if str(f.get('name','')).lower().endswith('.pdf')]
+              pdf=sorted(pdfs,key=lambda f:(('_text.pdf' in str(f.get('name','')).lower()),len(str(f.get('name','')))))[0] if pdfs else {}
+              return {
+                'identifier':ident,
+                'collection':coll,
+                'in_gtu':'graduatetheologicalunion' in coll,
+                'title':flat(md.get('title')),
+                'creator':flat(md.get('creator')),
+                'date':flat(md.get('date') or md.get('year')),
+                'volume':flat(md.get('volume')),
+                'edition':flat(md.get('edition')),
+                'series':flat(md.get('series')),
+                'subject':flat(md.get('subject')),
+                'language':flat(md.get('language')),
+                'contributor':flat(md.get('contributor') or md.get('contributor-sponsor') or md.get('sponsor')),
+                'pages':flat(md.get('imagecount') or md.get('page-count') or md.get('pages')),
+                'pdf_name':pdf.get('name',''),
+                'pdf_size':pdf.get('size',''),
+                'item_link':'https://archive.org/details/'+ident,
+                'pdf_link':('https://archive.org/download/'+ident+'/'+requests.utils.quote(pdf.get('name',''))) if pdf else ''
+              }
+            except Exception as e:
+              return {'identifier':ident,'error':repr(e),'in_gtu':False,'pdf_name':''}
+          out=[]
+          with ThreadPoolExecutor(max_workers=20) as ex:
+            futs=[ex.submit(verify,i) for i in ids]
+            for f in as_completed(futs): out.append(f.result())
+          out.sort(key=lambda r:ids.index(r['identifier']))
+          with open('gtu_selected_verified.json','w',encoding='utf-8') as f: json.dump({'requested':len(ids),'verified':sum(1 for r in out if r.get('in_gtu') and r.get('pdf_name')),'records':out},f,ensure_ascii=False,indent=2)
+          print('requested',len(ids),'verified',sum(1 for r in out if r.get('in_gtu') and r.get('pdf_name')))
           PY
-          python /tmp/mine.py
+          python /tmp/verify.py
       - uses: actions/upload-artifact@v4
         with:
-          name: gtu-inventory-candidates
-          path: gtu_candidates.json
+          name: gtu-selected-verified
+          path: gtu_selected_verified.json
           retention-days: 1
