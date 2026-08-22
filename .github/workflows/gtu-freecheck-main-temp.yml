@@ -1,4 +1,4 @@
-name: GTU Freecheck Main Temp
+name: GTU Inventory Metadata Discovery Temp
 on:
   push:
     paths:
@@ -6,47 +6,55 @@ on:
 permissions:
   contents: write
 jobs:
-  check:
+  discover:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Test direct GTU PDFs and write result to temp branch
+      - name: Query only GTU collection and write candidate metadata
         shell: bash
         run: |
-          set -u
-          cat > /tmp/candidates.tsv <<'EOF'
-Fitzmyer_Kaufman	https://archive.org/download/aramaicbibliogra0000jose/aramaicbibliogra0000jose.pdf
-Parvis	https://archive.org/download/newtestamentmanu0000merr/newtestamentmanu0000merr.pdf
-Mayser_Vol2	https://archive.org/download/grammatikdergrie0002mays_a4j8/grammatikdergrie0002mays_a4j8.pdf
-Souter	https://archive.org/download/pocketlexicontog0000alex/pocketlexicontog0000alex.pdf
-Gesenius	https://archive.org/download/geseniushebrewgr0000benj/geseniushebrewgr0000benj.pdf
-Liddell_Scott_Vol1	https://archive.org/download/greekenglishlexi0001unse_w5e3/greekenglishlexi0001unse_w5e3.pdf
-Parkhurst	https://archive.org/download/hebrewenglishlex0000john/hebrewenglishlex0000john.pdf
-Buxtorf	https://archive.org/download/lexiconhebraicum0000buxt/lexiconhebraicum0000buxt.pdf
-Lightfoot_Vol1	https://archive.org/download/horaehebraicaeet0001ligh/horaehebraicaeet0001ligh.pdf
-Bezold	https://archive.org/download/diebabylonischas0000bezo/diebabylonischas0000bezo.pdf
-Dunand	https://archive.org/download/papyrusgrecsbibl0000duna_u6o5/papyrusgrecsbibl0000duna_u6o5.pdf
-EOF
-          : > /tmp/results.txt
-          while IFS=$'\t' read -r name url; do
-            tmp="/tmp/${name}.bin"
-            code=$(curl -L -sS --fail --connect-timeout 15 --max-time 60 -r 0-4095 -o "$tmp" -w '%{http_code}' "$url" 2>/tmp/curlerr || true)
-            magic=$(head -c 5 "$tmp" 2>/dev/null || true)
-            bytes=$(wc -c < "$tmp" 2>/dev/null || echo 0)
-            if [ "$magic" = '%PDF-' ]; then
-              echo -e "$name\tPASS\thttp=$code\tbytes=$bytes\tmagic=$magic\t$url" >> /tmp/results.txt
-            else
-              err=$(tr '\n' ' ' < /tmp/curlerr | head -c 180)
-              echo -e "$name\tFAIL\thttp=$code\tbytes=$bytes\tmagic=$magic\terror=$err\t$url" >> /tmp/results.txt
-            fi
-            rm -f "$tmp" /tmp/curlerr
-          done < /tmp/candidates.tsv
-          cat /tmp/results.txt
-          git fetch origin gtu-freecheck-20260822
-          git switch gtu-freecheck-20260822
-          cp /tmp/results.txt gtu_freecheck_results.txt
+          set -euo pipefail
+          cat > /tmp/mine.py <<'PY'
+          import requests, json
+          base='https://archive.org/advancedsearch.php'
+          queries=[
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(bible OR biblical OR testament OR genesis OR psalms OR prophets OR gospel OR epistle))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(hebrew OR aramaic OR syriac OR semitic OR greek OR septuagint OR lexicon OR grammar OR concordance))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(manuscript OR codex OR papyri OR textual OR apocrypha OR pseudepigrapha OR mishnah OR talmud OR judaica OR archaeology))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(calvin OR luther OR augustine OR origen OR chrysostom OR irenaeus OR patristic OR reformation OR commentary))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(theology OR doctrine OR church OR christianity OR creed OR confession OR apologetic OR mission OR judaism))'
+          ]
+          docs={}; examined=0
+          for q in queries:
+            for page in (1,2):
+              p={'q':q,'fl[]':['identifier','title','creator','date','year','language','subject'],'rows':100,'page':page,'output':'json','sort[]':'identifier asc'}
+              r=requests.get(base,params=p,timeout=45); r.raise_for_status()
+              arr=r.json()['response']['docs']; examined += len(arr)
+              for d in arr: docs.setdefault(d['identifier'],d)
+          out=[]
+          for ident,d in docs.items():
+            if len(out)>=220: break
+            try:
+              m=requests.get('https://archive.org/metadata/'+ident,timeout=45).json(); md=m.get('metadata',{})
+              coll=md.get('collection',[]); coll=[coll] if isinstance(coll,str) else coll
+              if 'graduatetheologicalunion' not in coll: continue
+              files=m.get('files',[])
+              pdfs=[f for f in files if str(f.get('name','')).lower().endswith('.pdf') and '_text.pdf' not in str(f.get('name','')).lower()]
+              if not pdfs: pdfs=[f for f in files if str(f.get('name','')).lower().endswith('.pdf')]
+              if not pdfs: continue
+              pdf=sorted(pdfs,key=lambda f:(('_text.pdf' in f.get('name','')),len(f.get('name',''))))[0]
+              def flat(v): return '; '.join(map(str,v)) if isinstance(v,list) else (v or '')
+              out.append({'identifier':ident,'title':flat(md.get('title') or d.get('title')),'creator':flat(md.get('creator') or d.get('creator')),'date':flat(md.get('date') or md.get('year') or d.get('year')),'volume':flat(md.get('volume')),'edition':flat(md.get('edition')),'series':flat(md.get('series')),'subject':flat(md.get('subject') or d.get('subject')),'language':flat(md.get('language') or d.get('language')),'contributor':flat(md.get('contributor') or md.get('contributor-sponsor') or md.get('sponsor')),'pages':flat(md.get('imagecount') or md.get('page-count') or md.get('pages')),'pdf_name':pdf.get('name',''),'pdf_size':pdf.get('size',''),'item_link':'https://archive.org/details/'+ident,'pdf_link':'https://archive.org/download/'+ident+'/'+requests.utils.quote(pdf.get('name','')),'collection_verified':True})
+            except Exception: pass
+          with open('/tmp/gtu_inventory_candidates.json','w',encoding='utf-8') as f: json.dump({'search_results_examined':examined,'unique_candidates':len(docs),'verified_records':len(out),'records':out},f,ensure_ascii=False,indent=2)
+          print('examined',examined,'unique',len(docs),'verified',len(out))
+          PY
+          python /tmp/mine.py
+          git fetch origin gtu-inventory-run-20260822-1938
+          git switch gtu-inventory-run-20260822-1938
+          cp /tmp/gtu_inventory_candidates.json gtu_inventory_candidates.json
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add gtu_freecheck_results.txt
-          git commit -m 'Record GTU free PDF access check'
-          git push origin gtu-freecheck-20260822
+          git add gtu_inventory_candidates.json
+          git commit -m 'Record temporary GTU inventory candidates'
+          git push origin gtu-inventory-run-20260822-1938
