@@ -1,34 +1,26 @@
 name: TEMP RCL V15 recover collision
 on:
-  push:
-    branches: [main]
+  pull_request:
     paths:
       - '.github/workflows/rcl-v15-recover-temp.yml'
   workflow_dispatch:
 permissions:
-  contents: write
+  contents: read
 jobs:
   recover:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Recover, validate and persist missing PDF
+      - name: Recover and validate missing PDF
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p tmp-rcl-v15 tmp-rcl-v15-b64
-          f='tmp-rcl-v15/Religion in Communist Lands - Volume 015 - The Hungarian Minority in Romania - pp204-206.pdf'
-          if [ ! -f "$f" ]; then
-            curl -fL --retry 4 --retry-delay 2 'https://biblicalstudies.org.uk/pdf/rcl/15-2_204.pdf' -o "$f"
-          fi
+          f='Religion in Communist Lands - Volume 015 - The Hungarian Minority in Romania - pp204-206.pdf'
+          curl -fL --retry 4 --retry-delay 2 'https://biblicalstudies.org.uk/pdf/rcl/15-2_204.pdf' -o "$f"
           test "$(head -c 5 "$f")" = '%PDF-'
           test "$(stat -c%s "$f")" -eq 89184
           echo "6951b382ac3505f263bcff59918cf977521189c7e0b4c6d90a74515eea7d9375  $f" | sha256sum -c -
-          base64 -w0 "$f" > /tmp/rcl15.b64
-          rm -f tmp-rcl-v15-b64/chunk_*
-          split -b 10000 -d -a 2 /tmp/rcl15.b64 tmp-rcl-v15-b64/chunk_
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -A tmp-rcl-v15 tmp-rcl-v15-b64
-          git diff --cached --quiet || git commit -m 'temp: resize recovered RCL v15 PDF chunks'
-          git push
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rcl-v15-recovered-204
+          path: Religion in Communist Lands - Volume 015 - The Hungarian Minority in Romania - pp204-206.pdf
+          if-no-files-found: error
