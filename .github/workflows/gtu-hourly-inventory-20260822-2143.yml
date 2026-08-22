@@ -1,4 +1,4 @@
-name: GTU hourly verify replacements 20260822 2143
+name: GTU hourly final academic replacement 20260822 2143
 on:
   pull_request:
     branches: [ main ]
@@ -6,29 +6,18 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - name: Verify two replacement GTU records
+      - name: Verify AJA replacement
         shell: bash
         run: |
           set -euo pipefail
-          ids=(american-academy-of-religion-journal_1940-08_8_3 american-academy-of-religion-journal_1940-11_8_4)
-          : > verified.tsv
-          for id in "${ids[@]}"; do
-            curl -fsSL "https://archive.org/metadata/$id" -o meta.json
-            coll=$(jq -r '[.metadata.collection]|flatten|join(";")' meta.json)
-            pdf=$(jq -r '.files[]? | select(.name|test("\\.pdf$";"i")) | select((.private//"false")!="true") | .name' meta.json | head -n1)
-            title=$(jq -r '.metadata.title//""' meta.json)
-            creator=$(jq -r '.metadata.creator//"" | if type=="array" then join("; ") else . end' meta.json)
-            date=$(jq -r '.metadata.date//.metadata.year//""' meta.json)
-            volume=$(jq -r '.metadata.volume//""' meta.json)
-            edition=$(jq -r '.metadata.edition//""' meta.json)
-            language=$(jq -r '.metadata.language//"" | if type=="array" then join("; ") else . end' meta.json)
-            contributor=$(jq -r '.metadata.contributor//"" | if type=="array" then join("; ") else . end' meta.json)
-            if [[ "$coll" == *"graduatetheologicalunion"* && -n "$pdf" ]]; then
-              printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$id" "$title" "$creator" "$date" "$volume" "$edition" "$language" "$contributor" "$pdf" >> verified.tsv
-            fi
-          done
-          cat verified.tsv
-      - uses: actions/upload-artifact@v4
-        with:
-          name: gtu-hourly-replacements
-          path: verified.tsv
+          id=sim_american-journal-of-archaeology_1885_1_1
+          curl -fsSL "https://archive.org/metadata/$id" -o meta.json
+          coll=$(jq -r '[.metadata.collection]|flatten|join(";")' meta.json)
+          pdf=$(jq -r '.files[]? | select(.name|test("\\.pdf$";"i")) | select((.private//"false")!="true") | .name' meta.json | head -n1)
+          title=$(jq -r '.metadata.title//""' meta.json)
+          creator=$(jq -r '.metadata.creator//"" | if type=="array" then join("; ") else . end' meta.json)
+          date=$(jq -r '.metadata.date//.metadata.year//""' meta.json)
+          volume=$(jq -r '.metadata.volume//""' meta.json)
+          language=$(jq -r '.metadata.language//"" | if type=="array" then join("; ") else . end' meta.json)
+          contributor=$(jq -r '.metadata.contributor//"" | if type=="array" then join("; ") else . end' meta.json)
+          if [[ "$coll" == *"graduatetheologicalunion"* && -n "$pdf" ]]; then printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$id" "$title" "$creator" "$date" "$volume" "$language" "$contributor" "$pdf"; else exit 2; fi
