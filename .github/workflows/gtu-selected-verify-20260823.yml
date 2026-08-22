@@ -68,3 +68,4 @@ melangesdelunive0004univ'''.splitlines()
           print('EXAMINED',len(ids),'OK',sum(r[0]=='OK' for r in rs))
           for r in rs:print('ROW\t'+'\t'.join(x.replace('\t',' ').replace('\n',' ') for x in r))
           PY
+# trigger after PR creation
