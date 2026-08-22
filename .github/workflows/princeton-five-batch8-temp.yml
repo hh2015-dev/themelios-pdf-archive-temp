@@ -1,0 +1,43 @@
+name: Princeton Five Batch 8 Temp
+on:
+  pull_request:
+    branches: [main]
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Hodge Outlines
+        run: curl -L --fail --retry 3 -o hodge-outlines.pdf https://archive.org/download/outlinesoftheolo00hodg_1/outlinesoftheolo00hodg_1.pdf
+      - name: Upload Hodge Outlines
+        uses: actions/upload-artifact@v4
+        with:
+          name: princeton-hodge-outlines
+          path: hodge-outlines.pdf
+      - name: Download Alexander Evidences
+        run: curl -L --fail --retry 3 -o alexander-evidences.pdf https://archive.org/download/briefoutlineofev00ale/briefoutlineofev00ale.pdf
+      - name: Upload Alexander Evidences
+        uses: actions/upload-artifact@v4
+        with:
+          name: princeton-alexander-evidences
+          path: alexander-evidences.pdf
+      - name: Download Smeaton Atonement
+        run: curl -L --fail --retry 3 -o smeaton-atonement.pdf https://archive.org/download/doctrineofatonem00smea/doctrineofatonem00smea.pdf
+      - name: Upload Smeaton Atonement
+        uses: actions/upload-artifact@v4
+        with:
+          name: princeton-smeaton-atonement
+          path: smeaton-atonement.pdf
+      - name: Download Wilson Gesenius Illustrations
+        run: curl -L --fail --retry 3 -o wilson-gesenius.pdf https://archive.org/download/illustrationsofg00wils/illustrationsofg00wils.pdf
+      - name: Upload Wilson Gesenius Illustrations
+        uses: actions/upload-artifact@v4
+        with:
+          name: princeton-wilson-gesenius
+          path: wilson-gesenius.pdf
+      - name: Download Lightfoot Horae Vol 1
+        run: curl -L --fail --retry 3 -o lightfoot-horae-vol1.pdf https://archive.org/download/horhebraicet01ligh/horhebraicet01ligh.pdf
+      - name: Upload Lightfoot Horae Vol 1
+        uses: actions/upload-artifact@v4
+        with:
+          name: princeton-lightfoot-horae-vol1
+          path: lightfoot-horae-vol1.pdf
