@@ -1,0 +1,69 @@
+name: GTU fast verification 20260823
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fast GTU mining
+        shell: bash
+        run: |
+          cat > /tmp/fast.py <<'PY'
+          import json,urllib.parse,urllib.request,concurrent.futures,re
+          B='https://archive.org'
+          def gj(u):
+            req=urllib.request.Request(u,headers={'User-Agent':'GTU-inventory/1.0'})
+            with urllib.request.urlopen(req,timeout=25) as r:return json.load(r)
+          qs=[('syriac peshitta aramaic targum',2),('hebrew semitic ugaritic talmud',5),('septuagint textual manuscript papyri',4),('commentary exegesis biblical',8),('patristic origen chrysostom',3),('archaeology assyrian babylonian',5),('reformation calvin luther theology',7)]
+          D={}
+          for terms,p in qs:
+            ors=' OR '.join(terms.split())
+            q=f'collection:graduatetheologicalunion AND mediatype:texts AND ({ors})'
+            ps={'q':q,'fl[]':['identifier','title','creator','year','date','volume','subject','language','contributor'],'rows':60,'page':p,'output':'json'}
+            try:
+              for d in gj(B+'/advancedsearch.php?'+urllib.parse.urlencode(ps,doseq=True))['response']['docs']:D[d['identifier']]=d
+            except Exception as e: print('SEARCHERR',e)
+          for p in (37,53):
+            q='collection:graduatetheologicalunion AND mediatype:texts'
+            ps={'q':q,'fl[]':['identifier','title','creator','year','date','volume','subject','language','contributor'],'rows':60,'page':p,'output':'json','sort[]':'identifier asc'}
+            try:
+              for d in gj(B+'/advancedsearch.php?'+urllib.parse.urlencode(ps,doseq=True))['response']['docs']:D[d['identifier']]=d
+            except:pass
+          print('CANDIDATES_EXAMINED',len(D))
+          rx=re.compile(r'bible|biblical|testament|hebrew|aramaic|syriac|semitic|greek|septuagint|textual|manuscript|qumran|targum|talmud|mishna|apocry|pseudep|papy|archaeolog|assyri|babylon|ugarit|commentar|exege|hermeneut|lexicon|grammar|concordance|patrist|origen|chrysostom|augustin|irenaeus|calvin|luther|theolog|church|reformation|mission|judaism|christian',re.I)
+          ranked=[]
+          for i,d in D.items():
+            txt=' '.join(map(str,[d.get('title',''),d.get('creator',''),d.get('subject','')]))
+            ranked.append((0 if rx.search(txt) else 1,i,d))
+          ranked.sort(key=lambda x:(x[0],x[1]))
+          ranked=ranked[:220]
+          def v(x):
+            _,i,d=x
+            try:
+              m=gj(B+'/metadata/'+urllib.parse.quote(i));md=m.get('metadata',{})
+              c=md.get('collection',[]);c=[c] if isinstance(c,str) else c
+              if 'graduatetheologicalunion' not in c:return None
+              fs=[f for f in m.get('files',[]) if f.get('name','').lower().endswith('.pdf') and not f.get('name','').lower().endswith('.lcpdf') and 'encrypted' not in f.get('name','').lower() and str(f.get('private','false')).lower()!='true']
+              if not fs:return None
+              f=sorted(fs,key=lambda z:(0 if z.get('source')=='original' else 1,len(z.get('name',''))))[0]
+              def S(k,alt=''):
+                z=md.get(k,d.get(k,alt));return '; '.join(map(str,z)) if isinstance(z,list) else str(z or '')
+              title=S('title');creator=S('creator');sub=S('subject');txt=' '.join([title,creator,sub])
+              pri='A' if re.search(r'bible|biblical|testament|hebrew|aramaic|syriac|semitic|greek|septuagint|textual|manuscript|qumran|targum|talmud|mishna|apocry|pseudep|papy|archaeolog|assyri|babylon|ugarit|commentar|exege|hermeneut|lexicon|grammar|concordance|patrist|origen|chrysostom|augustin|irenaeus|calvin|luther',txt,re.I) else 'B'
+              pdf=B+'/download/'+i+'/'+urllib.parse.quote(f['name'])
+              return [pri,i,title,creator,S('year') or S('date'),S('volume'),S('edition'),S('series'),S('language'),S('contributor'),S('imagecount'),pdf,sub]
+            except:return None
+          out=[]
+          with concurrent.futures.ThreadPoolExecutor(max_workers=24) as ex:
+            for r in ex.map(v,ranked):
+              if r:out.append(r)
+          out.sort(key=lambda r:(r[0],r[1]))
+          print('VERIFIED_PUBLIC_PDF',len(out))
+          for r in out[:120]:print('ROW\t'+'\t'.join(str(x).replace('\t',' ').replace('\n',' ') for x in r))
+          PY
+          python3 /tmp/fast.py | tee gtu_fast.tsv
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-fast-20260823
+          path: gtu_fast.tsv
