@@ -1,0 +1,75 @@
+name: Princeton Five Non-Commentary Batch 6 Temp
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Hodge Systematic Vol 1
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 5 --retry-delay 5 'https://archive.org/download/systematictheolo187401hodg/systematictheolo187401hodg.pdf' -o 'Hodge Systematic Vol 1.pdf'
+          test -s 'Hodge Systematic Vol 1.pdf'
+      - name: Upload Hodge Systematic Vol 1
+        uses: actions/upload-artifact@v4
+        with:
+          name: princeton-hodge-systematic-vol1
+          path: 'Hodge Systematic Vol 1.pdf'
+          retention-days: 1
+          compression-level: 0
+
+      - name: Download Hodge Systematic Vol 3
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 5 --retry-delay 5 'https://archive.org/download/systematictheolo03hodg/systematictheolo03hodg.pdf' -o 'Hodge Systematic Vol 3.pdf'
+          test -s 'Hodge Systematic Vol 3.pdf'
+      - name: Upload Hodge Systematic Vol 3
+        uses: actions/upload-artifact@v4
+        with:
+          name: princeton-hodge-systematic-vol3
+          path: 'Hodge Systematic Vol 3.pdf'
+          retention-days: 1
+          compression-level: 0
+
+      - name: Download Boyce Abstract
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 5 --retry-delay 5 'https://archive.org/download/abstractofsystem00boyc_0/abstractofsystem00boyc_0.pdf' -o 'Boyce Abstract.pdf'
+          test -s 'Boyce Abstract.pdf'
+      - name: Upload Boyce Abstract
+        uses: actions/upload-artifact@v4
+        with:
+          name: princeton-boyce-abstract
+          path: 'Boyce Abstract.pdf'
+          retention-days: 1
+          compression-level: 0
+
+      - name: Download Hovey Manual
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 5 --retry-delay 5 'https://archive.org/download/manualofsystemat00hove_0/manualofsystemat00hove_0.pdf' -o 'Hovey Manual.pdf'
+          test -s 'Hovey Manual.pdf'
+      - name: Upload Hovey Manual
+        uses: actions/upload-artifact@v4
+        with:
+          name: princeton-hovey-manual
+          path: 'Hovey Manual.pdf'
+          retention-days: 1
+          compression-level: 0
+
+      - name: Download Davidson Introduction Vol 3
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 5 --retry-delay 5 'https://archive.org/download/introductiontool03davi/introductiontool03davi.pdf' -o 'Davidson Introduction Vol 3.pdf'
+          test -s 'Davidson Introduction Vol 3.pdf'
+      - name: Upload Davidson Introduction Vol 3
+        uses: actions/upload-artifact@v4
+        with:
+          name: princeton-davidson-introduction-vol3
+          path: 'Davidson Introduction Vol 3.pdf'
+          retention-days: 1
+          compression-level: 0
