@@ -5,7 +5,7 @@ from urllib.parse import urljoin
 import requests
 from bs4 import BeautifulSoup
 
-OUT=Path('whs_corpus'); OUT.mkdir(exist_ok=True)
+A=Path('whs_part_a'); B=Path('whs_part_b'); A.mkdir(exist_ok=True); B.mkdir(exist_ok=True)
 BASE='https://biblicalstudies.gospelstudies.org.uk/articles_whs_{:02d}.php'
 s=requests.Session(); s.headers.update({'User-Agent':'Mozilla/5.0 BSUK academic archive/1.0'})
 urls={}
@@ -22,13 +22,11 @@ for pi in range(1,14):
   u=urljoin(BASE.format(pi),href)
   if not u.startswith(('http://','https://')) or '/pdf/whs/' not in u: continue
   urls.setdefault(u,{'vol':vol,'anchor':txt})
-print('TARGET_URLS',len(urls),flush=True)
-assert len(urls)==453, len(urls)
+print('TARGET_URLS',len(urls),flush=True); assert len(urls)==453,len(urls)
 manifest=[]; seen_sha={}
 for i,(u,meta) in enumerate(urls.items(),1):
- vol=meta['vol']; fn=u.rsplit('/',1)[-1]
- dest=(OUT/(f'Volume_{vol:03d}' if vol else 'Journal_Root')); dest.mkdir(exist_ok=True)
- p=dest/fn
+ vol=meta['vol']; fn=u.rsplit('/',1)[-1]; base=A if (1<=vol<=40) else B
+ dest=base/(f'Volume_{vol:03d}' if vol else 'Journal_Root'); dest.mkdir(exist_ok=True); p=dest/fn
  with s.get(u,timeout=120,stream=True,allow_redirects=True) as r:
   r.raise_for_status(); h=hashlib.sha256(); size=0; first=b''
   with p.open('wb') as f:
@@ -36,9 +34,8 @@ for i,(u,meta) in enumerate(urls.items(),1):
     if not ch: continue
     if len(first)<8: first=(first+ch)[:8]
     f.write(ch); h.update(ch); size+=len(ch)
- sha=h.hexdigest(); assert first.startswith(b'%PDF-') and size>=1024,(u,first,size)
- assert sha not in seen_sha,(u,seen_sha.get(sha)); seen_sha[sha]=u
+ sha=h.hexdigest(); assert first.startswith(b'%PDF-') and size>=1024,(u,first,size); assert sha not in seen_sha,(u,seen_sha.get(sha)); seen_sha[sha]=u
  manifest.append({'volume':vol,'url':u,'source_name':fn,'size':size,'sha256':sha,'anchor':meta['anchor']})
  print(f'FETCH {i}/453 V{vol:03d} {fn} {size} {sha}',flush=True)
-(OUT/'_manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
+B.joinpath('_manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
 print('FETCH_COMPLETE',len(manifest),sum(x['size'] for x in manifest),flush=True)
