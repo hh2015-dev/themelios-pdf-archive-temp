@@ -1,5 +1,4 @@
-# temporary GTU-only discovery workflow
-# synchronize after base trigger enabled
+# temporary GTU-only discovery workflow, parallel metadata verification
 name: GTU Inventory Discovery Temp
 on:
   pull_request:
@@ -14,38 +13,44 @@ jobs:
         run: |
           cat > /tmp/mine.py <<'PY'
           import requests, json
+          from concurrent.futures import ThreadPoolExecutor, as_completed
           base='https://archive.org/advancedsearch.php'
           queries=[
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(bible OR biblical OR testament OR genesis OR psalms OR prophets OR gospel OR epistle))',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(hebrew OR aramaic OR syriac OR semitic OR greek OR septuagint OR lexicon OR grammar OR concordance))',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(manuscript OR codex OR papyri OR textual OR apocrypha OR pseudepigrapha OR mishnah OR talmud OR judaica OR archaeology))',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(calvin OR luther OR augustine OR origen OR chrysostom OR irenaeus OR patristic OR reformation OR commentary))',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(theology OR doctrine OR church OR christianity OR creed OR confession OR apologetic OR mission OR judaism))'
+            'collection:graduatetheologicalunion AND mediatype:texts AND title:(bible OR biblical OR testament OR genesis OR psalms OR prophets OR gospel OR epistle)',
+            'collection:graduatetheologicalunion AND mediatype:texts AND title:(hebrew OR aramaic OR syriac OR semitic OR greek OR septuagint OR lexicon OR grammar OR concordance)',
+            'collection:graduatetheologicalunion AND mediatype:texts AND title:(manuscript OR codex OR papyri OR textual OR apocrypha OR pseudepigrapha OR mishnah OR talmud OR judaica OR archaeology)',
+            'collection:graduatetheologicalunion AND mediatype:texts AND title:(calvin OR luther OR augustine OR origen OR chrysostom OR irenaeus OR patristic OR reformation OR commentary)',
+            'collection:graduatetheologicalunion AND mediatype:texts AND title:(theology OR doctrine OR church OR christianity OR creed OR confession OR apologetic OR mission OR judaism)'
           ]
           docs={}; examined=0
           for q in queries:
             for page in (1,2):
               p={'q':q,'fl[]':['identifier','title','creator','date','year','language','subject'],'rows':100,'page':page,'output':'json','sort[]':'identifier asc'}
-              r=requests.get(base,params=p,timeout=45); r.raise_for_status()
-              arr=r.json()['response']['docs']; examined += len(arr)
+              arr=requests.get(base,params=p,timeout=45).json()['response']['docs']; examined += len(arr)
               for d in arr: docs.setdefault(d['identifier'],d)
-          out=[]
-          for ident,d in docs.items():
-            if len(out)>=180: break
+          def flat(v): return '; '.join(map(str,v)) if isinstance(v,list) else (v or '')
+          def verify(pair):
+            ident,d=pair
             try:
-              m=requests.get('https://archive.org/metadata/'+ident,timeout=45).json(); md=m.get('metadata',{})
+              m=requests.get('https://archive.org/metadata/'+ident,timeout=30).json(); md=m.get('metadata',{})
               coll=md.get('collection',[]); coll=[coll] if isinstance(coll,str) else coll
-              if 'graduatetheologicalunion' not in coll: continue
+              if 'graduatetheologicalunion' not in coll: return None
               files=m.get('files',[])
               pdfs=[f for f in files if str(f.get('name','')).lower().endswith('.pdf') and '_text.pdf' not in str(f.get('name','')).lower()]
               if not pdfs: pdfs=[f for f in files if str(f.get('name','')).lower().endswith('.pdf')]
-              if not pdfs: continue
+              if not pdfs: return None
               pdf=sorted(pdfs,key=lambda f:(('_text.pdf' in f.get('name','')),len(f.get('name',''))))[0]
-              def flat(v): return '; '.join(map(str,v)) if isinstance(v,list) else (v or '')
-              out.append({'identifier':ident,'title':flat(md.get('title') or d.get('title')),'creator':flat(md.get('creator') or d.get('creator')),'date':flat(md.get('date') or md.get('year') or d.get('year')),'volume':flat(md.get('volume')),'edition':flat(md.get('edition')),'series':flat(md.get('series')),'subject':flat(md.get('subject') or d.get('subject')),'language':flat(md.get('language') or d.get('language')),'contributor':flat(md.get('contributor') or md.get('contributor-sponsor') or md.get('sponsor')),'pages':flat(md.get('imagecount') or md.get('page-count') or md.get('pages')),'pdf_name':pdf.get('name',''),'pdf_size':pdf.get('size',''),'item_link':'https://archive.org/details/'+ident,'pdf_link':'https://archive.org/download/'+ident+'/'+requests.utils.quote(pdf.get('name','')),'collection_verified':True})
-            except Exception: pass
-          with open('gtu_candidates.json','w',encoding='utf-8') as f: json.dump({'search_results_examined':examined,'unique_candidates':len(docs),'verified_records':len(out),'records':out},f,ensure_ascii=False,indent=2)
-          print('examined',examined,'unique',len(docs),'verified',len(out))
+              return {'identifier':ident,'title':flat(md.get('title') or d.get('title')),'creator':flat(md.get('creator') or d.get('creator')),'date':flat(md.get('date') or md.get('year') or d.get('year')),'volume':flat(md.get('volume')),'edition':flat(md.get('edition')),'series':flat(md.get('series')),'subject':flat(md.get('subject') or d.get('subject')),'language':flat(md.get('language') or d.get('language')),'contributor':flat(md.get('contributor') or md.get('contributor-sponsor') or md.get('sponsor')),'pages':flat(md.get('imagecount') or md.get('page-count') or md.get('pages')),'pdf_name':pdf.get('name',''),'pdf_size':pdf.get('size',''),'item_link':'https://archive.org/details/'+ident,'pdf_link':'https://archive.org/download/'+ident+'/'+requests.utils.quote(pdf.get('name','')),'collection_verified':True}
+            except Exception: return None
+          items=list(docs.items())[:320]; out=[]
+          with ThreadPoolExecutor(max_workers=24) as ex:
+            futs=[ex.submit(verify,x) for x in items]
+            for f in as_completed(futs):
+              r=f.result()
+              if r: out.append(r)
+          out.sort(key=lambda r:r['identifier'])
+          with open('gtu_candidates.json','w',encoding='utf-8') as f: json.dump({'search_results_examined':examined,'unique_candidates':len(docs),'metadata_candidates_checked':len(items),'verified_records':len(out),'records':out},f,ensure_ascii=False,indent=2)
+          print('examined',examined,'unique',len(docs),'checked',len(items),'verified',len(out))
           PY
           python /tmp/mine.py
       - uses: actions/upload-artifact@v4
