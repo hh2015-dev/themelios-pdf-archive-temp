@@ -1,0 +1,37 @@
+name: GTU Direct Bridge 20260822
+on:
+  pull_request:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  bridge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: gtu-direct-bridge-20260822
+      - name: Download and commit verified GTU PDFs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p gtu_temp_transfer
+          if [ -f gtu_temp_transfer/05_Fasti_Ecclesiae_Scoticanae_Vol_6.pdf ]; then
+            echo 'GTU PDFs already committed; nothing to do.'
+            exit 0
+          fi
+          curl -fL --retry 5 --retry-delay 2 'https://archive.org/download/apocalypseofezra0008unse/apocalypseofezra0008unse.pdf' -o gtu_temp_transfer/01_Apocalypse_of_Ezra.pdf
+          curl -fL --retry 5 --retry-delay 2 'https://archive.org/download/arabiadesertatop0000musi/arabiadesertatop0000musi.pdf' -o gtu_temp_transfer/02_Arabia_Deserta.pdf
+          curl -fL --retry 5 --retry-delay 2 'https://archive.org/download/stathanasiusonin0000atha/stathanasiusonin0000atha.pdf' -o gtu_temp_transfer/03_St_Athanasius_On_The_Incarnation.pdf
+          curl -fL --retry 5 --retry-delay 2 'https://archive.org/download/divineliturgyofs0000orth_k2j5/divineliturgyofs0000orth_k2j5.pdf' -o gtu_temp_transfer/04_Divine_Liturgy_St_John_Chrysostom.pdf
+          curl -fL --retry 5 --retry-delay 2 'https://archive.org/download/fastiecclesiaesc0006scot/fastiecclesiaesc0006scot.pdf' -o gtu_temp_transfer/05_Fasti_Ecclesiae_Scoticanae_Vol_6.pdf
+          for f in gtu_temp_transfer/*.pdf; do
+            test "$(head -c 5 "$f")" = '%PDF-'
+            file --mime-type "$f" | grep -q 'application/pdf'
+            test -s "$f"
+          done
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add gtu_temp_transfer/*.pdf
+          git commit -m 'Temporary verified GTU PDF bridge'
+          git push origin HEAD:gtu-direct-bridge-20260822
