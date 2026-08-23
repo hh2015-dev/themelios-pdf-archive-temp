@@ -1,0 +1,71 @@
+name: GTU inventory auto 20260823
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  mine:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mine GTU-only candidates and verify public PDFs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, urllib.parse, urllib.request, re, time
+          queries = [
+            'collection:graduatetheologicalunion AND (title:bible OR title:testament OR title:gospel OR title:psalm OR title:prophet)',
+            'collection:graduatetheologicalunion AND (title:hebrew OR title:aramaic OR title:syriac OR title:semitic OR title:chaldee)',
+            'collection:graduatetheologicalunion AND (title:greek OR title:septuagint OR title:papyri OR title:manuscript OR title:codex)',
+            'collection:graduatetheologicalunion AND (title:talmud OR title:mishna OR title:midrash OR title:targum OR title:jewish)',
+            'collection:graduatetheologicalunion AND (title:assyrian OR title:babylonian OR title:ugarit OR title:cuneiform OR title:palestine)',
+            'collection:graduatetheologicalunion AND (title:commentary OR title:commentaries OR title:exegesis OR title:hermeneutic)',
+            'collection:graduatetheologicalunion AND (title:calvin OR title:luther OR title:augustine OR title:origen OR title:chrysostom)',
+            'collection:graduatetheologicalunion AND (title:theology OR title:church OR title:reformation OR title:patristic OR title:mission)',
+            'collection:graduatetheologicalunion AND (title:journal OR title:quarterly OR title:review OR title:record OR title:studies)',
+            'collection:graduatetheologicalunion AND mediatype:texts'
+          ]
+          seen={}
+          total=0
+          for q in queries:
+            params={'q':q,'fl[]':['identifier','title','creator','date','year','language','volume'],'rows':250,'page':1,'output':'json','sort[]':'identifier asc'}
+            url='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(params,doseq=True)
+            with urllib.request.urlopen(url,timeout=30) as r: data=json.load(r)
+            docs=data['response']['docs']; total += len(docs)
+            for d in docs: seen.setdefault(d.get('identifier',''),d)
+          out=[]; checked=0
+          for ident,d in list(seen.items()):
+            if not ident: continue
+            try:
+              with urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident),timeout=25) as r: m=json.load(r)
+            except Exception: continue
+            checked += 1
+            md=m.get('metadata',{})
+            coll=md.get('collection',[])
+            if isinstance(coll,str): coll=[coll]
+            if 'graduatetheologicalunion' not in coll: continue
+            if str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true': continue
+            pdfs=[]
+            for f in m.get('files',[]):
+              n=f.get('name','')
+              if n.lower().endswith('.pdf') and not n.lower().endswith('_text.pdf') and 'encrypted' not in n.lower() and str(f.get('private','false')).lower()!='true':
+                pdfs.append((n,f.get('size','')))
+            if not pdfs: continue
+            title=md.get('title',d.get('title',''))
+            creator=md.get('creator',d.get('creator',''))
+            date=md.get('date',md.get('year',d.get('date',d.get('year',''))))
+            lang=md.get('language',d.get('language',''))
+            vol=md.get('volume',d.get('volume',''))
+            if isinstance(creator,list): creator='; '.join(map(str,creator))
+            if isinstance(lang,list): lang='; '.join(map(str,lang))
+            n,size=pdfs[0]
+            out.append({'identifier':ident,'title':title,'creator':creator,'date':date,'language':lang,'volume':vol,'pdf':n,'size':size,'subjects':md.get('subject',''),'contributor':md.get('contributor','')})
+            if len(out)>=180: break
+          print('SEARCH_ROWS',total,'UNIQUE',len(seen),'METADATA_CHECKED',checked,'ELIGIBLE',len(out))
+          for x in out:
+            print(json.dumps(x,ensure_ascii=False))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-auto-results
+          path: nonexistent
+          if-no-files-found: ignore
