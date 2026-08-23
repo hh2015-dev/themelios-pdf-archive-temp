@@ -1,0 +1,75 @@
+name: TEMP GTU Final Verify 20260823
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify shortlisted GTU items
+        shell: bash
+        run: |
+          python - <<'PY'
+          import requests,json,re
+          from urllib.parse import quote
+          ids='''gtu_32400001857840
+variaelectionesr0000eiss
+listsofwordsoccu0000watt_l3s6
+grammatikdergrie0001mays_w3m2
+diezeichenfurdie0000kraf
+evangiledematthi0019unse
+deuteronomeix7en0018unse
+evangileselonsai0000lagr_f8z5
+kritischexegetis0002meye
+dasbuchisaias0000fisc
+derachtundsechzi0000mowi
+criticalexegetic0000hing
+criticalexegetic0000john_f0r3
+calvinscommentar0045calv
+calvinscommentar0032calv
+newdocumentsillu0005hors
+gtu_32400004571927
+dieverwendungvon0002spin
+handbookofaramai0000ross
+labibletraductio0018unse
+joaugernestiopus00erne
+heheptaphotoslyc0000anti
+christadammanhum0000bart_k7b3
+israelsconceptof0000renc_o2u1
+lexegesepatristi0000roov
+degenesicontrama0000augu
+thosewhoarebapti0000fosc
+eitherjeworgenti0000park
+historyofprophec0000blen_x8r8
+commentairesursa0000orig_v1v4'''.split()
+          out=[]
+          for ident in ids:
+            try:
+              m=requests.get('https://archive.org/metadata/'+quote(ident,safe=''),timeout=20).json()
+            except Exception as e:
+              out.append({'identifier':ident,'eligible':False,'reason':'metadata error'}); continue
+            md=m.get('metadata',{}); coll=md.get('collection',[])
+            if isinstance(coll,str): coll=[coll]
+            reasons=[]
+            if 'graduatetheologicalunion' not in coll: reasons.append('not GTU')
+            if str(md.get('access-restricted-item','')).lower()=='true': reasons.append('access restricted')
+            if str(md.get('printdisabled','')).lower()=='true': reasons.append('printdisabled')
+            pdfs=[]
+            for f in m.get('files',[]):
+              n=f.get('name','')
+              if re.search(r'\.pdf$',n,re.I) and not re.search(r'(lcpdf|encrypted)\.pdf$',n,re.I) and str(f.get('private','false')).lower()!='true':
+                pdfs.append((int(f.get('size') or 0),n))
+            if not pdfs: reasons.append('no public non-encrypted pdf')
+            pdf=max(pdfs)[1] if pdfs else ''
+            def val(k,default=''):
+              v=md.get(k,default)
+              if isinstance(v,list): return '; '.join(map(str,v))
+              return str(v or '')
+            out.append({'identifier':ident,'eligible':not reasons,'reason':'; '.join(reasons),'title':val('title'),'creator':val('creator'),'year':val('year',val('date')),'volume':val('volume'),'edition':val('edition'),'series':val('series'),'language':val('language'),'subject':val('subject'),'pages':val('imagecount'),'contributor':val('contributor','Internet Archive; Graduate Theological Union collection'),'item_link':'https://archive.org/details/'+ident,'pdf_link':('https://archive.org/download/'+ident+'/'+quote(pdf)) if pdf else '','pdf_name':pdf})
+          json.dump(out,open('gtu_verified.json','w'),ensure_ascii=False,indent=2)
+          print('eligible',sum(1 for x in out if x['eligible']),'of',len(out))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-verified-20260823
+          path: gtu_verified.json
