@@ -1,0 +1,63 @@
+name: GTU Inventory Discovery 20260823
+on:
+  push:
+    branches: [ gtu-inventory-run-20260823-0348 ]
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mine GTU collection only
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, urllib.parse, urllib.request, re
+          queries=[
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:("Hebrew" OR "Aramaic" OR "Syriac" OR "Septuagint" OR "Targum" OR "Ugaritic"))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:("commentary" OR "Commentaries" OR "exegetical" OR "exegesis"))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:("papyri" OR "manuscripts" OR "cuneiform" OR "Assyrian" OR "Babylonian"))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:("Greek New Testament" OR "New Testament Greek" OR "textual criticism" OR "lexicon" OR "grammar"))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (subject:("Dead Sea scrolls" OR "Bible. O.T." OR "Bible. N.T." OR "Jews" OR "Judaism"))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:("Patrum" OR "patristic" OR "Reformation" OR "Luther" OR "Calvin"))'
+          ]
+          docs={}
+          for qi,q in enumerate(queries):
+            for page in (1,2,3,4):
+              params={'q':q,'fl[]':['identifier','title','creator','date','year','volume','subject'],'rows':100,'page':page,'output':'json'}
+              url='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(params,doseq=True)
+              try:
+                data=json.load(urllib.request.urlopen(url,timeout=30))['response']['docs']
+              except Exception as e:
+                continue
+              for d in data:
+                if d.get('identifier'): docs[d['identifier']]=d
+          print('CANDIDATES_SCANNED',len(docs))
+          out=[]
+          for ident,d in docs.items():
+            if len(out)>=100: break
+            try:
+              m=json.load(urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident),timeout=30))
+            except Exception: continue
+            md=m.get('metadata',{})
+            coll=md.get('collection',[])
+            if isinstance(coll,str): coll=[coll]
+            if 'graduatetheologicalunion' not in coll: continue
+            if str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true': continue
+            pdf=None; pages=None
+            for f in m.get('files',[]):
+              n=f.get('name',''); low=n.lower()
+              if low.endswith('.pdf') and 'encrypted' not in low and not low.endswith('.lcpdf') and str(f.get('private','false')).lower()!='true':
+                pdf=n
+                if f.get('pagecount'): pages=f.get('pagecount')
+                break
+            if not pdf: continue
+            item={
+              'id':ident,'title':md.get('title') or d.get('title',''),'creator':md.get('creator') or d.get('creator',''),
+              'date':md.get('date') or d.get('date') or d.get('year',''),'volume':md.get('volume',''),'edition':md.get('edition',''),
+              'series':md.get('series',''),'subject':md.get('subject') or d.get('subject',''),'contributor':md.get('contributor') or md.get('scanningcenter') or 'Internet Archive',
+              'pdf':pdf,'pages':pages or md.get('pagecount','')
+            }
+            out.append(item)
+          print('VERIFIED_PUBLIC_PDF',len(out))
+          for x in out:
+            print(json.dumps(x,ensure_ascii=False,separators=(',',':')))
+          PY
