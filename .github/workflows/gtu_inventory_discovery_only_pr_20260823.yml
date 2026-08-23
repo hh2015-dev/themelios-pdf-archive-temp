@@ -1,0 +1,49 @@
+name: GTU inventory discovery only PR 20260823
+on:
+  pull_request:
+    branches: [ main ]
+permissions:
+  contents: read
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Deep GTU-only discovery
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json,urllib.parse,urllib.request
+          B='https://archive.org'; fields=['identifier','title','creator','year','date','volume','edition','series','language','subject','mediatype','format']
+          docs={}; hits=0; calls=0
+          def run(q,page,rows=100,sort=None):
+            global hits,calls
+            p=[('q',q)]+[('fl[]',x) for x in fields]+[('rows',str(rows)),('page',str(page)),('output','json')]
+            if sort:p.append(('sort[]',sort))
+            try:
+              with urllib.request.urlopen(B+'/advancedsearch.php?'+urllib.parse.urlencode(p),timeout=18) as r: ds=json.load(r).get('response',{}).get('docs',[])
+            except Exception: ds=[]
+            calls+=1; hits+=len(ds)
+            for d in ds:
+              if d.get('identifier'):docs.setdefault(d['identifier'],d)
+          base='collection:graduatetheologicalunion AND format:"Text PDF"'
+          for page in [5,15,25,35,45,55,65,75,85,95,105,115,125,135,145,155,165,175,185,195]: run(base,page,100,'identifier asc')
+          topics=[
+            'title:(Hebrew OR Aramaic OR Syriac OR Semitic OR Greek OR Septuagint OR lexicon OR grammar OR concordance)',
+            'title:(manuscript OR codex OR papyri OR textual OR critical OR commentary OR exegesis)',
+            'title:(Genesis OR Exodus OR Leviticus OR Numbers OR Deuteronomy OR Joshua OR Judges OR Samuel OR Kings OR Job OR Psalms OR Isaiah OR Jeremiah OR Ezekiel OR Daniel)',
+            'title:(Matthew OR Mark OR Luke OR John OR Acts OR Romans OR Corinthians OR Galatians OR Ephesians OR Philippians OR Hebrews OR Revelation)',
+            'title:(Targum OR Mishnah OR Talmud OR Midrash OR Apocrypha OR Pseudepigrapha OR Enoch OR Maccabees OR Josephus OR Philo)',
+            'title:(Assyrian OR Babylonian OR Akkadian OR Sumerian OR Ugaritic OR Canaanite OR archaeology OR Palestine)',
+            'title:(Origen OR Irenaeus OR Tertullian OR Chrysostom OR Jerome OR Augustine OR Ephraem OR Calvin OR Luther)',
+            'title:(Biblical OR Bible OR Testament OR theology OR doctrine OR creed OR church OR missions OR Judaism)'
+          ]
+          for tq in topics:
+            for page in [4,12,20,28]: run(base+' AND ('+tq+')',page,100)
+          out={'search_calls':calls,'examined_hits':hits,'unique_discovered':len(docs),'records':list(docs.values())}
+          open('gtu_discovery.json','w',encoding='utf8').write(json.dumps(out,ensure_ascii=False,indent=2));print(json.dumps({k:out[k] for k in ['search_calls','examined_hits','unique_discovered']}))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-inventory-discovery-only-20260823
+          path: gtu_discovery.json
