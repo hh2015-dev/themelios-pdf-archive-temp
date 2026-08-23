@@ -1,0 +1,184 @@
+name: GTU inventory mine 20260823
+on:
+  push:
+    branches: [ gtu-inventory-run-20260823-2039 ]
+permissions:
+  contents: read
+jobs:
+  mine:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Mine and verify GTU-only candidates
+        shell: bash
+        run: |
+          cat > /tmp/mine.py <<'PY'
+          import concurrent.futures, json, re, urllib.parse, urllib.request, time, random
+
+          BASE='https://archive.org'
+          queries=[
+            'title:(lexicon OR grammar OR concordance OR bibliography OR chrestomathy)',
+            '(title:(Hebrew OR Aramaic OR Syriac OR Semitic) OR subject:(Hebrew OR Aramaic OR Syriac OR Semitic))',
+            '(title:(Greek OR Septuagint OR LXX OR papyri OR papyrus) OR subject:(Greek OR Septuagint OR papyri))',
+            '(title:(manuscript OR manuscripts OR codex OR textual OR text-critical) OR subject:(manuscripts OR textual criticism))',
+            'title:(Job OR Psalms OR Isaiah OR Jeremiah OR Ezekiel OR Daniel OR Proverbs OR Ecclesiastes)',
+            'title:(Genesis OR Exodus OR Leviticus OR Numbers OR Deuteronomy OR Joshua OR Judges OR Samuel OR Kings)',
+            'title:(Matthew OR Mark OR Luke OR John OR Acts OR Romans OR Corinthians OR Galatians OR Ephesians OR Philippians OR Hebrews OR Revelation)',
+            '(title:(Apocrypha OR Pseudepigrapha OR Maccabees OR Enoch OR Jubilees) OR subject:(Apocrypha OR Pseudepigrapha))',
+            '(title:(Targum OR Mishnah OR Talmud OR Midrash OR rabbinic) OR subject:(Targum OR Mishnah OR Talmud OR Midrash))',
+            '(title:(Assyria OR Assyrian OR Babylonia OR Babylonian OR Akkadian OR Sumerian OR Ugaritic OR Canaanite OR Palestine archaeology) OR subject:(Assyria OR Babylonia OR Akkadian OR Ugaritic OR archaeology))',
+            '(title:(Origen OR Chrysostom OR Jerome OR Augustine OR Irenaeus OR Tertullian OR Ephraem) OR subject:(patristic OR fathers))',
+            '(title:(Calvin OR Luther OR Reformation) OR creator:(Calvin OR Luther) OR subject:(Reformation))',
+            '(title:(Biblical OR Bible) AND title:(journal OR quarterly OR review OR studies OR archaeologist))',
+            '(title:(theology OR doctrine OR creed OR confession) OR subject:(systematic theology OR church history))',
+            '(title:(missions OR missionary OR missiology) OR subject:(missions OR missionary))',
+            '(subject:(Judaism OR early Christianity OR Second Temple) OR title:(Judaism OR Jewish OR Christian origins))'
+          ]
+          pages=[1,4,9]
+          candidates={}
+          examined_hits=0
+          for q0 in queries:
+            for page in pages:
+              q=f'collection:graduatetheologicalunion AND format:"Text PDF" AND ({q0})'
+              params=[]
+              params.append(('q',q))
+              for f in ['identifier','title','creator','year','date','volume','edition','series','language','subject','mediatype']:
+                params.append(('fl[]',f))
+              params += [('rows','50'),('page',str(page)),('output','json')]
+              url=BASE+'/advancedsearch.php?'+urllib.parse.urlencode(params)
+              try:
+                with urllib.request.urlopen(url, timeout=25) as r:
+                  obj=json.load(r)
+              except Exception as e:
+                continue
+              docs=obj.get('response',{}).get('docs',[])
+              examined_hits += len(docs)
+              for d in docs:
+                ident=d.get('identifier')
+                if ident:
+                  candidates.setdefault(ident,d)
+
+          # Add two broad windows, sorted by identifier, to avoid keyword tunnel vision.
+          for page in [13,31,57,83]:
+            q='collection:graduatetheologicalunion AND format:"Text PDF"'
+            params=[('q',q)]
+            for f in ['identifier','title','creator','year','date','volume','edition','series','language','subject','mediatype']:
+              params.append(('fl[]',f))
+            params += [('rows','50'),('page',str(page)),('sort[]','identifier asc'),('output','json')]
+            url=BASE+'/advancedsearch.php?'+urllib.parse.urlencode(params)
+            try:
+              with urllib.request.urlopen(url, timeout=25) as r: obj=json.load(r)
+            except Exception: continue
+            docs=obj.get('response',{}).get('docs',[])
+            examined_hits += len(docs)
+            for d in docs:
+              ident=d.get('identifier')
+              if ident: candidates.setdefault(ident,d)
+
+          # Academic relevance scoring from discovery metadata.
+          A_TERMS=['bible','biblical','testament','hebrew','aramaic','syriac','semitic','greek','septuagint','lxx','textual','manuscript','codex','papyr','dead sea','qumran','apocry','pseudep','targum','mishnah','talmud','midrash','assyri','babylon','akkad','sumer','ugarit','canaan','archaeolog','genesis','exodus','leviticus','numbers','deuteronomy','joshua','judges','samuel','kings','job','psalm','proverb','ecclesiastes','isaiah','jeremiah','ezekiel','daniel','matthew','mark','luke','john','acts','romans','corinth','galatian','ephesian','philipp','hebrews','revelation','commentary','lexicon','grammar','concordance','exegesis','hermeneut','philo','josephus','irenaeus','origen','jerome','chrysostom','ephraem','calvin','luther']
+          B_TERMS=['theology','doctrine','creed','confession','church history','reformation','patristic','apologetic','religion','missions','missionary','judaism','christianity','christian origins']
+          BAD_TERMS=['annual report','catalogue of students','commencement','yearbook','alumni','bulletin of courses','minutes of meeting']
+          def text_of(d):
+            vals=[]
+            for k in ['title','creator','subject','series']:
+              v=d.get(k,'')
+              if isinstance(v,list): vals += [str(x) for x in v]
+              else: vals.append(str(v))
+            return ' '.join(vals).lower()
+          def prelim_score(d):
+            t=text_of(d)
+            if any(x in t for x in BAD_TERMS): return -50
+            a=sum(3 for x in A_TERMS if x in t)
+            b=sum(1 for x in B_TERMS if x in t)
+            # reward useful scholarly forms
+            if any(x in t for x in ['commentary','lexicon','grammar','concordance','bibliography','journal','studies','critical']): a+=2
+            return a+b
+
+          ranked=sorted(candidates.values(), key=prelim_score, reverse=True)
+          # Verify enough deep candidates, not just the top slice.
+          ranked=ranked[:420]
+
+          def fetch_meta(d):
+            ident=d['identifier']
+            try:
+              with urllib.request.urlopen(BASE+'/metadata/'+urllib.parse.quote(ident), timeout=25) as r:
+                obj=json.load(r)
+            except Exception:
+              return None
+            m=obj.get('metadata',{}) or {}
+            coll=m.get('collection',[])
+            if isinstance(coll,str): coll=[coll]
+            if 'graduatetheologicalunion' not in coll: return None
+            def truthy(v): return str(v).lower() in ('true','1','yes')
+            if truthy(m.get('access-restricted-item')) or truthy(m.get('printdisabled')): return None
+            med=str(m.get('mediatype','texts')).lower()
+            if med and med!='texts': return None
+            files=obj.get('files',[]) or []
+            pdfs=[]
+            for f in files:
+              name=str(f.get('name',''))
+              if not name.lower().endswith('.pdf'): continue
+              if truthy(f.get('private')): continue
+              low=name.lower()
+              if low.endswith('.lcpdf') or 'encrypted' in low: continue
+              fmt=str(f.get('format','')).lower()
+              # Reject access-controlled PDF derivatives where explicitly labelled.
+              if 'encrypted' in fmt or 'lcp' in fmt: continue
+              score=0
+              if fmt=='text pdf': score+=10
+              if name==ident+'.pdf': score+=5
+              if '_text.pdf' in low: score+=3
+              try: size=int(f.get('size') or 0)
+              except: size=0
+              pdfs.append((score,size,name,f))
+            if not pdfs: return None
+            pdfs.sort(reverse=True)
+            _,_,pdfname,pf=pdfs[0]
+            title=m.get('title') or d.get('title') or ''
+            if isinstance(title,list): title='; '.join(map(str,title))
+            creator=m.get('creator') or d.get('creator') or ''
+            if isinstance(creator,list): creator='; '.join(map(str,creator))
+            year=m.get('year') or d.get('year') or ''
+            if isinstance(year,list): year=year[0] if year else ''
+            date=m.get('date') or d.get('date') or ''
+            volume=m.get('volume') or d.get('volume') or ''
+            if isinstance(volume,list): volume='; '.join(map(str,volume))
+            edition=m.get('edition') or d.get('edition') or ''
+            if isinstance(edition,list): edition='; '.join(map(str,edition))
+            series=m.get('series') or d.get('series') or ''
+            if isinstance(series,list): series='; '.join(map(str,series))
+            language=m.get('language') or d.get('language') or ''
+            if isinstance(language,list): language='; '.join(map(str,language))
+            subject=m.get('subject') or d.get('subject') or ''
+            if isinstance(subject,list): subject='; '.join(map(str,subject))
+            contributor=m.get('contributor') or ''
+            if isinstance(contributor,list): contributor='; '.join(map(str,contributor))
+            pages=m.get('imagecount') or m.get('page-count') or ''
+            if isinstance(pages,list): pages=pages[0] if pages else ''
+            direct=BASE+'/download/'+urllib.parse.quote(ident)+'/'+urllib.parse.quote(pdfname)
+            item=BASE+'/details/'+urllib.parse.quote(ident)
+            rec={'identifier':ident,'title':str(title),'creator':str(creator),'year':str(year),'date':str(date),'volume':str(volume),'edition':str(edition),'series':str(series),'language':str(language),'subject':str(subject),'contributor':str(contributor),'pages':str(pages),'pdfname':pdfname,'direct_pdf':direct,'item_link':item,'score':prelim_score({**d,'title':title,'creator':creator,'subject':subject,'series':series})}
+            return rec
+
+          verified=[]
+          with concurrent.futures.ThreadPoolExecutor(max_workers=16) as ex:
+            futs=[ex.submit(fetch_meta,d) for d in ranked]
+            for fut in concurrent.futures.as_completed(futs):
+              r=fut.result()
+              if r: verified.append(r)
+
+          # Sort by academic score, then year/title for deterministic output.
+          verified.sort(key=lambda x:(-x['score'], x.get('year',''), x.get('title','')))
+          # Keep a generous set for sheet-level dedup later.
+          out=verified[:180]
+          with open('gtu_candidates.json','w',encoding='utf-8') as f:
+            json.dump({'examined_hits':examined_hits,'unique_discovered':len(candidates),'metadata_checked':len(ranked),'verified_public_pdf':len(verified),'records':out},f,ensure_ascii=False,indent=2)
+          print(json.dumps({'examined_hits':examined_hits,'unique_discovered':len(candidates),'metadata_checked':len(ranked),'verified_public_pdf':len(verified),'output_records':len(out)}))
+          PY
+          python /tmp/mine.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-inventory-candidates-20260823
+          path: gtu_candidates.json
+          compression-level: 6
