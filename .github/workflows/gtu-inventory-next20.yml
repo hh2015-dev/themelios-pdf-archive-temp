@@ -6,64 +6,73 @@ jobs:
   discover:
     runs-on: ubuntu-latest
     steps:
-      - name: Mine exact GTU collection and verify public PDFs
+      - name: Verify selected GTU candidates only
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import json, urllib.parse, urllib.request, random
+          import json, urllib.request, urllib.parse
           from concurrent.futures import ThreadPoolExecutor, as_completed
           COLL='graduatetheologicalunion'; UA={'User-Agent':'Mozilla/5.0 GTUInventory/1.0'}
-          q='collection:'+COLL+' AND mediatype:texts'
-          seen={}
-          for page in [1,2,5,10,20,30,40,55,70]:
-            parts=[('q',q),('rows','100'),('page',str(page)),('output','json'),('fl[]','identifier'),('fl[]','title'),('fl[]','creator'),('fl[]','date'),('fl[]','year'),('fl[]','language'),('fl[]','volume'),('fl[]','subject'),('fl[]','contributor'),('sort[]','identifier asc')]
-            url='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(parts)
+          ids='''guidetogreeksynt0000john
+einfuhrungindasm0000rudo
+studies-biblical-theology_1954_12
+sim_bible-translator_1954-10_5_4
+sim_journal-of-near-eastern-studies_1943-07_2_3
+calvinetlascienc0001unse
+guidetocareadmin0000luci
+sim_prooftexts_1988_8_index
+sim_prooftexts_1991_11_index
+harvard-theological-review_1910-04_3_2
+harvard-theological-review_1914-07_7_3
+harvard-theological-review_1916-01_9_1
+harvard-theological-review_1938-01_31_1
+harvard-theological-review_1942-07_35_3
+harvard-theological-review_1945_38_1
+harvard-theological-review_1952-07_45_3
+harvard-theological-review_1959-01_52_1
+histoireduchrist0004domc
+dictionarycatalo0004vari_c1f7
+shelflistofunion0007ppsf
+anslemofhavelber0000walt
+tractatusdefonti0000gvan_l6i6
+tractatusdeverar0000joan
+tractatustheolog0000domi
+uvrescompletesde0016boss
+religionsofworld0000clem_j6z6
+theologicalexist0000unse
+kircheundtheolog0000trut
+americanismcatho0000fred
+blondeletlechris0000henr
+christianfaithit0000vari
+book-reviews-of-the-month-index_may-1971-april-1972_7_index-part-2'''.splitlines()
+          def V(ident):
             try:
-              with urllib.request.urlopen(urllib.request.Request(url,headers=UA),timeout=15) as r: data=json.load(r)
-            except Exception as e:
-              print('SEARCHERR',page,repr(e)); continue
-            print('PAGE',page,'N',len(data.get('response',{}).get('docs',[])))
-            for d in data.get('response',{}).get('docs',[]):
-              i=d.get('identifier')
-              if i and i not in seen: seen[i]=d
-          ids=list(seen); random.Random(202608231840).shuffle(ids)
-          def verify(ident):
-            try:
-              u='https://archive.org/metadata/'+urllib.parse.quote(ident)
-              with urllib.request.urlopen(urllib.request.Request(u,headers=UA),timeout=12) as r: meta=json.load(r)
-            except Exception: return None
+              with urllib.request.urlopen(urllib.request.Request('https://archive.org/metadata/'+urllib.parse.quote(ident),headers=UA),timeout=12) as r: meta=json.load(r)
+            except Exception as e: return {'identifier':ident,'valid':False,'error':repr(e)}
             md=meta.get('metadata',{}) or {}; coll=md.get('collection',[])
             if isinstance(coll,str): coll=[coll]
-            if COLL not in coll: return None
-            if str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true': return None
+            restricted=str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true'
             pdfs=[]
             for f in meta.get('files',[]) or []:
-              name=str(f.get('name','')); low=name.lower()
-              if not low.endswith('.pdf') or str(f.get('private','false')).lower()=='true': continue
-              if 'encrypted' in low or low.endswith('.lcpdf') or 'lcp' in low: continue
-              pdfs.append(name)
-            if not pdfs: return None
-            pdfname=sorted(pdfs,key=lambda n:(('text.pdf' in n.lower()),len(n)))[0]
+              n=str(f.get('name','')); low=n.lower()
+              if low.endswith('.pdf') and str(f.get('private','false')).lower()!='true' and 'encrypted' not in low and not low.endswith('.lcpdf') and 'lcp' not in low: pdfs.append(n)
             def val(k):
               v=md.get(k,'')
               if isinstance(v,list): return '; '.join(str(x) for x in v)
               return str(v) if v is not None else ''
+            pdf=sorted(pdfs,key=lambda n:(('text.pdf' in n.lower()),len(n)))[0] if pdfs else ''
             pages=''
             for k in ('pages','page-count','page_count'):
-              x=val(k).strip()
-              if x: pages=x; break
-            return {'identifier':ident,'title':val('title').strip(),'creator':val('creator').strip(),'year':(val('date').strip() or val('year').strip()),'volume':val('volume').strip(),'edition':val('edition').strip(),'series':val('series').strip(),'language':val('language').strip(),'contributor':val('contributor').strip(),'subject':val('subject').strip(),'pdf':pdfname,'pages':pages}
+              if val(k).strip(): pages=val(k).strip(); break
+            return {'identifier':ident,'valid':bool(COLL in coll and not restricted and pdf),'in_gtu':COLL in coll,'restricted':restricted,'title':val('title').strip(),'creator':val('creator').strip(),'year':val('date').strip() or val('year').strip(),'volume':val('volume').strip(),'edition':val('edition').strip(),'series':val('series').strip(),'language':val('language').strip(),'subject':val('subject').strip(),'contributor':val('contributor').strip(),'pdf':pdf,'pages':pages}
           out=[]
-          with ThreadPoolExecutor(max_workers=30) as ex:
-            futs={ex.submit(verify,i):i for i in ids}
-            for fut in as_completed(futs):
-              x=fut.result()
-              if x: out.append(x)
-          out.sort(key=lambda x:x['identifier'])
-          with open('candidates.json','w',encoding='utf-8') as f: json.dump({'pool':len(seen),'examined':len(ids),'eligible':len(out),'items':out},f,ensure_ascii=False,indent=2)
-          print('POOL',len(seen),'EXAMINED',len(ids),'ELIGIBLE',len(out))
-          for x in out[:160]: print(x['identifier'],'\t',x['title'][:115])
+          with ThreadPoolExecutor(max_workers=20) as ex:
+            for f in as_completed([ex.submit(V,i) for i in ids]): out.append(f.result())
+          out.sort(key=lambda x:ids.index(x['identifier']))
+          json.dump(out,open('candidates.json','w'),ensure_ascii=False,indent=2)
+          print('CHECKED',len(out),'VALID',sum(x.get('valid',False) for x in out))
+          for x in out: print(('OK' if x.get('valid') else 'NO'),x['identifier'],'\t',x.get('title','')[:100])
           PY
       - uses: actions/upload-artifact@v4
         with:
