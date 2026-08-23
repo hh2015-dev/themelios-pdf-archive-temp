@@ -1,4 +1,4 @@
-name: GTU Inventory Auto 20260823 Deep
+name: GTU Inventory Auto 20260823 Fast
 on:
   pull_request:
     branches: [ main ]
@@ -6,47 +6,50 @@ jobs:
   discover:
     runs-on: ubuntu-latest
     steps:
-      - name: Mine deep exact GTU collection and verify public PDFs concurrently
+      - name: Fast parallel GTU-only discovery and PDF verification
         shell: bash
         run: |
           cat > /tmp/mine.py <<'PY'
           import json, urllib.parse, urllib.request, time, csv, concurrent.futures
           BASE='https://archive.org'; UA={'User-Agent':'Mozilla/5.0 GTU inventory research'}
-          queries=[
-            ('A','Hebrew Bible / Psalms / Prophets','psalms OR prophets OR isaiah OR jeremiah'),
+          themes=[
             ('A','Hebrew / Semitic philology','hebrew OR semitic OR chaldee'),
             ('A','Aramaic / Targum / rabbinics','aramaic OR targum OR mishnah OR talmud'),
             ('A','Syriac / Peshitta / manuscripts','syriac OR peshitta'),
             ('A','Septuagint / Greek Bible','septuagint OR "greek bible"'),
             ('A','New Testament / Greek / textual criticism','"new testament" AND (greek OR textual OR manuscript)'),
             ('A','Biblical archaeology / ANE','archaeology OR assyria OR babylon OR ugarit'),
-            ('A','Biblical commentary / interpretation','commentary OR exegesis'),
             ('A','Apocrypha / Second Temple Judaism','apocrypha OR pseudepigrapha OR josephus OR philo'),
-            ('A','Patristic exegesis / early Christianity','chrysostom OR origen OR augustine OR jerome'),
-            ('A','Reformation exegesis','calvin OR luther OR reformation'),
-            ('B','Historical theology / church history','theology OR doctrine OR church history'),
+            ('A','Patristic / history of interpretation','chrysostom OR origen OR augustine OR jerome'),
+            ('A','Reformation exegesis','calvin OR luther'),
+            ('B','Historical theology / church history','theology OR doctrine OR "church history"'),
             ('B','Missiology / mission history','mission OR missionary'),
           ]
           def getj(url,tries=2):
             for i in range(tries):
               try:
                 req=urllib.request.Request(url,headers=UA)
-                with urllib.request.urlopen(req,timeout=25) as r:return json.load(r)
+                with urllib.request.urlopen(req,timeout=20) as r:return json.load(r)
               except Exception:
                 if i==tries-1:return None
-                time.sleep(.5)
+                time.sleep(.4)
+          jobs=[]
+          for pri,sub,term in themes:
+            for page in (7,16,28,42): jobs.append((pri,sub,term,page))
+          def search_one(x):
+            pri,sub,term,page=x; q=f'collection:graduatetheologicalunion AND mediatype:texts AND ({term})'
+            p={'q':q,'fl[]':['identifier','title','creator','year','date','language','volume','subject'],'rows':35,'page':page,'output':'json'}
+            d=getj(BASE+'/advancedsearch.php?'+urllib.parse.urlencode(p,doseq=True)); return x, ([] if not d else d.get('response',{}).get('docs',[]))
           seen={}; examined=0
-          for pri,sub,term in queries:
-            q=f'collection:graduatetheologicalunion AND mediatype:texts AND ({term})'
-            for page in (5,10,15,20,30):
-              params={'q':q,'fl[]':['identifier','title','creator','year','date','language','volume','subject'],'rows':40,'page':page,'output':'json'}
-              data=getj(BASE+'/advancedsearch.php?'+urllib.parse.urlencode(params,doseq=True))
-              if not data:continue
-              docs=data.get('response',{}).get('docs',[]); examined+=len(docs)
+          with concurrent.futures.ThreadPoolExecutor(max_workers=16) as ex:
+            for (pri,sub,term,page),docs in ex.map(search_one,jobs):
+              examined+=len(docs)
               for d in docs:
                 ident=d.get('identifier')
-                if ident and ident not in seen:
-                  d['_priority']=pri; d['_subject']=sub; seen[ident]=d
+                if ident and ident not in seen: d['_priority']=pri; d['_subject']=sub; seen[ident]=d
+          def txt(v):
+            if isinstance(v,list):return '; '.join(map(str,v))
+            return '' if v is None else str(v)
           def verify(d):
             ident=d['identifier']; m=getj(BASE+'/metadata/'+urllib.parse.quote(ident))
             if not m:return None
@@ -54,38 +57,25 @@ jobs:
             if isinstance(coll,str):coll=[coll]
             if 'graduatetheologicalunion' not in coll:return None
             if str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true':return None
-            pdf=None
+            pdf=''
             for f in m.get('files',[]):
-              n=f.get('name','')
-              if n.lower().endswith('.pdf') and not n.lower().endswith('.lcpdf') and 'encrypted' not in n.lower() and str(f.get('private','false')).lower()!='true':
-                pdf=n;break
+              n=f.get('name',''); low=n.lower()
+              if low.endswith('.pdf') and not low.endswith('.lcpdf') and 'encrypted' not in low and str(f.get('private','false')).lower()!='true': pdf=n; break
             if not pdf:return None
-            def txt(v):
-              if isinstance(v,list):return '; '.join(map(str,v))
-              return '' if v is None else str(v)
-            title=txt(md.get('title') or d.get('title')); creator=txt(md.get('creator') or d.get('creator'))
-            year=txt(md.get('year') or md.get('date') or d.get('year') or d.get('date'))
-            lang=txt(md.get('language') or d.get('language')); vol=txt(md.get('volume')); ed=txt(md.get('edition')); ser=txt(md.get('series'))
-            contrib=txt(md.get('contributor') or md.get('sponsor') or 'Graduate Theological Union')
-            pages=''
-            # Prefer metadata/imagecount when explicitly available; do not infer otherwise.
-            if md.get('imagecount') not in (None,''): pages=txt(md.get('imagecount'))
-            return [d['_priority'],d['_subject'],creator,title,year,ident,BASE+'/download/'+urllib.parse.quote(ident)+'/'+urllib.parse.quote(pdf),pages,vol,ed,ser,contrib,lang]
-          docs=list(seen.values())
-          verified=[]
-          with concurrent.futures.ThreadPoolExecutor(max_workers=20) as ex:
-            for r in ex.map(verify,docs[:500]):
-              if r: verified.append(r)
-              if len(verified)>=220:break
+            return [d['_priority'],d['_subject'],txt(md.get('creator') or d.get('creator')),txt(md.get('title') or d.get('title')),txt(md.get('year') or md.get('date') or d.get('year') or d.get('date')),ident,BASE+'/download/'+urllib.parse.quote(ident)+'/'+urllib.parse.quote(pdf),txt(md.get('imagecount')),txt(md.get('volume')),txt(md.get('edition')),txt(md.get('series')),txt(md.get('contributor') or md.get('sponsor') or 'Graduate Theological Union'),txt(md.get('language') or d.get('language'))]
+          docs=list(seen.values())[:420]; verified=[]
+          with concurrent.futures.ThreadPoolExecutor(max_workers=24) as ex:
+            for r in ex.map(verify,docs):
+              if r:verified.append(r)
           with open('gtu_candidates.tsv','w',newline='',encoding='utf-8') as f:
-            w=csv.writer(f,delimiter='\t'); w.writerow(['Priority','Subject','Author','Title','Year','Identifier','DirectPDF','Pages','Volume','Edition','Series','Contributor','Language']); w.writerows(verified)
+            w=csv.writer(f,delimiter='\t');w.writerow(['Priority','Subject','Author','Title','Year','Identifier','DirectPDF','Pages','Volume','Edition','Series','Contributor','Language']);w.writerows(verified)
           with open('gtu_stats.txt','w') as f:f.write(f'advancedsearch_rows_examined={examined}\nunique_candidates={len(seen)}\nmetadata_verified_public_pdf={len(verified)}\n')
-          print(open('gtu_stats.txt').read()); print(open('gtu_candidates.tsv',encoding='utf-8').read())
+          print(open('gtu_stats.txt').read());print(open('gtu_candidates.tsv',encoding='utf-8').read())
           PY
           python3 /tmp/mine.py
       - uses: actions/upload-artifact@v4
         with:
-          name: gtu-inventory-candidates-deep
+          name: gtu-inventory-candidates-fast
           path: |
             gtu_candidates.tsv
             gtu_stats.txt
