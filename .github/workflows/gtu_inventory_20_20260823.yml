@@ -6,14 +6,30 @@ jobs:
   discover:
     runs-on: ubuntu-latest
     steps:
-      - name: Bounded GTU discovery
+      - name: Verify exact GTU shortlist
         shell: bash
         run: |
-          set -euo pipefail
-          enc=$(python3 -c 'import urllib.parse; print(urllib.parse.quote('"'"'collection:graduatetheologicalunion AND format:"Text PDF"'"'"'))')
-          url="https://archive.org/advancedsearch.php?q=$enc&fl[]=identifier,title,creator,date,year,volume,subject,language,contributor,format&rows=200&page=70&output=json&sort[]=identifier%20asc"
-          curl -fsSL --max-time 25 "$url" -o result.json
-          echo EXAMINED_SEARCH_ROWS=$(jq '.response.docs|length' result.json)
-          echo TOTAL_FOUND=$(jq '.response.numFound' result.json)
-          echo '===CANDIDATES_JSON==='
-          jq -c '.response.docs[] | select((.title//"")|test("Bible|Biblical|Testament|Hebrew|Aramaic|Syriac|Semitic|Septuagint|Greek|Gospel|Psalm|Isaiah|Jeremiah|Ezekiel|Daniel|Job|Genesis|Exodus|Pentateuch|Prophet|Targum|Talmud|Mishnah|Qumran|Apocry|Pseudepig|Josephus|Philo|Manuscript|Codex|Papyr|Textual|Archaeolog|Assyri|Babylon|Akkad|Ugarit|Lexicon|Grammar|Concordance|Commentar|Calvin|Luther|Origen|Augustine|Chrysostom|Irenaeus|Church|Theolog|Reformation|Patrist";"i"))' result.json | head -120
+          cat > /tmp/verify.py <<'PY'
+          import json, urllib.request, urllib.parse, concurrent.futures
+          ids='''b14093601 b14098416 b14098544 b14101439 b14101622 b14101968 b14093571 b14098258 b14098477 b14098507 b10929538 b1409356x b14096638 b14096626 b14098490 b1410636x b14106449 b14101592 babylonienundass0002unse babylonischassyr0000vari'''.split()
+          def one(i):
+            try:
+              with urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(i),timeout=15) as r:m=json.load(r)
+            except Exception as e:return {'id':i,'error':repr(e)}
+            md=m.get('metadata',{}); coll=md.get('collection',[])
+            if isinstance(coll,str):coll=[coll]
+            pdfs=[]
+            for f in m.get('files',[]):
+              n=f.get('name',''); priv=str(f.get('private','false')).lower()=='true'
+              if (not priv and n.lower().endswith('.pdf') and not n.lower().endswith('encrypted.pdf') and not n.lower().endswith('.lcpdf')):
+                pdfs.append(n)
+            creator=md.get('creator',''); creator='; '.join(map(str,creator)) if isinstance(creator,list) else str(creator or '')
+            subj=md.get('subject',[]); subj='; '.join(map(str,subj[:12])) if isinstance(subj,list) else str(subj or '')
+            return {'id':i,'gtu':'graduatetheologicalunion' in coll,'restricted':str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true','title':str(md.get('title','') or ''),'creator':creator,'date':str(md.get('date') or md.get('year') or ''),'volume':str(md.get('volume','') or ''),'edition':str(md.get('edition','') or ''),'series':str(md.get('series','') or ''),'subject':subj,'contributor':str(md.get('contributor','') or ''),'imagecount':str(md.get('imagecount','') or ''),'pdfs':pdfs[:5]}
+          with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
+            out=list(ex.map(one,ids))
+          print('METADATA_CHECKED='+str(len(out)))
+          print('ELIGIBLE='+str(sum(1 for x in out if x.get('gtu') and not x.get('restricted') and x.get('pdfs'))))
+          for x in out:print(json.dumps(x,ensure_ascii=False))
+          PY
+          python /tmp/verify.py
