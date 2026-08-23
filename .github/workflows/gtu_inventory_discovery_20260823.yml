@@ -14,15 +14,16 @@ jobs:
           from concurrent.futures import ThreadPoolExecutor, as_completed
           BASE='https://archive.org'
           fl=['identifier','title','creator','date','year','volume','language','contributor','subject','mediatype']
-          terms=['hebrew','aramaic','syriac','septuagint','textual criticism','manuscript','targum','josephus','biblical archaeology','commentary','patristic','reformation','theology','missions']
+          terms=['hebrew','aramaic','syriac','septuagint','textual criticism','manuscript','judaism','archaeology','commentary','patristic','reformation','theology','missions','church history']
           docs={}; examined=0
-          def search(term):
+          def search(term,page):
             q=f'collection:graduatetheologicalunion AND mediatype:texts AND format:"Text PDF" AND (title:({term}) OR subject:({term}))'
-            params=[('q',q),('rows','90'),('page','1'),('output','json'),('sort[]','identifier asc')]+[('fl[]',f) for f in fl]
+            params=[('q',q),('rows','80'),('page',str(page)),('output','json'),('sort[]','identifier asc')]+[('fl[]',f) for f in fl]
             try: return json.load(urllib.request.urlopen(BASE+'/advancedsearch.php?'+urllib.parse.urlencode(params),timeout=18))
             except Exception: return None
-          with ThreadPoolExecutor(max_workers=10) as ex:
-            for fut in as_completed([ex.submit(search,t) for t in terms]):
+          tasks=[(t,p) for t in terms for p in (2,3)]
+          with ThreadPoolExecutor(max_workers=16) as ex:
+            for fut in as_completed([ex.submit(search,t,p) for t,p in tasks]):
               data=fut.result()
               if not data: continue
               for d in data.get('response',{}).get('docs',[]):
