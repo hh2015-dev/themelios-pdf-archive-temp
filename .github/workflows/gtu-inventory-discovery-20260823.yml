@@ -6,7 +6,7 @@ jobs:
   discover:
     runs-on: ubuntu-latest
     steps:
-      - name: Mine GTU and verify public PDFs
+      - name: Mine GTU candidate metadata
         shell: bash
         run: |
           set -euo pipefail
@@ -14,52 +14,30 @@ jobs:
           import json, urllib.parse, urllib.request
           from concurrent.futures import ThreadPoolExecutor, as_completed
           base='https://archive.org/advancedsearch.php'
-          queries=[
-            ('collection:graduatetheologicalunion AND mediatype:texts AND (title:(bible OR biblical OR testament OR gospel OR psalm OR isaiah OR genesis OR exodus OR commentary OR concordance OR lexicon OR grammar))',[3,8,13,18]),
-            ('collection:graduatetheologicalunion AND mediatype:texts AND (title:(hebrew OR aramaic OR syriac OR septuagint OR greek OR papyri OR manuscript OR talmud OR targum OR ugarit OR assyrian OR babylonian))',[2,6,10,14]),
-            ('collection:graduatetheologicalunion AND mediatype:texts AND (subject:(Bible OR Hebrew OR Syriac OR Aramaic OR Septuagint OR Talmud OR Manuscripts OR Assyriology OR Babylonia OR Archaeology))',[4,9,15]),
-            ('collection:graduatetheologicalunion AND mediatype:texts AND (title:(Calvin OR Luther OR Chrysostom OR Augustine OR Origen OR Eusebius OR Philo OR Josephus OR Irenaeus))',[2,5,9]),
-            ('collection:graduatetheologicalunion AND mediatype:texts AND (title:(Journal OR Quarterly OR Expository OR Scripture OR Archaeologist OR Studies))',[7,14,21]),
+          specs=[
+            ('collection:graduatetheologicalunion AND mediatype:texts AND (title:(bible OR biblical OR testament OR gospel OR psalm OR isaiah OR genesis OR exodus OR commentary OR concordance OR lexicon OR grammar))',[4,10,16,22]),
+            ('collection:graduatetheologicalunion AND mediatype:texts AND (title:(hebrew OR aramaic OR syriac OR septuagint OR greek OR papyri OR manuscript OR talmud OR targum OR ugarit OR assyrian OR babylonian))',[3,8,13,18]),
+            ('collection:graduatetheologicalunion AND mediatype:texts AND (subject:(Bible OR Hebrew OR Syriac OR Aramaic OR Septuagint OR Talmud OR Manuscripts OR Assyriology OR Babylonia OR Archaeology))',[5,12,19]),
+            ('collection:graduatetheologicalunion AND mediatype:texts AND (title:(Calvin OR Luther OR Chrysostom OR Augustine OR Origen OR Eusebius OR Philo OR Josephus OR Irenaeus))',[3,7,11]),
+            ('collection:graduatetheologicalunion AND mediatype:texts AND (title:(Journal OR Quarterly OR Expository OR Scripture OR Archaeologist OR Studies))',[9,18,27]),
           ]
-          ids=[]; examined=0
-          for q,pages in queries:
-            for page in pages:
-              params={'q':q,'fl[]':['identifier'],'rows':100,'page':page,'output':'json'}
-              try: data=json.load(urllib.request.urlopen(base+'?'+urllib.parse.urlencode(params,doseq=True),timeout=20))
-              except Exception: continue
-              docs=data.get('response',{}).get('docs',[]); examined += len(docs)
-              for d in docs:
-                i=d.get('identifier')
-                if i and i not in ids: ids.append(i)
-          def flat(v):
-            if isinstance(v,list): return '; '.join(str(x) for x in v)
-            return '' if v is None else str(v)
-          def verify(i):
-            try: m=json.load(urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(i),timeout=20))
-            except Exception: return None
-            md=m.get('metadata',{}); coll=md.get('collection',[])
-            if isinstance(coll,str): coll=[coll]
-            if 'graduatetheologicalunion' not in coll: return None
-            if str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true': return None
-            pdfs=[]
-            for f in m.get('files',[]):
-              n=f.get('name','')
-              if n.lower().endswith('.pdf') and not n.lower().endswith('.lcpdf') and 'encrypted' not in n.lower() and str(f.get('private','false')).lower()!='true':
-                pdfs.append((int(f.get('size',0) or 0),n))
-            if not pdfs: return None
-            pdf=max(pdfs)[1]
-            return {'identifier':i,'title':flat(md.get('title')),'creator':flat(md.get('creator')),'date':flat(md.get('date') or md.get('year')),'volume':flat(md.get('volume')),'edition':flat(md.get('edition')),'series':flat(md.get('series')),'contributor':flat(md.get('contributor')),'subject':flat(md.get('subject')),'pages':flat(md.get('imagecount')),'pdf':pdf}
-          out=[]
-          with ThreadPoolExecutor(max_workers=32) as ex:
-            futs={ex.submit(verify,i):i for i in ids[:500]}
-            for fut in as_completed(futs):
-              x=fut.result()
-              if x: out.append(x)
-          out.sort(key=lambda x:x['identifier'])
-          print('SEARCH_HITS',examined,'UNIQUE_IDS',len(ids),'VERIFIED_PUBLIC_PDF',len(out))
-          with open('gtu_candidates.json','w',encoding='utf-8') as f: json.dump({'examined':examined,'unique_ids':len(ids),'candidates':out},f,ensure_ascii=False,indent=2)
+          def one(q,page):
+            p={'q':q,'fl[]':['identifier','title','creator','date','year','volume','edition','series','subject','contributor','format'],'rows':100,'page':page,'output':'json'}
+            try:return json.load(urllib.request.urlopen(base+'?'+urllib.parse.urlencode(p,doseq=True),timeout=20)).get('response',{}).get('docs',[])
+            except Exception:return []
+          jobs=[(q,p) for q,ps in specs for p in ps]
+          docs=[]
+          with ThreadPoolExecutor(max_workers=12) as ex:
+            futs=[ex.submit(one,q,p) for q,p in jobs]
+            for f in as_completed(futs): docs.extend(f.result())
+          byid={}
+          for d in docs:
+            i=d.get('identifier')
+            if i: byid[i]=d
+          print('SEARCH_HITS',len(docs),'UNIQUE_IDS',len(byid))
+          with open('gtu_search_candidates.json','w',encoding='utf-8') as f:json.dump({'examined':len(docs),'candidates':list(byid.values())},f,ensure_ascii=False,indent=2)
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: gtu-candidates
-          path: gtu_candidates.json
+          name: gtu-search-candidates
+          path: gtu_search_candidates.json
