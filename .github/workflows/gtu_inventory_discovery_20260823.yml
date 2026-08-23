@@ -14,15 +14,20 @@ jobs:
           from concurrent.futures import ThreadPoolExecutor, as_completed
           BASE='https://archive.org'
           fl=['identifier','title','creator','date','year','volume','language','contributor','subject','mediatype']
+          terms=['hebrew','aramaic','syriac','septuagint','textual criticism','manuscript','targum','josephus','biblical archaeology','commentary','patristic','reformation','theology','missions']
           docs={}; examined=0
-          for page in (1,4,8,13,19,26):
-            q='collection:graduatetheologicalunion AND mediatype:texts AND format:"Text PDF"'
-            params=[('q',q),('rows','250'),('page',str(page)),('output','json'),('sort[]','identifier asc')]+[('fl[]',f) for f in fl]
-            try: data=json.load(urllib.request.urlopen(BASE+'/advancedsearch.php?'+urllib.parse.urlencode(params),timeout=18))
-            except Exception: continue
-            for d in data.get('response',{}).get('docs',[]):
-              examined+=1
-              if d.get('identifier'): docs[d['identifier']]=d
+          def search(term):
+            q=f'collection:graduatetheologicalunion AND mediatype:texts AND format:"Text PDF" AND (title:({term}) OR subject:({term}))'
+            params=[('q',q),('rows','90'),('page','1'),('output','json'),('sort[]','identifier asc')]+[('fl[]',f) for f in fl]
+            try: return json.load(urllib.request.urlopen(BASE+'/advancedsearch.php?'+urllib.parse.urlencode(params),timeout=18))
+            except Exception: return None
+          with ThreadPoolExecutor(max_workers=10) as ex:
+            for fut in as_completed([ex.submit(search,t) for t in terms]):
+              data=fut.result()
+              if not data: continue
+              for d in data.get('response',{}).get('docs',[]):
+                examined+=1
+                if d.get('identifier'): docs[d['identifier']]=d
           A=re.compile(r'\b(bible|biblical|scripture|hebrew|aramaic|syriac|semitic|akkadian|assyri|babylon|ugarit|septuagint|lxx|hexapla|testament|textual|manuscript|papyri|codex|targum|talmud|mishnah|midrash|qumran|dead sea|pseudepigrapha|apocrypha|genesis|exodus|leviticus|numbers|deuteronomy|joshua|judges|samuel|kings|chronicles|ezra|nehemiah|isaiah|jeremiah|ezekiel|daniel|psalm|job|proverb|ecclesiastes|matthew|mark|luke|john|acts|romans|corinth|galatian|ephesians|philippians|colossians|thessalonians|timothy|titus|philemon|hebrews|james|peter|jude|revelation|commentary|exeget|exegesis|hermeneut|concordance|lexicon|grammar|philo|josephus|rabbin|judaism|palestine|archaeolog|origen|chrysostom|jerome|augustine|ephraem|irenaeus|tertullian|calvin|luther)\b',re.I)
           B=re.compile(r'\b(theology|doctrine|creed|confession|apologetic|mission|church history|patristic|reformation|religion|christianity|ecclesiastical|council|dogma)\b',re.I)
           def text(d):
@@ -36,7 +41,7 @@ jobs:
             if not a and not b: continue
             score=a*100+b*25; h=int(hashlib.sha1(ident.encode()).hexdigest()[:8],16)%10000
             scored.append((score,h,ident,d))
-          scored.sort(key=lambda x:(-x[0],x[1])); targets=scored[:150]
+          scored.sort(key=lambda x:(-x[0],x[1])); targets=scored[:180]
           def verify(x):
             score,h,ident,d=x
             try: m=json.load(urllib.request.urlopen(BASE+'/metadata/'+urllib.parse.quote(ident),timeout=12))
