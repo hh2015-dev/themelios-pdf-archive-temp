@@ -10,7 +10,7 @@ jobs:
         shell: bash
         run: |
           python - <<'PY'
-          import requests, json, urllib.parse, time
+          import requests, json, urllib.parse
           base='https://archive.org/advancedsearch.php'
           queries=[
             '(title:(Bible OR Biblical OR Testament OR Gospel OR Genesis OR Exodus OR Isaiah OR Psalms OR Job OR Daniel OR Romans OR Corinthians OR Revelation OR commentary OR concordance))',
@@ -23,38 +23,40 @@ jobs:
             '(title:(theology OR doctrine OR creed OR confession OR apologetics OR missions OR church history))'
           ]
           seen={}; examined=0
-          for qi,q0 in enumerate(queries):
+          for q0 in queries:
             q='collection:graduatetheologicalunion AND '+q0
-            for page in range(1,5):
+            for page in range(1,4):
               p={'q':q,'fl[]':['identifier','title','creator','year','language','format','volume','edition','series','contributor','subject'],'rows':50,'page':page,'output':'json','sort[]':'identifier asc'}
-              r=requests.get(base,params=p,timeout=30); r.raise_for_status(); docs=r.json()['response']['docs']; examined+=len(docs)
+              try:
+                r=requests.get(base,params=p,timeout=12); r.raise_for_status(); docs=r.json()['response']['docs']
+              except Exception:
+                continue
+              examined+=len(docs)
               for d in docs: seen[d['identifier']]=d
               if len(docs)<50: break
-          # score and verify up to 220 best unique candidates
           A=['bible','biblical','testament','gospel','genesis','exodus','isaiah','psalm','job','daniel','romans','corinth','revelation','hebrew','aramaic','syriac','semitic','ugaritic','akkadian','septuagint','textual','manuscript','papyri','papyrus','codex','greek','lexicon','grammar','mishnah','talmud','targum','rabbinic','josephus','philo','pseudepigrapha','apocrypha','archaeolog','cuneiform','palestine','israel','mesopotam','commentary','exegesis','concordance']
           B=['origen','augustine','chrysostom','jerome','irenaeus','tertullian','calvin','luther','reformation','theology','doctrine','creed','confession','apologetic','mission','church history']
           def score(d):
             s=(' '.join(str(d.get(k,'')) for k in ['title','creator','subject'])).lower()
             return sum(5 for x in A if x in s)+sum(2 for x in B if x in s)
-          ranked=sorted(seen.values(),key=lambda d:(score(d),str(d.get('year',''))),reverse=True)[:220]
+          ranked=sorted(seen.values(),key=lambda d:(score(d),str(d.get('year',''))),reverse=True)[:100]
           out=[]
-          for i,d in enumerate(ranked):
+          for d in ranked:
             ident=d['identifier']
             try:
-              m=requests.get('https://archive.org/metadata/'+urllib.parse.quote(ident),timeout=30).json()
+              m=requests.get('https://archive.org/metadata/'+urllib.parse.quote(ident),timeout=8).json()
               md=m.get('metadata',{}); coll=md.get('collection',[])
               if isinstance(coll,str): coll=[coll]
               if 'graduatetheologicalunion' not in coll: continue
               files=m.get('files',[])
               pdfs=[f for f in files if str(f.get('name','')).lower().endswith('.pdf') and not str(f.get('name','')).lower().endswith('.lcpdf') and str(f.get('private','false')).lower()!='true' and 'encrypted' not in str(f.get('name','')).lower()]
-              rec={'identifier':ident,'advanced':d,'metadata':{k:md.get(k) for k in ['title','creator','date','year','language','volume','edition','series','contributor','subject','mediatype','access-restricted-item','printdisabled']},'public_pdf':pdfs[0].get('name') if pdfs else '', 'pdf_count':len(pdfs)}
-              out.append(rec)
-            except Exception as e:
+              out.append({'identifier':ident,'advanced':d,'metadata':{k:md.get(k) for k in ['title','creator','date','year','language','volume','edition','series','contributor','subject','mediatype','access-restricted-item','printdisabled']},'public_pdf':pdfs[0].get('name') if pdfs else '', 'pdf_count':len(pdfs)})
+            except Exception:
               continue
           with open('gtu_candidates.json','w',encoding='utf-8') as f: json.dump({'examined':examined,'unique':len(seen),'verified':len(out),'records':out},f,ensure_ascii=False)
           print('examined',examined,'unique',len(seen),'verified',len(out))
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: gtu-candidates-20260824-0041
+          name: gtu-candidates-20260824-0041-fast
           path: gtu_candidates.json
