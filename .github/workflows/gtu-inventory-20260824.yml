@@ -10,8 +10,9 @@ jobs:
         shell: bash
         run: |
           cat > /tmp/mine.py <<'PY'
-          import requests, json, re, time
+          import requests, json, re
           from urllib.parse import quote
+          from concurrent.futures import ThreadPoolExecutor, as_completed
           BASE='https://archive.org/advancedsearch.php'
           queries=[
             'collection:graduatetheologicalunion AND mediatype:texts AND (title:(hebrew OR aramaic OR syriac OR semitic OR targum OR talmud OR mishnah OR ugaritic))',
@@ -23,14 +24,16 @@ jobs:
             'collection:graduatetheologicalunion AND mediatype:texts AND (title:(calvin OR luther OR chrysostom OR augustine OR origen OR jerome OR patristic OR commentary OR exegesis))',
             'collection:graduatetheologicalunion AND mediatype:texts AND (title:(concordance OR lexicon OR grammar OR dictionary OR bibliography OR journal OR bulletin OR review))'
           ]
-          docs={}; examined=0; sess=requests.Session()
-          for q in queries:
-            for page in (2,5,9):
-              params=[('q',q),('rows','100'),('page',str(page)),('output','json'),('sort[]','identifier asc')]
-              for f in ['identifier','title','creator','year','date','volume','language','subject','format']: params.append(('fl[]',f))
-              try:
-                arr=sess.get(BASE,params=params,timeout=20).json().get('response',{}).get('docs',[])
-              except Exception: continue
+          search_jobs=[(q,p) for q in queries for p in (2,5,9)]
+          def search(job):
+            q,page=job
+            params=[('q',q),('rows','100'),('page',str(page)),('output','json'),('sort[]','identifier asc')]
+            for f in ['identifier','title','creator','year','date','volume','language','subject','format']: params.append(('fl[]',f))
+            try: return requests.get(BASE,params=params,timeout=15).json().get('response',{}).get('docs',[])
+            except Exception: return []
+          docs={}; examined=0
+          with ThreadPoolExecutor(max_workers=12) as ex:
+            for arr in ex.map(search,search_jobs):
               examined+=len(arr)
               for d in arr:
                 if d.get('identifier'): docs[d['identifier']]=d
@@ -42,13 +45,13 @@ jobs:
             s=(txt(d.get('title'))+' '+txt(d.get('subject'))+' '+txt(d.get('creator'))).lower()
             score=sum(5 for t in A if t in s)+sum(2 for t in B if t in s)
             if score>=5: cand.append((score,ident,d))
-          cand.sort(key=lambda x:(-x[0],x[1]))
-          out=[]
-          for score,ident,d in cand[:100]:
-            try: m=sess.get('https://archive.org/metadata/'+quote(ident),timeout=20).json()
-            except Exception: continue
+          cand.sort(key=lambda x:(-x[0],x[1])); cand=cand[:150]
+          def meta(item):
+            score,ident,d=item
+            try: m=requests.get('https://archive.org/metadata/'+quote(ident),timeout=15).json()
+            except Exception: return None
             md=m.get('metadata',{}) or {}; coll=md.get('collection',[]); coll=[coll] if isinstance(coll,str) else coll
-            if 'graduatetheologicalunion' not in coll: continue
+            if 'graduatetheologicalunion' not in coll: return None
             restricted=str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true'
             pdfs=[]
             for f in m.get('files',[]) or []:
@@ -59,12 +62,17 @@ jobs:
               pdfs.sort(key=lambda f:(0 if f.get('source')=='original' else 1,-int(f.get('size',0) or 0))); public_pdf=pdfs[0].get('name','')
             title=txt(md.get('title') or d.get('title')).strip(); creator=txt(md.get('creator') or d.get('creator')).strip(); year=txt(md.get('year') or md.get('date') or d.get('year') or d.get('date')).strip()
             volume=txt(md.get('volume') or d.get('volume')).strip(); edition=txt(md.get('edition')).strip(); series=txt(md.get('series')).strip(); lang=txt(md.get('language') or d.get('language')).strip(); subject=txt(md.get('subject') or d.get('subject')).strip(); contributor=txt(md.get('contributor')).strip()
-            pages=''; desc=txt(md.get('description'))
-            mm=re.search(r'([0-9]{1,4})\s+p(?:ages|\.)',desc,re.I)
+            pages=''; mm=re.search(r'([0-9]{1,4})\s+p(?:ages|\.)',txt(md.get('description')),re.I)
             if mm: pages=mm.group(1)
             direct='https://archive.org/download/%s/%s'%(ident,quote(public_pdf,safe='')) if public_pdf else ''
-            out.append({'score':score,'identifier':ident,'title':title,'creator':creator,'year':year,'volume':volume,'edition':edition,'series':series,'language':lang,'subject':subject,'contributor':contributor,'direct_pdf':direct,'restricted':restricted,'pages':pages,'item_link':'https://archive.org/details/'+ident})
-            if len(out)>=80: break
+            return {'score':score,'identifier':ident,'title':title,'creator':creator,'year':year,'volume':volume,'edition':edition,'series':series,'language':lang,'subject':subject,'contributor':contributor,'direct_pdf':direct,'restricted':restricted,'pages':pages,'item_link':'https://archive.org/details/'+ident}
+          out=[]
+          with ThreadPoolExecutor(max_workers=24) as ex:
+            futs=[ex.submit(meta,x) for x in cand]
+            for f in as_completed(futs):
+              x=f.result()
+              if x: out.append(x)
+          out.sort(key=lambda x:(-x['score'],x['identifier'])); out=out[:100]
           print('EXAMINED',examined,'UNIQUE',len(docs),'VERIFIED',len(out))
           with open('gtu_candidates.json','w',encoding='utf-8') as f: json.dump({'examined':examined,'unique':len(docs),'records':out},f,ensure_ascii=False,indent=2)
           for x in out:
