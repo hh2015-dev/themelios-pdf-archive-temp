@@ -1,0 +1,90 @@
+name: GTU inventory mine
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  mine:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mine GTU only
+        shell: bash
+        run: |
+          cat > /tmp/mine.py <<'PY'
+          import requests, urllib.parse, re, json, time
+          terms = [
+            'hebrew','aramaic','syriac','septuagint','targum','mishnah','talmud','ugaritic','akkadian','assyrian','babylonian',
+            'papyrus','papyri','manuscript','codex','lexicon','grammar','concordance','commentary','psalms','isaiah','genesis','exodus','job',
+            'matthew','mark','luke','john','romans','hebrews','revelation','apocrypha','pseudepigrapha','josephus','philo','patristic','eusebius',
+            'chrysostom','augustine','calvin','luther','archaeology','palestine','semitic','biblical','new testament','old testament'
+          ]
+          docs={}
+          for term in terms:
+            q=f'collection:graduatetheologicalunion AND title:({term})'
+            for page in range(1,9):
+              params={'q':q,'fl[]':['identifier','title','creator','year','volume','language','format'],'rows':100,'page':page,'output':'json'}
+              r=requests.get('https://archive.org/advancedsearch.php',params=params,timeout=30)
+              r.raise_for_status()
+              arr=r.json()['response']['docs']
+              if not arr: break
+              for d in arr:
+                docs[d.get('identifier')]=d
+              if len(arr)<100: break
+          keys=[]
+          pri_kw=re.compile(r'hebrew|aramaic|syriac|septuagint|targum|mishnah|talmud|ugarit|akkad|assyri|babylon|papyr|manuscript|codex|lexicon|grammar|concordance|commentar|psalm|isaiah|genesis|exodus|job|matthew|mark|luke|john|romans|hebrew|revelation|apocry|pseudep|josephus|philo|biblical|new testament|old testament|archaeolog|palestine|semitic|coptic|ethiopic|vulgate|peshitta',re.I)
+          for i,d in docs.items():
+            t=str(d.get('title',''))
+            score=len(pri_kw.findall(t))*3
+            y=d.get('year')
+            try:
+              if y and int(str(y)[:4])<1950: score+=1
+            except: pass
+            keys.append((score,i,d))
+          keys.sort(reverse=True,key=lambda x:x[0])
+          out=[]
+          checked=0
+          for score,i,d in keys:
+            if checked>=450 or len(out)>=140: break
+            checked+=1
+            try:
+              m=requests.get(f'https://archive.org/metadata/{urllib.parse.quote(i)}',timeout=30).json()
+              coll=m.get('metadata',{}).get('collection',[])
+              if isinstance(coll,str): coll=[coll]
+              if 'graduatetheologicalunion' not in coll: continue
+              files=m.get('files',[])
+              pdfs=[]
+              for f in files:
+                name=f.get('name','')
+                if not name.lower().endswith('.pdf'): continue
+                if name.lower().endswith('.lcpdf'): continue
+                if 'encrypt' in name.lower(): continue
+                if str(f.get('private','false')).lower()=='true': continue
+                pdfs.append(f)
+              if not pdfs: continue
+              pdf=pdfs[0]
+              md=m.get('metadata',{})
+              title=md.get('title',d.get('title',''))
+              creator=md.get('creator',d.get('creator',''))
+              if isinstance(creator,list): creator='; '.join(map(str,creator))
+              year=md.get('date') or md.get('year') or d.get('year','')
+              volume=md.get('volume','')
+              lang=md.get('language',d.get('language',''))
+              if isinstance(lang,list): lang='; '.join(map(str,lang))
+              mediatype=md.get('mediatype','')
+              subject=md.get('subject','')
+              if isinstance(subject,list): subject=' | '.join(map(str,subject[:8]))
+              pages=md.get('page-progression','')
+              # use scandata page count if present in file metadata when possible, else empty
+              direct=f'https://archive.org/download/{i}/{urllib.parse.quote(pdf.get("name",""))}'
+              out.append((score,i,str(title).replace('\t',' '),str(creator).replace('\t',' '),str(year).replace('\t',' '),str(volume).replace('\t',' '),str(lang).replace('\t',' '),str(mediatype).replace('\t',' '),str(subject).replace('\t',' '),direct,pdf.get('name',''),pdf.get('size','')))
+            except Exception as e:
+              continue
+          print(f'CANDIDATES_SEEN={len(docs)} METADATA_CHECKED={checked} ELIGIBLE_OUTPUT={len(out)}')
+          print('score\tidentifier\ttitle\tcreator\tyear\tvolume\tlanguage\tmediatype\tsubject\tdirect_pdf\tpdf_name\tpdf_size')
+          for row in out:
+            print('\t'.join(map(str,row)))
+          PY
+          python /tmp/mine.py | tee /tmp/gtu_candidates.tsv
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-candidates
+          path: /tmp/gtu_candidates.tsv
