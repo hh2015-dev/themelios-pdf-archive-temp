@@ -8,30 +8,22 @@ permissions:
   contents: read
 
 jobs:
-  verify-journal-proposals:
+  verify-journal-replacement:
     runs-on: ubuntu-latest
     steps:
-      - name: Verify five proposed journal PDFs from Archive.org
+      - name: Verify replacement journal PDF from Archive.org
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p out
-          cat > /tmp/items.tsv <<'EOF'
-          expositor-1875_1928-07	https://archive.org/download/expositor-1875_1928-07/expositor-1875_1928-07.pdf
-          expository-times_1913-01_24_4	https://archive.org/download/expository-times_1913-01_24_4/expository-times_1913-01_24_4.pdf
-          forschungen-christlichen-literatur-dogmengeschichte_1922_14_4	https://archive.org/download/forschungen-christlichen-literatur-dogmengeschichte_1922_14_4/forschungen-christlichen-literatur-dogmengeschichte_1922_14_4.pdf
-          irenikon_1949_22_1	https://archive.org/download/irenikon_1949_22_1/irenikon_1949_22_1.pdf
-          sim_american-journal-of-archaeology_1885_1_1	https://archive.org/download/sim_american-journal-of-archaeology_1885_1_1/sim_american-journal-of-archaeology_1885_1_1.pdf
-          EOF
-          while IFS=$'\t' read -r id url; do
-            curl -L --retry 2 --connect-timeout 20 --max-time 900 -A 'Mozilla/5.0' -fSs -o "out/$id.pdf" "$url"
-            [ "$(head -c 5 "out/$id.pdf")" = "%PDF-" ]
-            echo "$id SIZE=$(stat -c%s "out/$id.pdf") SHA256=$(sha256sum "out/$id.pdf" | cut -d' ' -f1)"
-          done < /tmp/items.tsv
+          url='https://archive.org/download/evangelicalmagaz0001vari/evangelicalmagaz0001vari.pdf'
+          curl -L --retry 2 --connect-timeout 20 --max-time 900 -A 'Mozilla/5.0' -fSs -o out/evangelicalmagaz0001vari.pdf "$url"
+          [ "$(head -c 5 out/evangelicalmagaz0001vari.pdf)" = "%PDF-" ]
+          echo "SIZE=$(stat -c%s out/evangelicalmagaz0001vari.pdf) SHA256=$(sha256sum out/evangelicalmagaz0001vari.pdf | cut -d' ' -f1)"
       - name: Upload verification artifact
         uses: actions/upload-artifact@v4
         with:
-          name: gtu-journal-proposal-verify-2
+          name: gtu-journal-replacement-verify
           path: out/*.pdf
           compression-level: 0
           retention-days: 1
