@@ -1,0 +1,96 @@
+name: GTU Inventory Discovery 20260823 1939
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mine and verify GTU candidates
+        shell: bash
+        run: |
+          cat > /tmp/discover.py <<'PY'
+          import json, urllib.parse, urllib.request, re, time
+          BASE='https://archive.org'
+          queries=[
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Septuagint OR Hebrew OR Syriac OR Aramaic OR Targum OR Talmud OR Ugaritic))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(textual OR manuscript OR codex OR papyri OR lexicon OR grammar OR concordance))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Genesis OR Exodus OR Isaiah OR Psalms OR Job OR Daniel OR prophets))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Matthew OR Mark OR Luke OR John OR Romans OR Corinthians OR Hebrews OR Revelation))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(commentary OR commentaries OR exegesis OR interpretation))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Philo OR Josephus OR Maccabees OR Apocrypha OR Pseudepigrapha OR Mishnah))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(archaeology OR Babylonian OR Assyrian OR Akkadian OR Palestine OR Canaanite))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Origen OR Augustine OR Chrysostom OR Irenaeus OR Tertullian OR patristic))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Calvin OR Luther OR Reformation OR Wycliffe OR Tyndale))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(theology OR doctrine OR creed OR apologetic OR church history))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(mission OR missionary OR missions OR Judaism OR Christianity))',
+            'collection:graduatetheologicalunion AND mediatype:texts'
+          ]
+          seen={}
+          examined=0
+          def get_json(url):
+            req=urllib.request.Request(url,headers={'User-Agent':'Mozilla/5.0 GTU inventory research'})
+            with urllib.request.urlopen(req,timeout=30) as r: return json.load(r)
+          for qi,q in enumerate(queries):
+            pages=[1,2,4,8] if qi<11 else [3,11,23,41]
+            for page in pages:
+              params={'q':q,'fl[]':['identifier','title','creator','date','year','language','subject','volume'],'rows':100,'page':page,'output':'json','sort[]':'identifier asc'}
+              url=BASE+'/advancedsearch.php?'+urllib.parse.urlencode(params,doseq=True)
+              try: data=get_json(url)
+              except Exception as e: continue
+              docs=data.get('response',{}).get('docs',[]); examined+=len(docs)
+              for d in docs:
+                ident=d.get('identifier')
+                if ident: seen[ident]=d
+          print('EXAMINED_SEARCH_HITS='+str(examined))
+          print('UNIQUE_CANDIDATES='+str(len(seen)))
+          A=['septuagint','hebrew','syriac','aramaic','targum','talmud','ugarit','textual','manuscript','codex','papyr','lexicon','grammar','concord','genesis','exodus','isaiah','psalm','job','daniel','prophet','matthew','mark','luke','john','roman','corinth','hebrew','revelation','commentar','exeg','philo','josephus','maccab','apocry','pseudep','mishnah','archaeolog','babylon','assyr','akkad','palestine','canaan','biblical','bible']
+          B=['origen','augustine','chrysostom','irenaeus','tertullian','patrist','calvin','luther','reformation','wycliffe','tyndale','theology','doctrine','creed','apolog','church','mission','missionary','judaism','christianity']
+          def score(d):
+            s=' '.join(str(d.get(k,'')) for k in ('title','subject','creator')).lower()
+            v=sum(5 for x in A if x in s)+sum(2 for x in B if x in s)
+            y=str(d.get('date') or d.get('year') or '')
+            if re.search(r'18\d\d|19\d\d',y): v+=1
+            return v
+          ranked=sorted(seen.values(),key=lambda d:(score(d),str(d.get('identifier'))),reverse=True)
+          verified=[]
+          for d in ranked[:260]:
+            ident=d['identifier']
+            try: m=get_json(BASE+'/metadata/'+urllib.parse.quote(ident))
+            except Exception: continue
+            md=m.get('metadata',{}) or {}
+            coll=md.get('collection',[])
+            if isinstance(coll,str): coll=[coll]
+            if 'graduatetheologicalunion' not in coll: continue
+            if str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true': continue
+            pdfs=[]
+            for f in m.get('files',[]):
+              name=f.get('name','')
+              if not name.lower().endswith('.pdf'): continue
+              if str(f.get('private','false')).lower()=='true': continue
+              low=name.lower()
+              if low.endswith('.lcpdf') or 'encrypted.pdf' in low: continue
+              pdfs.append(f)
+            if not pdfs: continue
+            # prefer non-derived/original-ish PDFs, then smaller name
+            pdf=sorted(pdfs,key=lambda f:(str(f.get('source',''))!='original',len(f.get('name',''))))[0]
+            title=md.get('title',d.get('title',''))
+            creator=md.get('creator',d.get('creator',''))
+            if isinstance(creator,list): creator='; '.join(map(str,creator))
+            subj=md.get('subject',d.get('subject',''))
+            if isinstance(subj,list): subj=' | '.join(map(str,subj[:8]))
+            lang=md.get('language',d.get('language',''))
+            if isinstance(lang,list): lang='; '.join(map(str,lang))
+            year=md.get('date') or md.get('year') or d.get('date') or d.get('year') or ''
+            vol=md.get('volume','') or ''
+            pages=md.get('page-progression','')
+            # derive page count only from scandata/metadata where explicit
+            pagecount=md.get('page_count') or md.get('pages') or ''
+            rec={'score':score(d),'identifier':ident,'title':title,'creator':creator,'year':year,'volume_meta':vol,'subject':subj,'language':lang,'pdf':pdf.get('name',''),'pdf_size':pdf.get('size',''),'page_count':pagecount,'contributor':md.get('contributor',''),'publisher':md.get('publisher','')}
+            verified.append(rec)
+            if len(verified)>=120: break
+          print('VERIFIED_ELIGIBLE='+str(len(verified)))
+          print('---CANDIDATES_JSONL---')
+          for r in verified: print(json.dumps(r,ensure_ascii=False))
+          PY
+          python3 /tmp/discover.py
