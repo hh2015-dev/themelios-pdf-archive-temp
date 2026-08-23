@@ -11,76 +11,56 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import json, urllib.parse, urllib.request, re, time
+          import json, urllib.parse, urllib.request, concurrent.futures
           queries = [
             'collection:graduatetheologicalunion AND (title:(hebrew OR aramaic OR syriac OR semitic OR akkadian OR ugaritic))',
             'collection:graduatetheologicalunion AND (title:(septuagint OR greek OR lexicon OR grammar OR concordance))',
             'collection:graduatetheologicalunion AND (title:(manuscript OR textual OR criticism OR codex OR papyri OR palaeography))',
             'collection:graduatetheologicalunion AND (title:(talmud OR mishnah OR midrash OR targum OR rabbinic OR jewish))',
-            'collection:graduatetheologicalunion AND (title:(apocrypha OR pseudepigrapha OR qumran OR testament OR maccabees))',
+            'collection:graduatetheologicalunion AND (title:(apocrypha OR pseudepigrapha OR qumran OR maccabees))',
             'collection:graduatetheologicalunion AND (title:(genesis OR exodus OR leviticus OR numbers OR deuteronomy OR joshua OR judges OR samuel OR kings))',
             'collection:graduatetheologicalunion AND (title:(psalms OR proverbs OR job OR isaiah OR jeremiah OR ezekiel OR daniel OR prophets))',
             'collection:graduatetheologicalunion AND (title:(matthew OR mark OR luke OR john OR acts OR romans OR corinthians OR galatians OR hebrews OR revelation))',
             'collection:graduatetheologicalunion AND (title:(commentary OR exegesis OR interpretation OR hermeneutics OR theology))',
-            'collection:graduatetheologicalunion AND (title:(patristic OR fathers OR origen OR chrysostom OR augustine OR jerome OR irenaeus OR eusebius))',
+            'collection:graduatetheologicalunion AND (title:(origen OR chrysostom OR augustine OR jerome OR irenaeus OR eusebius OR patristic))',
             'collection:graduatetheologicalunion AND (title:(luther OR calvin OR reformation OR creed OR confession OR doctrine))',
-            'collection:graduatetheologicalunion AND (title:(church history OR missions OR missiology OR christianity OR religion))'
+            'collection:graduatetheologicalunion AND (title:(missions OR missiology OR church history OR christianity))'
           ]
           docs={}
           for q in queries:
               params={'q':q,'fl[]':['identifier','title','creator','year','language'],'rows':'100','page':'1','output':'json','sort[]':'identifier asc'}
               url='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(params,doseq=True)
-              with urllib.request.urlopen(url, timeout=40) as r:
-                  data=json.load(r)
-              for d in data.get('response',{}).get('docs',[]):
-                  docs[d['identifier']]=d
-              time.sleep(.1)
-          def arr(x): return x if isinstance(x,list) else ([] if x in (None,'') else [x])
-          verified=[]
-          for idx,(ident,d) in enumerate(docs.items()):
               try:
-                  with urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident), timeout=40) as r:
-                      m=json.load(r)
-              except Exception:
-                  continue
+                  with urllib.request.urlopen(url, timeout=20) as r: data=json.load(r)
+              except Exception: continue
+              for d in data.get('response',{}).get('docs',[]): docs[d['identifier']]=d
+          def arr(x): return x if isinstance(x,list) else ([] if x in (None,'') else [x])
+          def verify(pair):
+              ident,d=pair
+              try:
+                  with urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident), timeout=15) as r: m=json.load(r)
+              except Exception: return None
               md=m.get('metadata',{})
-              coll=arr(md.get('collection'))
-              if 'graduatetheologicalunion' not in coll: continue
-              if str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true': continue
+              if 'graduatetheologicalunion' not in arr(md.get('collection')): return None
+              if str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true': return None
               pdfs=[]
               for f in m.get('files',[]):
                   n=f.get('name','')
-                  if n.lower().endswith('.pdf') and not n.lower().endswith('.lcpdf') and str(f.get('private','false')).lower()!='true' and 'encrypted' not in n.lower():
-                      pdfs.append(f)
-              if not pdfs: continue
-              pdf=sorted(pdfs,key=lambda f: (0 if f.get('source')=='original' else 1, len(f.get('name',''))))[0]
-              title=md.get('title') or d.get('title') or ''
+                  if n.lower().endswith('.pdf') and not n.lower().endswith('.lcpdf') and str(f.get('private','false')).lower()!='true' and 'encrypted' not in n.lower(): pdfs.append(f)
+              if not pdfs: return None
+              pdf=sorted(pdfs,key=lambda f:(0 if f.get('source')=='original' else 1,len(f.get('name',''))))[0]
               creator=md.get('creator') or d.get('creator') or ''
               if isinstance(creator,list): creator='; '.join(map(str,creator))
-              year=md.get('date') or md.get('year') or d.get('year') or ''
               lang=md.get('language') or d.get('language') or ''
               if isinstance(lang,list): lang=' | '.join(map(str,lang))
-              volume=md.get('volume') or ''
-              edition=md.get('edition') or ''
-              series=md.get('series') or ''
               contrib=md.get('contributor') or ''
               if isinstance(contrib,list): contrib='; '.join(map(str,contrib))
-              pages=md.get('page-progression') or md.get('pages') or md.get('imagecount') or ''
-              if not pages:
-                  for f in m.get('files',[]):
-                      if f.get('name','').endswith('_scandata.xml') and f.get('size'): pages=''; break
               subj=md.get('subject') or ''
-              if isinstance(subj,list): subj='; '.join(map(str,subj[:8]))
-              verified.append({
-                 'identifier':ident,'title':str(title),'creator':str(creator),'year':str(year),'language':str(lang),
-                 'volume':str(volume),'edition':str(edition),'series':str(series),'contributor':str(contrib),'pages':str(pages),
-                 'subject':str(subj),'pdf':pdf.get('name',''),
-                 'item':'https://archive.org/details/'+ident,
-                 'pdf_url':'https://archive.org/download/'+ident+'/'+urllib.parse.quote(pdf.get('name',''))
-              })
-              if len(verified)>=220: break
+              if isinstance(subj,list): subj='; '.join(map(str,subj[:10]))
+              return {'identifier':ident,'title':str(md.get('title') or d.get('title') or ''),'creator':str(creator),'year':str(md.get('date') or md.get('year') or d.get('year') or ''),'language':str(lang),'volume':str(md.get('volume') or ''),'edition':str(md.get('edition') or ''),'series':str(md.get('series') or ''),'contributor':str(contrib),'pages':str(md.get('imagecount') or md.get('pages') or ''),'subject':str(subj),'item':'https://archive.org/details/'+ident,'pdf_url':'https://archive.org/download/'+ident+'/'+urllib.parse.quote(pdf.get('name',''))}
+          with concurrent.futures.ThreadPoolExecutor(max_workers=24) as ex:
+              vals=[x for x in ex.map(verify,list(docs.items())) if x]
           print('CANDIDATES_EXAMINED',len(docs))
-          print('VERIFIED_ELIGIBLE',len(verified))
-          for x in verified:
-              print('REC\t'+json.dumps(x,ensure_ascii=False,separators=(',',':')))
+          print('VERIFIED_ELIGIBLE',len(vals))
+          for x in vals[:260]: print('REC\t'+json.dumps(x,ensure_ascii=False,separators=(',',':')))
           PY
