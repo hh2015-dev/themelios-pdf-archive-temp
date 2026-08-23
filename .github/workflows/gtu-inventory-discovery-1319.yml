@@ -1,58 +1,60 @@
-name: GTU inventory discovery 1319
+name: GTU inventory candidate verify 1319
 on:
   pull_request:
     branches: [ main ]
 jobs:
-  discover:
+  verify:
     runs-on: ubuntu-latest
     steps:
-      - name: Mine deeper GTU corpus pages
+      - name: Verify exact GTU candidates
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
           import json, urllib.parse, urllib.request
           from concurrent.futures import ThreadPoolExecutor, as_completed
-          terms=[
-            'Genesis','Exodus','Leviticus','Deuteronomy','Joshua','Judges','Samuel','Kings','Chronicles','Ezra','Nehemiah','Esther','Job','Psalms','Proverbs','Isaiah','Jeremiah','Ezekiel','Daniel','Minor Prophets',
-            'Matthew','Mark','Luke','John','Acts','Romans','Corinthians','Galatians','Hebrews','Revelation',
-            'Hebrew syntax','Hebrew grammar','Aramaic','Syriac','Semitic','Samaritan','Septuagint','Greek papyri','textual criticism','manuscript','codex','concordance','lexicon','Targum','Mishnah','Talmud','Josephus','Philo','Assyrian','Babylonian','Akkadian','cuneiform','Palestine archaeology','patristic exegesis','Calvin commentary','Luther commentary'
-          ]
-          docs={}; examined=0
-          for term in terms:
-            for page in (2,3,4):
-              q=f'collection:graduatetheologicalunion AND (title:("{term}") OR subject:("{term}"))'
-              params={'q':q,'fl[]':['identifier','title','creator','date','year','volume','subject','language','contributor'],'rows':'30','page':str(page),'output':'json','sort[]':'date asc'}
-              url='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(params,doseq=True)
-              try: data=json.load(urllib.request.urlopen(url,timeout=25))
-              except Exception as e: print('SEARCHERR',term,page,e); continue
-              arr=data.get('response',{}).get('docs',[]); examined+=len(arr)
-              for d in arr:
-                ident=d.get('identifier','')
-                if ident and not ident.startswith('american-bible-society-record'): docs.setdefault(ident,d)
-          def verify(pair):
-            ident,d=pair
-            try: meta=json.load(urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident),timeout=25))
-            except Exception: return None
+          ids='''zoroasterphilois00unse
+sim_new-testament-studies_1957-1958_4
+sim_new-testament-studies_1958-1959_5
+sim_new-testament-studies_1959-1960_6
+expository-times_1891-1892_3
+expository-times_1892-1893_4
+sim_journal-of-biblical-literature_1892_11_1-2
+sim_journal-of-biblical-literature_1893_12_1-2
+newtestamentstud0000unse_i6i2
+gtu_32400005673540
+dietriebkraftede0000seeg
+neobabylonianadm0009henr
+irenaeusoflugdun0000frmo
+testimonyofjosep0000barn
+oldbabylonianlet0006henr
+oldbabyloniandiv0009hern
+gtu_32400005923598
+lifeofjohncalvin0000beze
+lecatechismefran0000calv
+historiredelavie0002maud
+expository-times_1893-1894_5
+sim_journal-of-biblical-literature_1894_13_1-2
+sim_new-testament-studies_1960-10_7_1
+chaptersofcoming0002unse
+chaptersofcoming0003unse'''.splitlines()
+          def verify(ident):
+            try: meta=json.load(urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident),timeout=30))
+            except Exception as e: return ('ERR',ident,str(e))
             md=meta.get('metadata',{}); coll=md.get('collection',[])
             if isinstance(coll,str): coll=[coll]
-            if 'graduatetheologicalunion' not in coll: return None
-            if str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true': return None
+            if 'graduatetheologicalunion' not in coll: return ('NO',ident,'not GTU')
+            if str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true': return ('NO',ident,'restricted')
             pdf=''
             for f in meta.get('files',[]):
-              name=f.get('name',''); low=name.lower()
-              if low.endswith('.pdf') and 'encrypted.pdf' not in low and not low.endswith('.lcpdf') and not f.get('private',False): pdf=name; break
-            if not pdf: return None
-            return {'identifier':ident,'title':md.get('title',d.get('title','')),'creator':md.get('creator',d.get('creator','')),'date':md.get('date',d.get('date',d.get('year',''))),'volume':md.get('volume',d.get('volume','')),'subject':md.get('subject',d.get('subject','')),'language':md.get('language',d.get('language','')),'contributor':md.get('contributor',d.get('contributor','')),'pages':md.get('imagecount') or md.get('numpages') or '','pdf':pdf}
-          verified=[]
-          with ThreadPoolExecutor(max_workers=24) as ex:
-            futs=[ex.submit(verify,p) for p in docs.items()]
-            for fut in as_completed(futs):
-              r=fut.result()
-              if r: verified.append(r)
-          verified.sort(key=lambda r:(str(r['date']),str(r['title'])))
-          print('EXAMINED='+str(examined)); print('UNIQUE='+str(len(docs))); print('VERIFIED='+str(len(verified)))
-          def s(v): return '; '.join(map(str,v)) if isinstance(v,list) else str(v or '')
-          for r in verified:
-            print('GTU\t'+'\t'.join(s(r[k]).replace('\t',' ').replace('\n',' ') for k in ['identifier','title','creator','date','volume','pages','pdf','subject','language','contributor']))
+              n=f.get('name',''); l=n.lower()
+              if l.endswith('.pdf') and 'encrypted.pdf' not in l and not l.endswith('.lcpdf') and not f.get('private',False): pdf=n; break
+            if not pdf: return ('NO',ident,'no public pdf')
+            def s(v): return '; '.join(map(str,v)) if isinstance(v,list) else str(v or '')
+            vals=[ident,md.get('title',''),md.get('creator',''),md.get('date',md.get('year','')),md.get('volume',''),md.get('edition',''),md.get('series',''),md.get('imagecount') or md.get('numpages') or '',pdf,md.get('subject',''),md.get('language',''),md.get('contributor','')]
+            return ('GTU',)+tuple(s(v).replace('\t',' ').replace('\n',' ') for v in vals)
+          with ThreadPoolExecutor(max_workers=25) as ex:
+            futs=[ex.submit(verify,i) for i in ids]
+            out=[f.result() for f in as_completed(futs)]
+          for r in sorted(out,key=lambda x:x[1]): print('\t'.join(r))
           PY
