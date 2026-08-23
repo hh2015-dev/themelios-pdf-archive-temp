@@ -12,14 +12,13 @@ jobs:
           cat > /tmp/mine.py <<'PY'
           import json, urllib.parse, urllib.request, re
           from concurrent.futures import ThreadPoolExecutor, as_completed
-          BASE='collection:graduatetheologicalunion AND format:"Text PDF"'
+          BASE='collection:graduatetheologicalunion AND mediatype:texts'
           queries=[('bible',1),('testament',2),('hebrew',3),('greek',4),('syriac',2),('aramaic',3),('septuagint',1),('manuscript',4),('archaeology',3),('judaism',2),('rabbinic',1),('patristic',3),('reformation',4),('theology',2),('missions',3),('church history',4),('commentary',2),('lexicon',3),('grammar',4),('concordance',1),('apocrypha',2),('pseudepigrapha',3),('assyrian',4),('babylonian',2),('philo',3),('josephus',4),('augustine',2),('luther',3),('calvin',4),('biblical literature',1)]
           def search(qp):
             term,page=qp; q=f'{BASE} AND (title:({term}) OR subject:({term}))'
             params={'q':q,'fl[]':['identifier','title','creator','date','year','language','subject','volume','contributor'],'rows':25,'page':page,'output':'json'}
             try:
-              with urllib.request.urlopen('https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(params,doseq=True),timeout=15) as r: docs=json.load(r)['response']['docs']
-              return docs
+              with urllib.request.urlopen('https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(params,doseq=True),timeout=15) as r: return json.load(r)['response']['docs']
             except Exception: return []
           seen={}; examined=0
           with ThreadPoolExecutor(max_workers=16) as ex:
@@ -30,22 +29,21 @@ jobs:
             ident,d=pair
             if not ident: return None
             try:
-              with urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident),timeout=15) as r: m=json.load(r)
+              with urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident),timeout=12) as r: m=json.load(r)
             except Exception: return None
             md=m.get('metadata',{}); coll=md.get('collection',[])
             if isinstance(coll,str): coll=[coll]
             if 'graduatetheologicalunion' not in coll: return None
-            if str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true': return None
+            if str(md.get('mediatype','texts')).lower() not in ('texts','text'): return None
             pdfs=[]
             for f in m.get('files',[]):
               n=f.get('name','')
-              if not re.search(r'\.pdf$',n,re.I): continue
-              if str(f.get('private','false')).lower()=='true' or re.search(r'(encrypted|\.lcpdf$)',n,re.I): continue
-              pdfs.append(f)
-            if not pdfs: return None
-            pdfs.sort(key=lambda f:(str(f.get('source','')).lower()=='original', int(f.get('size') or 0)),reverse=True)
-            pf=pdfs[0]; pn=pf.get('name','')
-            return {'identifier':ident,'title':md.get('title') or d.get('title'),'creator':md.get('creator') or d.get('creator'),'date':md.get('date') or md.get('year') or d.get('date') or d.get('year'),'volume':md.get('volume') or d.get('volume'),'edition':md.get('edition'),'series':md.get('series'),'language':md.get('language') or d.get('language'),'subject':md.get('subject') or d.get('subject'),'contributor':md.get('contributor') or d.get('contributor'),'item_link':'https://archive.org/details/'+ident,'direct_pdf':'https://archive.org/download/'+urllib.parse.quote(ident,safe='')+'/'+urllib.parse.quote(pn),'pdf_name':pn,'pdf_size':pf.get('size'),'collection_verified':True}
+              if re.search(r'\.pdf$',n,re.I) and str(f.get('private','false')).lower()!='true' and not re.search(r'(encrypted|\.lcpdf$)',n,re.I): pdfs.append(f)
+            direct=''; pdfname=''; pdfsize=''
+            if pdfs:
+              pdfs.sort(key=lambda f:(str(f.get('source','')).lower()=='original',int(f.get('size') or 0)),reverse=True)
+              pf=pdfs[0]; pdfname=pf.get('name',''); pdfsize=pf.get('size',''); direct='https://archive.org/download/'+urllib.parse.quote(ident,safe='')+'/'+urllib.parse.quote(pdfname)
+            return {'identifier':ident,'title':md.get('title') or d.get('title'),'creator':md.get('creator') or d.get('creator'),'date':md.get('date') or md.get('year') or d.get('date') or d.get('year'),'volume':md.get('volume') or d.get('volume'),'edition':md.get('edition'),'series':md.get('series'),'language':md.get('language') or d.get('language'),'subject':md.get('subject') or d.get('subject'),'contributor':md.get('contributor') or d.get('contributor'),'item_link':'https://archive.org/details/'+ident,'direct_pdf':direct,'pdf_name':pdfname,'pdf_size':pdfsize,'access_restricted':md.get('access-restricted-item') or md.get('printdisabled'),'collection_verified':True}
           out=[]
           with ThreadPoolExecutor(max_workers=32) as ex:
             futs=[ex.submit(verify,p) for p in seen.items()]
