@@ -1,0 +1,60 @@
+name: GTU inventory candidate verify 1319
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify exact GTU candidates
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, urllib.parse, urllib.request
+          from concurrent.futures import ThreadPoolExecutor, as_completed
+          ids='''zoroasterphilois00unse
+sim_new-testament-studies_1957-1958_4
+sim_new-testament-studies_1958-1959_5
+sim_new-testament-studies_1959-1960_6
+expository-times_1891-1892_3
+expository-times_1892-1893_4
+sim_journal-of-biblical-literature_1892_11_1-2
+sim_journal-of-biblical-literature_1893_12_1-2
+newtestamentstud0000unse_i6i2
+gtu_32400005673540
+dietriebkraftede0000seeg
+neobabylonianadm0009henr
+irenaeusoflugdun0000frmo
+testimonyofjosep0000barn
+oldbabylonianlet0006henr
+oldbabyloniandiv0009hern
+gtu_32400005923598
+lifeofjohncalvin0000beze
+lecatechismefran0000calv
+historiredelavie0002maud
+expository-times_1893-1894_5
+sim_journal-of-biblical-literature_1894_13_1-2
+sim_new-testament-studies_1960-10_7_1
+chaptersofcoming0002unse
+chaptersofcoming0003unse'''.splitlines()
+          def verify(ident):
+            try: meta=json.load(urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident),timeout=30))
+            except Exception as e: return ('ERR',ident,str(e))
+            md=meta.get('metadata',{}); coll=md.get('collection',[])
+            if isinstance(coll,str): coll=[coll]
+            if 'graduatetheologicalunion' not in coll: return ('NO',ident,'not GTU')
+            if str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true': return ('NO',ident,'restricted')
+            pdf=''
+            for f in meta.get('files',[]):
+              n=f.get('name',''); l=n.lower()
+              if l.endswith('.pdf') and 'encrypted.pdf' not in l and not l.endswith('.lcpdf') and not f.get('private',False): pdf=n; break
+            if not pdf: return ('NO',ident,'no public pdf')
+            def s(v): return '; '.join(map(str,v)) if isinstance(v,list) else str(v or '')
+            vals=[ident,md.get('title',''),md.get('creator',''),md.get('date',md.get('year','')),md.get('volume',''),md.get('edition',''),md.get('series',''),md.get('imagecount') or md.get('numpages') or '',pdf,md.get('subject',''),md.get('language',''),md.get('contributor','')]
+            return ('GTU',)+tuple(s(v).replace('\t',' ').replace('\n',' ') for v in vals)
+          with ThreadPoolExecutor(max_workers=25) as ex:
+            futs=[ex.submit(verify,i) for i in ids]
+            out=[f.result() for f in as_completed(futs)]
+          for r in sorted(out,key=lambda x:x[1]): print('\t'.join(r))
+          PY
