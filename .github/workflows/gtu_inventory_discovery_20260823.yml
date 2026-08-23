@@ -15,64 +15,50 @@ jobs:
           BASE='https://archive.org'
           fl=['identifier','title','creator','date','year','volume','language','contributor','subject','mediatype']
           docs={}; examined=0
-          # Sample widely separated corpus pages, avoiding only top-ranked topical hits.
-          for page in (1,3,6,10,15,21,30,42):
-            q='collection:graduatetheologicalunion AND mediatype:texts'
-            params=[('q',q),('rows','250'),('page',str(page)),('output','json'),('sort[]','identifier asc')]+[('fl[]',f) for f in fl]
-            try: data=json.load(urllib.request.urlopen(BASE+'/advancedsearch.php?'+urllib.parse.urlencode(params),timeout=35))
+          for page in (1,8,20,35):
+            params=[('q','collection:graduatetheologicalunion AND mediatype:texts'),('rows','250'),('page',str(page)),('output','json'),('sort[]','identifier asc')]+[('fl[]',f) for f in fl]
+            try: data=json.load(urllib.request.urlopen(BASE+'/advancedsearch.php?'+urllib.parse.urlencode(params),timeout=15))
             except Exception: continue
             for d in data.get('response',{}).get('docs',[]):
               examined+=1
               if d.get('identifier'): docs[d['identifier']]=d
-          A=re.compile(r'\b(bible|biblical|scripture|hebrew|aramaic|syriac|semitic|akkadian|assyri|babylon|ugarit|septuagint|lxx|hexapla|testament|textual|manuscript|papyri|codex|targum|talmud|mishnah|midrash|qumran|dead sea|pseudepigrapha|apocrypha|genesis|exodus|leviticus|numbers|deuteronomy|joshua|judges|samuel|kings|chronicles|ezra|nehemiah|isaiah|jeremiah|ezekiel|daniel|psalm|job|proverb|ecclesiastes|song of songs|matthew|mark|luke|john|acts|romans|corinth|galatian|ephesians|philippians|colossians|thessalonians|timothy|titus|philemon|hebrews|james|peter|jude|revelation|commentary|exeget|exegesis|hermeneut|concordance|lexicon|grammar|philo|josephus|rabbin|judaism|palestine|archaeolog|origen|chrysostom|jerome|augustine|ephraem|irenaeus|tertullian|calvin|luther)\b',re.I)
+          A=re.compile(r'\b(bible|biblical|scripture|hebrew|aramaic|syriac|semitic|akkadian|assyri|babylon|ugarit|septuagint|lxx|hexapla|testament|textual|manuscript|papyri|codex|targum|talmud|mishnah|midrash|qumran|dead sea|pseudepigrapha|apocrypha|genesis|exodus|leviticus|numbers|deuteronomy|joshua|judges|samuel|kings|chronicles|ezra|nehemiah|isaiah|jeremiah|ezekiel|daniel|psalm|job|proverb|ecclesiastes|matthew|mark|luke|john|acts|romans|corinth|galatian|ephesians|philippians|colossians|thessalonians|timothy|titus|philemon|hebrews|james|peter|jude|revelation|commentary|exeget|exegesis|hermeneut|concordance|lexicon|grammar|philo|josephus|rabbin|judaism|palestine|archaeolog|origen|chrysostom|jerome|augustine|ephraem|irenaeus|tertullian|calvin|luther)\b',re.I)
           B=re.compile(r'\b(theology|doctrine|creed|confession|apologetic|mission|church history|patristic|reformation|religion|christianity|ecclesiastical|council|dogma)\b',re.I)
-          def txt(d):
+          def text(d):
             vals=[]
             for k in ('title','creator','subject'):
-              v=d.get(k,'')
-              vals += [str(x) for x in v] if isinstance(v,list) else [str(v)]
+              v=d.get(k,''); vals += [str(x) for x in v] if isinstance(v,list) else [str(v)]
             return ' '.join(vals)
           scored=[]
           for ident,d in docs.items():
-            t=txt(d); a=len(A.findall(t)); b=len(B.findall(t))
-            if a==0 and b==0: continue
-            score=a*100+b*25
-            h=int(hashlib.sha1(ident.encode()).hexdigest()[:8],16)%10000
+            t=text(d); a=len(A.findall(t)); b=len(B.findall(t))
+            if not a and not b: continue
+            score=a*100+b*25; h=int(hashlib.sha1(ident.encode()).hexdigest()[:8],16)%10000
             scored.append((score,h,ident,d))
-          scored.sort(key=lambda x:(-x[0],x[1]))
-          targets=scored[:180]
-          def verify(item):
-            score,h,ident,d=item
-            try: m=json.load(urllib.request.urlopen(BASE+'/metadata/'+urllib.parse.quote(ident),timeout=25))
+          scored.sort(key=lambda x:(-x[0],x[1])); targets=scored[:100]
+          def verify(x):
+            score,h,ident,d=x
+            try: m=json.load(urllib.request.urlopen(BASE+'/metadata/'+urllib.parse.quote(ident),timeout=12))
             except Exception: return None
-            md=m.get('metadata',{}); coll=md.get('collection',[])
-            if isinstance(coll,str): coll=[coll]
+            md=m.get('metadata',{}); coll=md.get('collection',[]); coll=[coll] if isinstance(coll,str) else coll
             if 'graduatetheologicalunion' not in coll: return None
             if str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true': return None
             pdfs=[]
             for f in m.get('files',[]):
-              name=f.get('name','')
-              if not re.search(r'\.pdf$',name,re.I) or re.search(r'(encrypted|lcpdf)',name,re.I): continue
-              if str(f.get('private','false')).lower()=='true': continue
-              pdfs.append((f.get('source')!='original',len(name),name))
+              n=f.get('name','')
+              if re.search(r'\.pdf$',n,re.I) and not re.search(r'(encrypted|lcpdf)',n,re.I) and str(f.get('private','false')).lower()!='true':
+                pdfs.append((f.get('source')!='original',len(n),n))
             if not pdfs: return None
-            pdfs.sort(); name=pdfs[0][2]
-            creator=md.get('creator') or d.get('creator') or ''
-            if isinstance(creator,list): creator='; '.join(map(str,creator))
-            lang=md.get('language') or d.get('language') or ''
-            if isinstance(lang,list): lang=' | '.join(map(str,lang))
-            subj=md.get('subject') or d.get('subject') or ''
-            if isinstance(subj,list): subj='; '.join(map(str,subj[:12]))
-            contrib=md.get('contributor') or d.get('contributor') or ''
-            if isinstance(contrib,list): contrib='; '.join(map(str,contrib))
-            year=md.get('year') or md.get('date') or d.get('year') or d.get('date') or ''
-            return {'identifier':ident,'title':md.get('title') or d.get('title') or '', 'creator':creator,'year':str(year),
-              'volume':str(md.get('volume') or d.get('volume') or ''),'edition':str(md.get('edition') or ''),'series':str(md.get('series') or ''),
-              'language':str(lang),'subject_raw':str(subj),'contributor':str(contrib),'pages':str(md.get('imagecount') or ''),
-              'mediatype':md.get('mediatype','texts'),'item_link':BASE+'/details/'+ident,
-              'pdf_link':BASE+'/download/'+ident+'/'+urllib.parse.quote(name),'score':score}
+            pdfs.sort(); n=pdfs[0][2]
+            def s(v): return '; '.join(map(str,v)) if isinstance(v,list) else str(v or '')
+            return {'identifier':ident,'title':s(md.get('title') or d.get('title')),'creator':s(md.get('creator') or d.get('creator')),
+              'year':s(md.get('year') or md.get('date') or d.get('year') or d.get('date')),'volume':s(md.get('volume') or d.get('volume')),
+              'edition':s(md.get('edition')),'series':s(md.get('series')),'language':s(md.get('language') or d.get('language')),
+              'subject_raw':s(md.get('subject') or d.get('subject')),'contributor':s(md.get('contributor') or d.get('contributor')),
+              'pages':s(md.get('imagecount')),'mediatype':s(md.get('mediatype') or 'texts'),'item_link':BASE+'/details/'+ident,
+              'pdf_link':BASE+'/download/'+ident+'/'+urllib.parse.quote(n),'score':score}
           verified=[]
-          with ThreadPoolExecutor(max_workers=28) as ex:
+          with ThreadPoolExecutor(max_workers=32) as ex:
             for fut in as_completed([ex.submit(verify,x) for x in targets]):
               r=fut.result()
               if r: verified.append(r)
