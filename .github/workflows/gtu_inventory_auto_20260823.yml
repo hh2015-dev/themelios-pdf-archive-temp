@@ -1,0 +1,130 @@
+name: GTU Inventory Auto 20260823
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mine exact GTU collection and verify public PDFs
+        shell: bash
+        run: |
+          cat > /tmp/mine.py <<'PY'
+          import json, urllib.parse, urllib.request, time, re, csv
+          BASE='https://archive.org'
+          queries=[
+            ('A','Hebrew Bible / Hebrew language','Hebrew'),
+            ('A','Aramaic / Targum / Semitic languages','Aramaic'),
+            ('A','Syriac / manuscripts / biblical versions','Syriac'),
+            ('A','Septuagint / textual criticism','Septuagint'),
+            ('A','Old Testament / Hebrew Bible','"Old Testament"'),
+            ('A','New Testament studies','"New Testament"'),
+            ('A','Biblical commentary / exegesis','commentary'),
+            ('A','Greek / Koine / philology','Greek'),
+            ('A','Papyri / manuscripts / textual criticism','papyri'),
+            ('A','Manuscripts / palaeography','manuscript'),
+            ('A','Apocrypha / Pseudepigrapha','apocrypha'),
+            ('A','Second Temple Judaism / Josephus / Philo','Josephus'),
+            ('A','Second Temple Judaism / Philo','Philo'),
+            ('A','Rabbinic literature / Talmud','Talmud'),
+            ('A','Ancient Near East / Assyriology','Assyria'),
+            ('A','Ancient Near East / Babylonia','Babylon'),
+            ('A','Ugaritic / Northwest Semitic','Ugarit'),
+            ('A','Biblical archaeology / Palestine','Palestine'),
+            ('A','Patristic exegesis / early Christianity','Origen'),
+            ('A','Patristic exegesis / Augustine','Augustine'),
+            ('A','Reformation exegesis / Calvin','Calvin'),
+            ('A','Reformation exegesis / Luther','Luther'),
+            ('B','Patristics / church history','patristic'),
+            ('B','Historical theology / doctrine','theology'),
+            ('B','Missions / missiology','mission'),
+            ('B','Judaism / Jewish studies','Judaism'),
+          ]
+          ua={'User-Agent':'Mozilla/5.0 GTU inventory research'}
+          def getj(url, tries=3):
+            for i in range(tries):
+              try:
+                req=urllib.request.Request(url,headers=ua)
+                with urllib.request.urlopen(req,timeout=30) as r: return json.load(r)
+              except Exception:
+                if i==tries-1: return None
+                time.sleep(1+i)
+          seen={}
+          examined=0
+          for priority,subject,term in queries:
+            q=f'collection:graduatetheologicalunion AND mediatype:texts AND ({term})'
+            for page in (1,2,4,7):
+              params={'q':q,'fl[]':['identifier','title','creator','year','date','language','volume','subject'],'rows':35,'page':page,'output':'json'}
+              url=BASE+'/advancedsearch.php?'+urllib.parse.urlencode(params,doseq=True)
+              data=getj(url)
+              if not data: continue
+              docs=data.get('response',{}).get('docs',[])
+              examined += len(docs)
+              for d in docs:
+                ident=d.get('identifier')
+                if not ident: continue
+                if ident not in seen:
+                  d['_priority']=priority; d['_subject']=subject
+                  seen[ident]=d
+          # score A-subject relevance and metadata richness, but keep diversity from all query families
+          kws=['hebrew','aramaic','syriac','septuagint','testament','bib','targum','talmud','rabbin','ugarit','akkad','assyri','babylon','papy','manuscript','codex','textual','apocry','pseudep','josephus','philo','quran','psalm','isaiah','genesis','gospel','paul','acts','greek','lexicon','grammar','concordance','archaeolog','palestine','origen','augustine','chrysostom','calvin','luther']
+          def score(d):
+            s=50 if d.get('_priority')=='A' else 10
+            txt=(str(d.get('title',''))+' '+str(d.get('subject',''))).lower()
+            s += sum(4 for k in kws if k in txt)
+            if d.get('creator'): s+=2
+            if d.get('year') or d.get('date'): s+=1
+            return s
+          docs=sorted(seen.values(), key=score, reverse=True)
+          verified=[]
+          for d in docs[:320]:
+            ident=d['identifier']
+            m=getj(BASE+'/metadata/'+urllib.parse.quote(ident))
+            if not m: continue
+            md=m.get('metadata',{})
+            coll=md.get('collection',[])
+            if isinstance(coll,str): coll=[coll]
+            if 'graduatetheologicalunion' not in coll: continue
+            if str(md.get('access-restricted-item','')).lower()=='true': continue
+            if str(md.get('printdisabled','')).lower()=='true': continue
+            pdf=None
+            for f in m.get('files',[]):
+              name=f.get('name','')
+              if not name.lower().endswith('.pdf'): continue
+              if name.lower().endswith('.lcpdf') or 'encrypted' in name.lower(): continue
+              if str(f.get('private','false')).lower()=='true': continue
+              pdf=name; break
+            if not pdf: continue
+            title=md.get('title') or d.get('title') or ''
+            creator=md.get('creator') or d.get('creator') or ''
+            if isinstance(creator,list): creator='; '.join(map(str,creator))
+            year=md.get('year') or md.get('date') or d.get('year') or d.get('date') or ''
+            if isinstance(year,list): year='; '.join(map(str,year))
+            language=md.get('language') or d.get('language') or ''
+            if isinstance(language,list): language='; '.join(map(str,language))
+            volume=md.get('volume') or ''
+            edition=md.get('edition') or ''
+            series=md.get('series') or ''
+            contributor=md.get('contributor') or md.get('sponsor') or 'Graduate Theological Union'
+            if isinstance(contributor,list): contributor='; '.join(map(str,contributor))
+            if isinstance(series,list): series='; '.join(map(str,series))
+            pdf_url=BASE+'/download/'+urllib.parse.quote(ident)+'/'+urllib.parse.quote(pdf)
+            verified.append([d.get('_priority','A'),d.get('_subject',''),creator,title,year,ident,pdf_url,volume,edition,series,contributor,language])
+            if len(verified)>=140: break
+          with open('gtu_candidates.tsv','w',newline='',encoding='utf-8') as f:
+            w=csv.writer(f,delimiter='\t')
+            w.writerow(['Priority','Subject','Author','Title','Year','Identifier','DirectPDF','Volume','Edition','Series','Contributor','Language'])
+            w.writerows(verified)
+          with open('gtu_stats.txt','w') as f:
+            f.write(f'advancedsearch_rows_examined={examined}\nunique_candidates={len(seen)}\nmetadata_verified_public_pdf={len(verified)}\n')
+          print(open('gtu_stats.txt').read())
+          print(open('gtu_candidates.tsv',encoding='utf-8').read())
+          PY
+          python3 /tmp/mine.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-inventory-candidates
+          path: |
+            gtu_candidates.tsv
+            gtu_stats.txt
+          compression-level: 6
