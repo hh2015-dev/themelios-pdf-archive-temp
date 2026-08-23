@@ -1,0 +1,98 @@
+name: GTU inventory discovery 20260823 1441
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mine GTU collection and verify public PDFs
+        shell: bash
+        run: |
+          cat > /tmp/mine.py <<'PY'
+          import requests, urllib.parse, json, re, time
+          from collections import OrderedDict
+          base='https://archive.org/advancedsearch.php'
+          queries=[
+            '(title:(bible OR biblical OR testament OR gospel OR psalm OR isaiah OR jeremiah OR ezekiel OR daniel OR job OR genesis OR exodus OR leviticus OR numbers OR deuteronomy))',
+            '(title:(hebrew OR aramaic OR syriac OR semitic OR akkadian OR assyrian OR babylonian OR ugaritic OR coptic OR ethiopic))',
+            '(title:(greek OR septuagint OR papyri OR manuscript OR codex OR textual OR criticism OR lexicon OR grammar OR concordance))',
+            '(title:(targum OR talmud OR mishnah OR midrash OR philo OR josephus OR qumran OR maccabee OR apocrypha OR pseudepigrapha))',
+            '(title:(commentary OR commentaries OR exegetical OR exposition OR interpretation OR hermeneutic))',
+            '(title:(archaeology OR Palestine OR Israel OR Canaan OR Mesopotamia OR Egypt OR Assyria OR Babylonia OR Ugarit))',
+            '(title:(patristic OR fathers OR Augustine OR Chrysostom OR Origen OR Jerome OR Irenaeus OR Eusebius OR Tertullian))',
+            '(title:(Calvin OR Luther OR Reformation OR theology OR doctrine OR creed OR confession OR apologetic))',
+            '(title:(mission OR missionary OR church history OR ecclesiastical OR Judaism OR Christianity))',
+            '(subject:(Bible OR Hebrew OR Aramaic OR Syriac OR Septuagint OR textual criticism OR manuscripts OR Judaism OR Assyriology))'
+          ]
+          seen=OrderedDict()
+          examined=0
+          for qi,q0 in enumerate(queries):
+            q='collection:graduatetheologicalunion AND mediatype:texts AND '+q0
+            # vary pages to mine beyond top results
+            for page in (1,2,3,5,8):
+              params={'q':q,'fl[]':['identifier','title','creator','date','year','language','volume','subject'],'rows':100,'page':page,'output':'json','sort[]':'identifier asc'}
+              try:
+                d=requests.get(base,params=params,timeout=30).json()['response']['docs']
+              except Exception:
+                continue
+              examined += len(d)
+              for x in d:
+                ident=x.get('identifier')
+                if ident: seen.setdefault(ident,x)
+          out=[]
+          for ident,x in list(seen.items()):
+            if len(out)>=180: break
+            try:
+              m=requests.get('https://archive.org/metadata/'+ident,timeout=30).json()
+            except Exception:
+              continue
+            meta=m.get('metadata') or {}
+            coll=meta.get('collection',[])
+            if isinstance(coll,str): coll=[coll]
+            if 'graduatetheologicalunion' not in coll: continue
+            files=m.get('files') or []
+            pdfs=[]
+            for f in files:
+              n=f.get('name','')
+              if not re.search(r'\.pdf$',n,re.I): continue
+              if re.search(r'encrypted\.pdf$|\.lcpdf$',n,re.I): continue
+              if str(f.get('private','false')).lower()=='true': continue
+              pdfs.append(f)
+            if not pdfs: continue
+            # prefer original, non-derived-looking PDF if possible
+            pdf=sorted(pdfs,key=lambda f:(('text pdf' in str(f.get('format','')).lower()), len(f.get('name',''))))[0]
+            title=meta.get('title') or x.get('title') or ''
+            creator=meta.get('creator') or x.get('creator') or ''
+            if isinstance(creator,list): creator='; '.join(map(str,creator))
+            lang=meta.get('language') or x.get('language') or ''
+            if isinstance(lang,list): lang='; '.join(map(str,lang))
+            subj=meta.get('subject') or x.get('subject') or ''
+            if isinstance(subj,list): subj='; '.join(map(str,subj[:8]))
+            year=meta.get('year') or meta.get('date') or x.get('year') or x.get('date') or ''
+            vol=meta.get('volume') or x.get('volume') or ''
+            pages=meta.get('pages') or ''
+            if not pages:
+              # infer only page count from scandata metadata when explicit files metadata provides imagecount
+              pages=meta.get('imagecount') or ''
+            out.append({
+              'identifier':ident,'title':title,'creator':creator,'year':year,'volume':vol,
+              'language':lang,'subject':subj,'pdf':pdf.get('name',''),'pages':pages,
+              'contributor':meta.get('contributor','') or meta.get('scanner','') or 'Internet Archive',
+              'collection':coll
+            })
+          print(json.dumps({'examined':examined,'unique_candidates':len(seen),'verified':len(out),'records':out},ensure_ascii=False))
+          PY
+          python /tmp/mine.py > gtu_candidates.json
+          python - <<'PY'
+          import json
+          d=json.load(open('gtu_candidates.json'))
+          print('EXAMINED',d['examined'],'UNIQUE',d['unique_candidates'],'VERIFIED',d['verified'])
+          for r in d['records'][:60]:
+            print(r['identifier'],'\t',r['title'][:120])
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-candidates-20260823-1441
+          path: gtu_candidates.json
+          compression-level: 6
