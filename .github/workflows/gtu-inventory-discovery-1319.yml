@@ -1,0 +1,58 @@
+name: GTU inventory discovery 1319
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mine deeper GTU corpus pages
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, urllib.parse, urllib.request
+          from concurrent.futures import ThreadPoolExecutor, as_completed
+          terms=[
+            'Genesis','Exodus','Leviticus','Deuteronomy','Joshua','Judges','Samuel','Kings','Chronicles','Ezra','Nehemiah','Esther','Job','Psalms','Proverbs','Isaiah','Jeremiah','Ezekiel','Daniel','Minor Prophets',
+            'Matthew','Mark','Luke','John','Acts','Romans','Corinthians','Galatians','Hebrews','Revelation',
+            'Hebrew syntax','Hebrew grammar','Aramaic','Syriac','Semitic','Samaritan','Septuagint','Greek papyri','textual criticism','manuscript','codex','concordance','lexicon','Targum','Mishnah','Talmud','Josephus','Philo','Assyrian','Babylonian','Akkadian','cuneiform','Palestine archaeology','patristic exegesis','Calvin commentary','Luther commentary'
+          ]
+          docs={}; examined=0
+          for term in terms:
+            for page in (2,3,4):
+              q=f'collection:graduatetheologicalunion AND (title:("{term}") OR subject:("{term}"))'
+              params={'q':q,'fl[]':['identifier','title','creator','date','year','volume','subject','language','contributor'],'rows':'30','page':str(page),'output':'json','sort[]':'date asc'}
+              url='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(params,doseq=True)
+              try: data=json.load(urllib.request.urlopen(url,timeout=25))
+              except Exception as e: print('SEARCHERR',term,page,e); continue
+              arr=data.get('response',{}).get('docs',[]); examined+=len(arr)
+              for d in arr:
+                ident=d.get('identifier','')
+                if ident and not ident.startswith('american-bible-society-record'): docs.setdefault(ident,d)
+          def verify(pair):
+            ident,d=pair
+            try: meta=json.load(urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident),timeout=25))
+            except Exception: return None
+            md=meta.get('metadata',{}); coll=md.get('collection',[])
+            if isinstance(coll,str): coll=[coll]
+            if 'graduatetheologicalunion' not in coll: return None
+            if str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true': return None
+            pdf=''
+            for f in meta.get('files',[]):
+              name=f.get('name',''); low=name.lower()
+              if low.endswith('.pdf') and 'encrypted.pdf' not in low and not low.endswith('.lcpdf') and not f.get('private',False): pdf=name; break
+            if not pdf: return None
+            return {'identifier':ident,'title':md.get('title',d.get('title','')),'creator':md.get('creator',d.get('creator','')),'date':md.get('date',d.get('date',d.get('year',''))),'volume':md.get('volume',d.get('volume','')),'subject':md.get('subject',d.get('subject','')),'language':md.get('language',d.get('language','')),'contributor':md.get('contributor',d.get('contributor','')),'pages':md.get('imagecount') or md.get('numpages') or '','pdf':pdf}
+          verified=[]
+          with ThreadPoolExecutor(max_workers=24) as ex:
+            futs=[ex.submit(verify,p) for p in docs.items()]
+            for fut in as_completed(futs):
+              r=fut.result()
+              if r: verified.append(r)
+          verified.sort(key=lambda r:(str(r['date']),str(r['title'])))
+          print('EXAMINED='+str(examined)); print('UNIQUE='+str(len(docs))); print('VERIFIED='+str(len(verified)))
+          def s(v): return '; '.join(map(str,v)) if isinstance(v,list) else str(v or '')
+          for r in verified:
+            print('GTU\t'+'\t'.join(s(r[k]).replace('\t',' ').replace('\n',' ') for k in ['identifier','title','creator','date','volume','pages','pdf','subject','language','contributor']))
+          PY
