@@ -1,0 +1,97 @@
+name: GTU inventory final verify PR 20260823
+on:
+  pull_request:
+    branches: [ main ]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify exact GTU candidates
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, urllib.parse, urllib.request, concurrent.futures
+          B='https://archive.org'
+          ids='''commentaryonstpa0000luth_o0q7
+          biblicalcommenta0038cfke
+          americancommenta0000alva_t8w3
+          sim_journal-of-biblical-literature_june-and-december-1882_2
+          sim_journal-of-biblical-literature_june-and-december-1883_3
+          sim_journal-of-biblical-literature_june-and-december-1885_5
+          sim_journal-of-biblical-literature_1895_14_1-2
+          sim_journal-of-biblical-literature_1898_17_1-2
+          sim_journal-of-biblical-literature_1909_28_2
+          sim_journal-of-biblical-literature_1910_29_1
+          commentaryonacts0004hora
+          calvinscommentar0022calv_o2g5
+          calvinscommentar0000calv_e5v2
+          calvinscommentar0005calv
+          suidaelexicon0001godo
+          arabicenglishlex0001edwa
+          gospelaccordingt0000righ
+          comparisonofegyp0000port
+          cyclopaediaofbib0006revj
+          newtestament0000broo_g4m9
+          biblicalchurchhi0000dott
+          greatcommentaryo0000unse_w5f6
+          answertodifficul0000john
+          newtestamentstud0000unse_i6i2
+          biblicalrational0000revj
+          newtestamentchur0000moni
+          biblicalcriticis0000elli
+          priestkingscorri0000haro
+          collegeofbiblequ0212unse
+          biblicaldoctrine0000cand
+          criticalhistoryo0000dani
+          worksofjohnowend0002owen
+          creedsofchristen0003phil_b4y5
+          keytosiddurgramm0000slot
+          paradigmsexercis0000robi_ed03
+          saintpaulsepistl0000west
+          handbookofaramai0000ross
+          greekofgospelofm0000john_m6w5
+          lexiconsyriacum0000karl
+          textbookofsyrian0001john
+          exegesisonpsalm10000vrev
+          biblekeywordsfro0004unse_d8o9
+          studiesinbiblica0000gern
+          sim_near-eastern-archaeology_1950-02_13_1
+          sim_near-eastern-archaeology_1957-12_20_4
+          sim_bible-translator_1955-01_6_1'''.split()
+          def truthy(v): return str(v).lower() in ('true','1','yes')
+          def one(i):
+            try:
+              with urllib.request.urlopen(B+'/metadata/'+urllib.parse.quote(i),timeout=18) as r:o=json.load(r)
+            except Exception as e:return {'identifier':i,'valid':False,'reason':'metadata_error'}
+            m=o.get('metadata',{}) or {}; c=m.get('collection',[]); c=[c] if isinstance(c,str) else c
+            if 'graduatetheologicalunion' not in c:return {'identifier':i,'valid':False,'reason':'not_gtu'}
+            if truthy(m.get('access-restricted-item')) or truthy(m.get('printdisabled')):return {'identifier':i,'valid':False,'reason':'restricted'}
+            if str(m.get('mediatype','texts')).lower()!='texts':return {'identifier':i,'valid':False,'reason':'not_text'}
+            pdf=[]
+            for f in o.get('files',[]) or []:
+              n=str(f.get('name','')); low=n.lower(); fmt=str(f.get('format','')).lower()
+              if not low.endswith('.pdf') or truthy(f.get('private')) or low.endswith('.lcpdf') or 'encrypt' in low or 'encrypt' in fmt or 'lcp' in fmt:continue
+              s=(20 if fmt=='text pdf' else 0)+(10 if n==i+'.pdf' else 0)+(5 if '_text.pdf' in low else 0)
+              try: size=int(f.get('size') or 0)
+              except:size=0
+              pdf.append((s,size,n,fmt))
+            if not pdf:return {'identifier':i,'valid':False,'reason':'no_public_pdf'}
+            pdf.sort(reverse=True); _,size,n,fmt=pdf[0]
+            def g(k):
+              v=m.get(k,'')
+              if isinstance(v,list): return '; '.join(map(str,v))
+              return '' if v is None else str(v)
+            return {'identifier':i,'valid':True,'title':g('title'),'creator':g('creator'),'year':g('year') or g('date'),'date':g('date'),'volume':g('volume'),'edition':g('edition'),'series':g('series'),'language':g('language'),'subject':g('subject'),'contributor':g('contributor'),'pages':g('imagecount') or g('page-count'),'mediatype':g('mediatype'),'pdf_name':n,'pdf_format':fmt,'pdf_size':size,'item_link':B+'/details/'+urllib.parse.quote(i),'direct_pdf':B+'/download/'+urllib.parse.quote(i)+'/'+urllib.parse.quote(n),'collection':c,'access_restricted':g('access-restricted-item'),'printdisabled':g('printdisabled')}
+          out=[]
+          with concurrent.futures.ThreadPoolExecutor(max_workers=16) as ex:
+            for r in ex.map(one,ids):out.append(r)
+          obj={'checked':len(ids),'valid':sum(1 for x in out if x.get('valid')),'records':out}
+          open('gtu_verified_final.json','w',encoding='utf8').write(json.dumps(obj,ensure_ascii=False,indent=2));print(json.dumps({'checked':obj['checked'],'valid':obj['valid']}))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-inventory-verified-final-20260823
+          path: gtu_verified_final.json
