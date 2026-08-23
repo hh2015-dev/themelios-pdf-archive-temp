@@ -6,91 +6,67 @@ jobs:
   discover:
     runs-on: ubuntu-latest
     steps:
-      - name: Mine and verify GTU candidates
+      - name: Mine verified GTU records not already in Inventory
         shell: bash
         run: |
           cat > /tmp/discover.py <<'PY'
-          import json, urllib.parse, urllib.request, re, time
+          import json, urllib.parse, urllib.request, re, base64, zlib
           BASE='https://archive.org'
+          EXCLUDED_B64='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'
+          excluded=set(json.loads(zlib.decompress(base64.b64decode(EXCLUDED_B64))))
           queries=[
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Septuagint OR Hebrew OR Syriac OR Aramaic OR Targum OR Talmud OR Ugaritic))',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(textual OR manuscript OR codex OR papyri OR lexicon OR grammar OR concordance))',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Genesis OR Exodus OR Isaiah OR Psalms OR Job OR Daniel OR prophets))',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Matthew OR Mark OR Luke OR John OR Romans OR Corinthians OR Hebrews OR Revelation))',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(commentary OR commentaries OR exegesis OR interpretation))',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Philo OR Josephus OR Maccabees OR Apocrypha OR Pseudepigrapha OR Mishnah))',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(archaeology OR Babylonian OR Assyrian OR Akkadian OR Palestine OR Canaanite))',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Origen OR Augustine OR Chrysostom OR Irenaeus OR Tertullian OR patristic))',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Calvin OR Luther OR Reformation OR Wycliffe OR Tyndale))',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(theology OR doctrine OR creed OR apologetic OR church history))',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(mission OR missionary OR missions OR Judaism OR Christianity))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Septuagint OR Hebrew OR Syriac OR Aramaic OR Targum OR Talmud OR Ugaritic OR Coptic OR Ethiopic))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(textual OR manuscript OR codex OR papyri OR lexicon OR grammar OR concordance OR inscription))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Genesis OR Exodus OR Leviticus OR Numbers OR Deuteronomy OR Joshua OR Judges OR Samuel OR Kings OR Isaiah OR Jeremiah OR Ezekiel OR Psalms OR Job OR Daniel OR prophets))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Matthew OR Mark OR Luke OR John OR Acts OR Romans OR Corinthians OR Galatians OR Ephesians OR Hebrews OR Revelation))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(commentary OR commentaries OR exegesis OR interpretation OR biblical))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Philo OR Josephus OR Maccabees OR Apocrypha OR Pseudepigrapha OR Mishnah OR rabbinic))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(archaeology OR Babylonian OR Assyrian OR Akkadian OR Palestine OR Canaanite OR Egypt OR Semitic))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Origen OR Augustine OR Chrysostom OR Irenaeus OR Tertullian OR patristic OR fathers))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Calvin OR Luther OR Reformation OR Wycliffe OR Tyndale OR Erasmus))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(theology OR doctrine OR creed OR apologetic OR church history OR missions OR missionary OR Judaism OR Christianity))',
             'collection:graduatetheologicalunion AND mediatype:texts'
           ]
-          seen={}
-          examined=0
-          def get_json(url):
+          def getj(url):
             req=urllib.request.Request(url,headers={'User-Agent':'Mozilla/5.0 GTU inventory research'})
-            with urllib.request.urlopen(req,timeout=30) as r: return json.load(r)
+            with urllib.request.urlopen(req,timeout=25) as r:return json.load(r)
+          seen={}; hits=0
           for qi,q in enumerate(queries):
-            pages=[1,2,4,8] if qi<11 else [3,11,23,41]
+            pages=[1,2,3,5,8,13] if qi<10 else [1,7,17,29,47,67]
             for page in pages:
-              params={'q':q,'fl[]':['identifier','title','creator','date','year','language','subject','volume'],'rows':100,'page':page,'output':'json','sort[]':'identifier asc'}
-              url=BASE+'/advancedsearch.php?'+urllib.parse.urlencode(params,doseq=True)
-              try: data=get_json(url)
-              except Exception as e: continue
-              docs=data.get('response',{}).get('docs',[]); examined+=len(docs)
-              for d in docs:
-                ident=d.get('identifier')
-                if ident: seen[ident]=d
-          print('EXAMINED_SEARCH_HITS='+str(examined))
-          print('UNIQUE_CANDIDATES='+str(len(seen)))
-          A=['septuagint','hebrew','syriac','aramaic','targum','talmud','ugarit','textual','manuscript','codex','papyr','lexicon','grammar','concord','genesis','exodus','isaiah','psalm','job','daniel','prophet','matthew','mark','luke','john','roman','corinth','hebrew','revelation','commentar','exeg','philo','josephus','maccab','apocry','pseudep','mishnah','archaeolog','babylon','assyr','akkad','palestine','canaan','biblical','bible']
-          B=['origen','augustine','chrysostom','irenaeus','tertullian','patrist','calvin','luther','reformation','wycliffe','tyndale','theology','doctrine','creed','apolog','church','mission','missionary','judaism','christianity']
+              p={'q':q,'fl[]':['identifier','title','creator','date','year','language','subject','volume'],'rows':100,'page':page,'output':'json','sort[]':'identifier asc'}
+              try:d=getj(BASE+'/advancedsearch.php?'+urllib.parse.urlencode(p,doseq=True))
+              except Exception:continue
+              docs=d.get('response',{}).get('docs',[]);hits+=len(docs)
+              for x in docs:
+                i=x.get('identifier')
+                if i and i not in excluded:seen[i]=x
+          A=['septuagint','hebrew','syriac','aramaic','targum','talmud','ugarit','coptic','ethiop','textual','manuscript','codex','papyr','lexicon','grammar','concord','inscription','genesis','exodus','levit','deuter','joshua','judges','samuel','kings','isaiah','jerem','ezek','psalm','job','daniel','prophet','matthew','mark','luke','john','acts','roman','corinth','galat','ephes','hebrew','revelation','commentar','exeg','philo','josephus','maccab','apocry','pseudep','mishnah','rabbin','archaeolog','babylon','assyr','akkad','palestine','canaan','semitic','biblical','bible']
+          B=['origen','augustine','chrysostom','irenaeus','tertullian','patrist','father','calvin','luther','reformation','wycliffe','tyndale','erasmus','theology','doctrine','creed','apolog','church','mission','judaism','christianity']
           def score(d):
-            s=' '.join(str(d.get(k,'')) for k in ('title','subject','creator')).lower()
-            v=sum(5 for x in A if x in s)+sum(2 for x in B if x in s)
-            y=str(d.get('date') or d.get('year') or '')
-            if re.search(r'18\d\d|19\d\d',y): v+=1
-            return v
+            s=' '.join(str(d.get(k,'')) for k in ('title','subject','creator')).lower();return sum(5 for x in A if x in s)+sum(2 for x in B if x in s)
           ranked=sorted(seen.values(),key=lambda d:(score(d),str(d.get('identifier'))),reverse=True)
           verified=[]
-          for d in ranked[:260]:
+          for d in ranked[:420]:
             ident=d['identifier']
-            try: m=get_json(BASE+'/metadata/'+urllib.parse.quote(ident))
-            except Exception: continue
-            md=m.get('metadata',{}) or {}
-            coll=md.get('collection',[])
-            if isinstance(coll,str): coll=[coll]
-            if 'graduatetheologicalunion' not in coll: continue
-            if str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true': continue
+            try:m=getj(BASE+'/metadata/'+urllib.parse.quote(ident))
+            except Exception:continue
+            md=m.get('metadata',{}) or {}; coll=md.get('collection',[])
+            if isinstance(coll,str):coll=[coll]
+            if 'graduatetheologicalunion' not in coll:continue
+            if str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true':continue
             pdfs=[]
             for f in m.get('files',[]):
-              name=f.get('name','')
-              if not name.lower().endswith('.pdf'): continue
-              if str(f.get('private','false')).lower()=='true': continue
-              low=name.lower()
-              if low.endswith('.lcpdf') or 'encrypted.pdf' in low: continue
-              pdfs.append(f)
-            if not pdfs: continue
-            # prefer non-derived/original-ish PDFs, then smaller name
+              n=f.get('name',''); low=n.lower()
+              if low.endswith('.pdf') and not low.endswith('.lcpdf') and 'encrypted.pdf' not in low and str(f.get('private','false')).lower()!='true':pdfs.append(f)
+            if not pdfs:continue
             pdf=sorted(pdfs,key=lambda f:(str(f.get('source',''))!='original',len(f.get('name',''))))[0]
-            title=md.get('title',d.get('title',''))
-            creator=md.get('creator',d.get('creator',''))
-            if isinstance(creator,list): creator='; '.join(map(str,creator))
-            subj=md.get('subject',d.get('subject',''))
-            if isinstance(subj,list): subj=' | '.join(map(str,subj[:8]))
-            lang=md.get('language',d.get('language',''))
-            if isinstance(lang,list): lang='; '.join(map(str,lang))
-            year=md.get('date') or md.get('year') or d.get('date') or d.get('year') or ''
-            vol=md.get('volume','') or ''
-            pages=md.get('page-progression','')
-            # derive page count only from scandata/metadata where explicit
-            pagecount=md.get('page_count') or md.get('pages') or ''
-            rec={'score':score(d),'identifier':ident,'title':title,'creator':creator,'year':year,'volume_meta':vol,'subject':subj,'language':lang,'pdf':pdf.get('name',''),'pdf_size':pdf.get('size',''),'page_count':pagecount,'contributor':md.get('contributor',''),'publisher':md.get('publisher','')}
+            def flat(v):return '; '.join(map(str,v)) if isinstance(v,list) else str(v or '')
+            subj=md.get('subject',d.get('subject',''));subj=' | '.join(map(str,subj[:8])) if isinstance(subj,list) else str(subj or '')
+            rec={'score':score(d),'identifier':ident,'title':flat(md.get('title',d.get('title',''))),'creator':flat(md.get('creator',d.get('creator',''))),'year':flat(md.get('date') or md.get('year') or d.get('date') or d.get('year')),'volume_meta':flat(md.get('volume')),'edition':flat(md.get('edition')),'series':flat(md.get('series')),'subject':subj,'language':flat(md.get('language',d.get('language',''))),'pdf':pdf.get('name',''),'pdf_size':pdf.get('size',''),'page_count':flat(md.get('page_count') or md.get('pages')),'contributor':flat(md.get('contributor')),'publisher':flat(md.get('publisher'))}
             verified.append(rec)
-            if len(verified)>=120: break
-          print('VERIFIED_ELIGIBLE='+str(len(verified)))
-          print('---CANDIDATES_JSONL---')
-          for r in verified: print(json.dumps(r,ensure_ascii=False))
+            if len(verified)>=100:break
+          print('EXAMINED_SEARCH_HITS='+str(hits));print('UNIQUE_AFTER_ID_EXCLUSION='+str(len(seen)));print('VERIFIED_NEW_ID_ELIGIBLE='+str(len(verified)));print('---NEW_CANDIDATES_JSONL---')
+          for r in verified:print(json.dumps(r,ensure_ascii=False))
           PY
           python3 /tmp/discover.py
