@@ -1,0 +1,118 @@
+name: GTU inventory discovery 20260823
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mine and verify GTU-only candidates
+        shell: bash
+        run: |
+          cat > /tmp/discover.py <<'PY'
+          import urllib.request, urllib.parse, json, re, hashlib, time
+          BASE='https://archive.org'
+          queries=[
+            'title:(hebrew OR aramaic OR syriac OR semitic OR akkadian OR ugaritic)',
+            'title:(septuagint OR lxx OR hexapla OR greek testament OR new testament greek)',
+            'title:(textual criticism OR manuscript OR manuscripts OR papyri OR codex)',
+            'title:(targum OR talmud OR mishnah OR midrash OR qumran OR dead sea OR pseudepigrapha OR apocrypha)',
+            'title:(genesis OR exodus OR leviticus OR numbers OR deuteronomy OR isaiah OR jeremiah OR ezekiel OR daniel OR psalms OR job OR proverbs)',
+            'title:(matthew OR mark OR luke OR john OR acts OR romans OR corinthians OR galatians OR hebrews OR revelation)',
+            'title:(commentary OR exegetical OR exegesis OR hermeneutics OR biblical theology OR concordance OR lexicon OR grammar)',
+            'title:(philo OR josephus OR rabbinic OR jewish OR judaism OR palestine OR assyria OR babylonia OR archaeology)',
+            'title:(origen OR chrysostom OR jerome OR augustine OR ephraem OR irenaeus OR tertullian OR patristic)',
+            'title:(calvin OR luther OR reformation OR reformer OR commentary)',
+            'title:(theology OR doctrine OR creed OR confession OR apologetics OR missions OR church history)',
+            'subject:(Bible OR Biblical OR Hebrew OR Aramaic OR Syriac OR Semitic OR Greek OR Judaism OR Theology)'
+          ]
+          fl=['identifier','title','creator','date','year','volume','language','contributor','subject','mediatype']
+          docs={}
+          examined=0
+          for qi,q0 in enumerate(queries):
+            for page in (1,2,4):
+              q=f'collection:graduatetheologicalunion AND mediatype:texts AND ({q0})'
+              params=[('q',q),('rows','80'),('page',str(page)),('output','json')]
+              for f in fl: params.append(('fl[]',f))
+              url=BASE+'/advancedsearch.php?'+urllib.parse.urlencode(params)
+              try:
+                data=json.load(urllib.request.urlopen(url,timeout=40))
+              except Exception:
+                continue
+              for d in data.get('response',{}).get('docs',[]):
+                examined+=1
+                if d.get('identifier'): docs[d['identifier']]=d
+          A=re.compile(r'\b(bible|biblical|hebrew|aramaic|syriac|semitic|akkadian|ugarit|septuagint|lxx|hexapla|testament|textual|manuscript|papyri|codex|targum|talmud|mishnah|midrash|qumran|dead sea|pseudepigrapha|apocrypha|genesis|exodus|leviticus|deuteronomy|isaiah|jeremiah|ezekiel|daniel|psalm|job|proverb|matthew|mark|luke|john|acts|romans|corinth|galatian|hebrews|revelation|commentary|exeget|exegesis|hermeneut|concordance|lexicon|grammar|philo|josephus|rabbin|judaism|palestine|assyria|babylon|archaeolog|origen|chrysostom|jerome|augustine|ephraem|irenaeus|tertullian|calvin|luther)\b',re.I)
+          B=re.compile(r'\b(theology|doctrine|creed|confession|apologetic|mission|church history|patristic|reformation|religion|christianity)\b',re.I)
+          def text(d):
+            vals=[]
+            for k in ('title','creator','subject'):
+              v=d.get(k,'')
+              if isinstance(v,list): vals += [str(x) for x in v]
+              else: vals.append(str(v))
+            return ' '.join(vals)
+          scored=[]
+          for ident,d in docs.items():
+            t=text(d); a=len(A.findall(t)); b=len(B.findall(t));
+            h=int(hashlib.sha1(ident.encode()).hexdigest()[:8],16)%10000
+            scored.append((a*100+b*25, h, ident, d))
+          scored.sort(key=lambda x:(-x[0],x[1]))
+          verified=[]
+          for score,h,ident,d in scored[:260]:
+            try:
+              m=json.load(urllib.request.urlopen(BASE+'/metadata/'+urllib.parse.quote(ident),timeout=40))
+            except Exception:
+              continue
+            md=m.get('metadata',{})
+            coll=md.get('collection',[])
+            if isinstance(coll,str): coll=[coll]
+            if 'graduatetheologicalunion' not in coll: continue
+            if str(md.get('access-restricted-item','')).lower()=='true': continue
+            if str(md.get('printdisabled','')).lower()=='true': continue
+            pdfs=[]
+            for f in m.get('files',[]):
+              name=f.get('name','')
+              if not re.search(r'\.pdf$',name,re.I): continue
+              if re.search(r'(encrypted|lcpdf)',name,re.I): continue
+              if str(f.get('private','false')).lower()=='true': continue
+              pdfs.append((f.get('source')!='original', len(name), name, f))
+            if not pdfs: continue
+            pdfs.sort(key=lambda x:(x[0],x[1]))
+            name=pdfs[0][2]
+            title=md.get('title') or d.get('title') or ''
+            creator=md.get('creator') or d.get('creator') or ''
+            if isinstance(creator,list): creator='; '.join(map(str,creator))
+            lang=md.get('language') or d.get('language') or ''
+            if isinstance(lang,list): lang=' | '.join(map(str,lang))
+            subj=md.get('subject') or d.get('subject') or ''
+            if isinstance(subj,list): subj='; '.join(map(str,subj[:12]))
+            contrib=md.get('contributor') or d.get('contributor') or ''
+            if isinstance(contrib,list): contrib='; '.join(map(str,contrib))
+            year=md.get('year') or md.get('date') or d.get('year') or d.get('date') or ''
+            vol=md.get('volume') or d.get('volume') or ''
+            edition=md.get('edition') or ''
+            series=md.get('series') or ''
+            pages=md.get('imagecount') or ''
+            rec={
+              'identifier':ident,'title':title,'creator':creator,'year':str(year),'volume':str(vol),
+              'edition':str(edition),'series':str(series),'language':str(lang),'subject_raw':str(subj),
+              'contributor':str(contrib),'pages':str(pages),'mediatype':md.get('mediatype','texts'),
+              'item_link':BASE+'/details/'+ident,
+              'pdf_link':BASE+'/download/'+ident+'/'+urllib.parse.quote(name),
+              'score':score
+            }
+            verified.append(rec)
+          with open('gtu_candidates.jsonl','w',encoding='utf-8') as f:
+            for r in verified: f.write(json.dumps(r,ensure_ascii=False)+'\n')
+          with open('gtu_stats.json','w') as f:
+            json.dump({'search_hits_examined':examined,'unique_search_candidates':len(docs),'metadata_verified_eligible':len(verified)},f)
+          print(json.dumps({'search_hits_examined':examined,'unique_search_candidates':len(docs),'metadata_verified_eligible':len(verified)}))
+          PY
+          python3 /tmp/discover.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-discovery-candidates
+          path: |
+            gtu_candidates.jsonl
+            gtu_stats.json
+          compression-level: 6
