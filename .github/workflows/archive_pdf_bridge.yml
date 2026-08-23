@@ -11,30 +11,12 @@ jobs:
   fetch-archive-pdfs:
     runs-on: ubuntu-latest
     steps:
-      - name: Download original PDFs from Archive.org
+      - name: Inspect public PDF variants on Archive.org
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p archive_bridge
-          cat > /tmp/items.tsv <<'EOF'
-          bookofcommonpray00revs	https://archive.org/download/bookofcommonpray00revs/bookofcommonpray00revs.pdf
-          alnetanqustiones00huet	https://archive.org/download/alnetanqustiones00huet/alnetanqustiones00huet.pdf
-          abhandlungenvond00reim	https://archive.org/download/abhandlungenvond00reim/abhandlungenvond00reim.pdf
-          b12788405	https://archive.org/download/b12788405/b12788405.pdf
-          EOF
-          while IFS=$'\t' read -r id url; do
-            out="archive_bridge/${id}.pdf"
-            echo "FETCH $id"
-            curl -L --retry 3 --connect-timeout 20 --max-time 600 -A 'Mozilla/5.0' -fSs -o "$out" "$url"
-            [ "$(head -c 5 "$out")" = "%PDF-" ]
-            sha256sum "$out"
-            stat -c "SIZE_${id}=%s" "$out"
-          done < /tmp/items.tsv
-      - name: Upload original PDF bundle
-        uses: actions/upload-artifact@v4
-        with:
-          name: gtu-four-original-pdfs
-          path: archive_bridge/*.pdf
-          compression-level: 0
-          retention-days: 1
-          if-no-files-found: error
+          for id in bookofcommonpray00revs alnetanqustiones00huet abhandlungenvond00reim; do
+            echo "=== $id ==="
+            curl -fsSL "https://archive.org/metadata/$id" -o "/tmp/$id.json"
+            jq -r '.files[] | select((.name|ascii_downcase|endswith(".pdf"))) | select((.private // "false") != "true") | [.name, (.size // ""), (.source // ""), (.format // "")] | @tsv' "/tmp/$id.json" | sort -k2,2n
+          done
