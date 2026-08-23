@@ -1,0 +1,97 @@
+name: GTU inventory broad discovery
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mine exact GTU collection and verify public PDFs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, urllib.parse, urllib.request, time, random, re
+          COLL='graduatetheologicalunion'
+          queries=[
+            'collection:'+COLL+' AND mediatype:text AND (subject:(Bible OR Biblical OR "Old Testament" OR "New Testament" OR Hebrew OR Aramaic OR Syriac OR Septuagint))',
+            'collection:'+COLL+' AND mediatype:text AND (title:(commentary OR commentaries OR lexicon OR grammar OR concordance OR manuscript OR manuscripts))',
+            'collection:'+COLL+' AND mediatype:text AND (subject:("textual criticism" OR manuscripts OR papyri OR "Dead Sea Scrolls" OR Qumran OR Apocrypha OR Pseudepigrapha))',
+            'collection:'+COLL+' AND mediatype:text AND (subject:(Assyriology OR Babylonia OR Akkadian OR Ugaritic OR Palestine OR archaeology OR archaeology))',
+            'collection:'+COLL+' AND mediatype:text AND (title:(Syriac OR Aramaic OR Hebrew OR Greek OR Coptic OR Septuagint OR Targum OR Talmud OR Midrash))',
+            'collection:'+COLL+' AND mediatype:text AND (title:(Isaiah OR Jeremiah OR Ezekiel OR Daniel OR Psalms OR Job OR Genesis OR Exodus OR Deuteronomy))',
+            'collection:'+COLL+' AND mediatype:text AND (title:(Matthew OR Mark OR Luke OR John OR Acts OR Romans OR Corinthians OR Galatians OR Hebrews OR Revelation))',
+            'collection:'+COLL+' AND mediatype:text AND (title:(Josephus OR Philo OR Origen OR Augustine OR Chrysostom OR Calvin OR Luther))',
+            'collection:'+COLL+' AND mediatype:text AND (subject:(Judaism OR rabbinic OR Talmud OR Midrash OR "Second Temple" OR "early Christianity"))',
+            'collection:'+COLL+' AND mediatype:text AND (title:(bibliography OR index OR dictionary OR archaeology OR archaeology OR papyri OR inscriptions))',
+            'collection:'+COLL+' AND mediatype:text AND language:(heb OR grc OR syr OR arc OR akk OR cop)',
+            'collection:'+COLL+' AND mediatype:text'
+          ]
+          seen={}
+          examined=0
+          for qi,q in enumerate(queries):
+            pages=[1,3,7] if qi<11 else [5,12,25,40]
+            for page in pages:
+              params={'q':q,'fl[]':['identifier','title','creator','date','year','language','volume','subject','contributor'],'rows':75,'page':page,'output':'json','sort[]':'identifier asc'}
+              # doseq encoding
+              parts=[]
+              for k,v in params.items():
+                if isinstance(v,list):
+                  for x in v: parts.append((k,x))
+                else: parts.append((k,v))
+              url='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(parts)
+              try:
+                with urllib.request.urlopen(url, timeout=30) as r: data=json.load(r)
+              except Exception:
+                continue
+              for d in data.get('response',{}).get('docs',[]):
+                i=d.get('identifier')
+                if i and i not in seen: seen[i]=d
+          ids=list(seen)
+          random.Random(20260823).shuffle(ids)
+          out=[]
+          for ident in ids[:500]:
+            examined+=1
+            try:
+              with urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident), timeout=30) as r: meta=json.load(r)
+            except Exception:
+              continue
+            md=meta.get('metadata',{}) or {}
+            coll=md.get('collection',[])
+            if isinstance(coll,str): coll=[coll]
+            if COLL not in coll: continue
+            if str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true': continue
+            pdfs=[]
+            for f in meta.get('files',[]) or []:
+              name=str(f.get('name',''))
+              if not name.lower().endswith('.pdf'): continue
+              if str(f.get('private','false')).lower()=='true': continue
+              low=name.lower()
+              if 'encrypted' in low or low.endswith('.lcpdf') or 'lcp' in low: continue
+              pdfs.append((name,f))
+            if not pdfs: continue
+            # Prefer original/plain PDF, avoid derived text-only if multiple
+            pdfname,pdffile=sorted(pdfs,key=lambda x:(('text.pdf' in x[0].lower()), len(x[0])))[0]
+            def val(k):
+              v=md.get(k,'')
+              if isinstance(v,list): return '; '.join(str(x) for x in v)
+              return str(v) if v is not None else ''
+            title=val('title').strip(); creator=val('creator').strip()
+            year=val('date').strip() or val('year').strip()
+            vol=val('volume').strip(); edition=val('edition').strip(); series=val('series').strip()
+            lang=val('language').strip(); contributor=val('contributor').strip()
+            subjects=val('subject').strip()
+            # page count: only explicit metadata fields, never infer from identifier
+            pages=''
+            for k in ('pages','page-count','page_count'):
+              x=val(k).strip()
+              if x: pages=x; break
+            out.append({'identifier':ident,'title':title,'creator':creator,'year':year,'volume':vol,'edition':edition,'series':series,'language':lang,'contributor':contributor,'subject':subjects,'pdf':pdfname,'pages':pages})
+          with open('candidates.json','w',encoding='utf-8') as f: json.dump({'examined':examined,'pool':len(seen),'eligible':len(out),'items':out},f,ensure_ascii=False,indent=2)
+          print('POOL',len(seen),'EXAMINED',examined,'ELIGIBLE',len(out))
+          for x in out[:80]: print(x['identifier'],'\t',x['title'][:110])
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-candidates
+          path: candidates.json
