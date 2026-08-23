@@ -1,73 +1,91 @@
-name: GTU Inventory 20 discovery 20260824
+name: GTU Inventory 20 verify 20260824
 on:
   pull_request:
     branches: [ main ]
 jobs:
-  discover:
+  verify:
     runs-on: ubuntu-latest
     steps:
-      - name: Mine exact GTU collection broadly
+      - name: Verify exact GTU items
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import json, urllib.parse, urllib.request, time, os
-          queries = [
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Bible OR biblical OR testament OR gospel OR psalm OR Isaiah OR Genesis OR Exodus OR Job OR Daniel OR Jeremiah OR Ezekiel OR Torah OR Pentateuch))',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Hebrew OR Aramaic OR Syriac OR Semitic OR Akkadian OR Ugaritic OR Assyrian OR Babylonian))',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Greek OR Septuagint OR papyri OR manuscript OR textual OR criticism OR lexicon OR grammar OR concordance))',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Talmud OR Midrash OR rabbinic OR Judaism OR Jewish OR Josephus OR Philo OR Qumran OR Dead Sea OR apocrypha OR pseudepigrapha))',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(archaeology OR archaeological OR Palestine OR Israel OR Canaan OR Mesopotamia OR Near East OR Egypt))',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Origen OR Augustine OR Chrysostom OR Jerome OR Irenaeus OR Tertullian OR Eusebius OR patristic OR fathers))',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Calvin OR Luther OR Reformation OR commentary OR commentaries OR exegesis OR interpretation))',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(theology OR doctrine OR creed OR confession OR apologetics OR mission OR missions OR church history))',
-            'collection:graduatetheologicalunion AND mediatype:texts AND year:[1800 TO 1899]',
-            'collection:graduatetheologicalunion AND mediatype:texts AND year:[1900 TO 1949]',
-            'collection:graduatetheologicalunion AND mediatype:texts AND year:[1950 TO 1979]',
-            'collection:graduatetheologicalunion AND mediatype:texts AND year:[1980 TO 2026]'
-          ]
-          seen = {}
-          examined = 0
-          for qi,q in enumerate(queries):
-              for page in (1,2,3,5,8):
-                  params = {
-                    'q': q,
-                    'fl[]': ['identifier','title','creator','year','language','subject','description','contributor','volume','edition','series','format'],
-                    'rows': 100,
-                    'page': page,
-                    'output': 'json',
-                    'sort[]': 'identifier asc'
-                  }
-                  # custom encode repeated fl[]
-                  parts=[]
-                  for k,v in params.items():
-                      if isinstance(v,list):
-                          for x in v: parts.append((k,x))
-                      else: parts.append((k,v))
-                  url='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(parts)
-                  try:
-                      with urllib.request.urlopen(url, timeout=45) as r:
-                          data=json.load(r)
-                  except Exception as e:
-                      print('ERR', qi, page, repr(e), flush=True)
-                      continue
-                  docs=data.get('response',{}).get('docs',[])
-                  examined += len(docs)
-                  for d in docs:
-                      ident=d.get('identifier')
-                      if ident and ident not in seen:
-                          seen[ident]=d
-                  time.sleep(0.12)
+          import json, urllib.request, urllib.parse, os, time
+          ids = '''
+          calvinscommentar0003calv_j3j4
+          calvinscommentar0004calv_u2e4
+          calvinscommentar0005calv_i9r8
+          calvinscommentar0006calv
+          calvinscommentar0028calv
+          calvinscommentar0029calv
+          calvinscommentar0030calv
+          calvinscommentar0045calv
+          templescrollhidd0000yadi
+          notesonhebrewtex0000snai_j1a7
+          newshortgrammaro0000atro_g7y0
+          catalogueofhebre0004gmar
+          paradigmsexercis0000robi_ed03
+          saintpaulsepistl0000west
+          commentaryonacts0000unse_z7j7
+          biblicalcommenta0000cfke
+          biblicalcommenta0001cfke
+          biblicalcommenta0000cfke_b4j2
+          biblicalcommenta0001carl
+          biblicalcommenta0002carl
+          biblicalcommenta0001fran
+          biblicalcommenta0002fran
+          biblicalcommenta0001deli
+          semeiaexperiment0000pete
+          historyromancein0000brau
+          horaebiblicaebei01butl
+          horaebiblicaebei02butl
+          catalogueofexhib0000vari_r2l1
+          mucrocardcatalog0000igna
+          keytosiddurgramm0000slot
+          interlineargreek0000unse_y5n6
+          newtestamentfrom0000ivan
+          lexiconsyriacum0000karl
+          sketchesofjewish0000eder_t0i4
+          bibleliberationp0000unse_o8w7
+          misunderstoodjew0000levi_z0o0
+          '''.split()
+          out=[]
+          for ident in ids:
+              try:
+                  with urllib.request.urlopen('https://archive.org/metadata/'+ident,timeout=45) as r: data=json.load(r)
+              except Exception as e:
+                  out.append({'identifier':ident,'error':repr(e)}); continue
+              m=data.get('metadata',{})
+              coll=m.get('collection',[])
+              if isinstance(coll,str): coll=[coll]
+              files=data.get('files',[])
+              pdfs=[]
+              for f in files:
+                  name=f.get('name','')
+                  if not name.lower().endswith('.pdf'): continue
+                  private=str(f.get('private','false')).lower()=='true'
+                  low=name.lower()
+                  encrypted=('encrypted' in low or low.endswith('.lcpdf'))
+                  if not private and not encrypted:
+                      pdfs.append(name)
+              rec={
+                'identifier':ident,'gtu':('graduatetheologicalunion' in coll),'collection':coll,
+                'title':m.get('title'),'creator':m.get('creator'),'date':m.get('date'),'year':m.get('year'),
+                'volume':m.get('volume'),'edition':m.get('edition'),'series':m.get('series'),'language':m.get('language'),
+                'subject':m.get('subject'),'description':m.get('description'),'contributor':m.get('contributor'),
+                'imagecount':m.get('imagecount'),'mediatype':m.get('mediatype'),'type':m.get('type'),
+                'access_restricted':m.get('access-restricted-item'),'printdisabled':m.get('printdisabled'),
+                'public_pdfs':pdfs[:10]
+              }
+              out.append(rec)
+              time.sleep(0.08)
           os.makedirs('out',exist_ok=True)
-          with open('out/candidates.jsonl','w',encoding='utf-8') as f:
-              for d in seen.values():
-                  f.write(json.dumps(d,ensure_ascii=False)+'\n')
-          with open('out/summary.txt','w',encoding='utf-8') as f:
-              f.write(f'examined_appearances={examined}\nunique_identifiers={len(seen)}\n')
-          print(f'EXAMINED_APPEARANCES={examined} UNIQUE={len(seen)}', flush=True)
+          with open('out/verified.json','w',encoding='utf-8') as f: json.dump(out,f,ensure_ascii=False,indent=2)
+          print('VERIFIED',len(out),'GTU',sum(1 for x in out if x.get('gtu')),flush=True)
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: gtu-discovery-20260824
-          path: out
+          name: gtu-verified-20260824
+          path: out/verified.json
           compression-level: 6
