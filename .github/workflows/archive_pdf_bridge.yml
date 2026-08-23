@@ -11,42 +11,15 @@ jobs:
   fetch-archive-pdfs:
     runs-on: ubuntu-latest
     steps:
-      - name: Download Reimarus alternate and broaden searches
+      - name: Download Reimarus alternate PDF from Archive.org
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p archive_bridge
           curl -L --retry 3 --connect-timeout 20 --max-time 600 -A 'Mozilla/5.0' -fSs -o archive_bridge/10041651bsb_text.pdf 'https://archive.org/download/10041651bsb/10041651bsb_text.pdf'
           [ "$(head -c 5 archive_bridge/10041651bsb_text.pdf)" = "%PDF-" ]
-          stat -c 'REIM_SIZE=%s' archive_bridge/10041651bsb_text.pdf
-          python3 - <<'PY'
-          import json, urllib.parse, urllib.request
-          qs=[
-            ('BCP','title:("Book of Common Prayer" Piggott) OR creator:(Piggott)'),
-            ('HUET','title:(Alnetanae OR Alnetanæ) OR creator:(Huet)')
-          ]
-          for label,q in qs:
-            print('===',label,'BROAD===')
-            params={'q':q,'fl[]':['identifier','title','creator','year','date'],'rows':'100','page':'1','output':'json'}
-            try: docs=json.load(urllib.request.urlopen('https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(params,doseq=True),timeout=30)).get('response',{}).get('docs',[])
-            except Exception as e: print('SEARCHERR',e); continue
-            for d in docs:
-              ident=d.get('identifier');
-              if not ident: continue
-              try: m=json.load(urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident),timeout=25))
-              except: continue
-              md=m.get('metadata',{}) or {}
-              if str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true': continue
-              pdfs=[]
-              for f in m.get('files',[]) or []:
-                n=f.get('name',''); low=n.lower()
-                if low.endswith('.pdf') and 'encrypted' not in low and not low.endswith('.lcpdf') and str(f.get('private','false')).lower()!='true':
-                  try: sz=int(f.get('size') or 0)
-                  except: sz=0
-                  pdfs.append((sz,n))
-              if pdfs:
-                pdfs.sort(); print(ident,'\t',pdfs[0][0],'\t',pdfs[0][1],'\t',md.get('title',''),'\t',md.get('date') or md.get('year') or '')
-          PY
+          sha256sum archive_bridge/10041651bsb_text.pdf
+          stat -c 'SIZE=%s' archive_bridge/10041651bsb_text.pdf
       - name: Upload Reimarus PDF artifact
         uses: actions/upload-artifact@v4
         with:
