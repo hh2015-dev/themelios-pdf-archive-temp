@@ -1,0 +1,48 @@
+name: GTU inventory mine
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  mine:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mine GTU collection only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, urllib.parse, urllib.request, time
+          queries = [
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(bible OR biblical OR testament OR gospel OR genesis OR exodus OR leviticus OR numbers OR deuteronomy OR psalms OR isaiah OR jeremiah OR ezekiel OR daniel OR matthew OR mark OR luke OR john OR acts OR romans OR corinthians OR revelation))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(hebrew OR aramaic OR syriac OR semitic OR greek OR septuagint OR targum OR mishnah OR talmud OR akkadian OR assyrian OR ugaritic OR lexicon OR grammar OR concordance))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(textual OR manuscript OR papyri OR codex OR apocrypha OR pseudepigrapha OR qumran OR dead sea OR archaeology OR palestine OR oriental))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(commentary OR commentaries OR exegesis OR interpretation OR homilies OR patristic OR fathers OR luther OR calvin OR reformation))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(theology OR doctrine OR church history OR missions OR apologetics OR judaism OR christianity OR religion OR journal OR review OR quarterly))'
+          ]
+          fields=['identifier','title','creator','year','date','volume','edition','series','language','subject','contributor','description','mediatype']
+          seen={}
+          examined=0
+          for qi,q in enumerate(queries):
+            for page in range(1,6):
+              params=[('q',q)] + [('fl[]',f) for f in fields] + [('rows','200'),('page',str(page)),('output','json')]
+              url='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(params)
+              with urllib.request.urlopen(url, timeout=60) as r:
+                data=json.load(r)
+              docs=data.get('response',{}).get('docs',[])
+              examined += len(docs)
+              for d in docs:
+                ident=d.get('identifier')
+                if ident: seen[ident]=d
+              if len(docs)<200: break
+              time.sleep(0.25)
+          with open('gtu_candidates.jsonl','w',encoding='utf-8') as f:
+            for ident in sorted(seen):
+              f.write(json.dumps(seen[ident],ensure_ascii=False)+'\n')
+          print('EXAMINED',examined)
+          print('UNIQUE',len(seen))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-candidates
+          path: gtu_candidates.jsonl
+          compression-level: 6
