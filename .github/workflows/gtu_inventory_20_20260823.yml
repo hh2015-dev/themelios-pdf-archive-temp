@@ -11,56 +11,41 @@ jobs:
         run: |
           cat > /tmp/mine.py <<'PY'
           import json, urllib.parse, urllib.request, re, concurrent.futures
-          base='https://archive.org/advancedsearch.php'
-          queries=[
-            '(title:(manuscript OR codex OR papyri OR textual OR criticism) OR subject:(manuscript OR papyri OR textual))',
-            '(title:(hebrew OR aramaic OR syriac OR semitic OR targum OR talmud OR mishnah) OR subject:(hebrew OR aramaic OR syriac OR semitic))',
-            '(title:(septuagint OR greek OR gospel OR testament OR psalms OR prophets OR commentary) OR subject:(septuagint OR biblical OR bible))',
-            '(title:(assyrian OR babylonian OR ugarit OR egypt OR archaeology OR palestine) OR subject:(assyrian OR babylonian OR archaeology))',
-            '(title:(calvin OR luther OR origen OR augustine OR chrysostom OR irenaeus) OR subject:(patristics OR reformation))',
-            '(title:(lexicon OR grammar OR concordance OR bibliography) OR subject:(lexicon OR grammar))'
-          ]
+          q='collection:graduatetheologicalunion AND format:"Text PDF"'
           seen={}; examined=0
-          for q0 in queries:
-            q=f'collection:graduatetheologicalunion AND format:"Text PDF" AND {q0}'
-            for page in (2,5,8):
-              params={'q':q,'fl[]':['identifier','title','creator','date','year','volume','subject','language','contributor'],'rows':100,'page':page,'output':'json','sort[]':'identifier asc'}
-              try:
-                with urllib.request.urlopen(base+'?'+urllib.parse.urlencode(params,doseq=True),timeout=20) as r: data=json.load(r)
-              except Exception as e:
-                print('SEARCH_ERROR',page,repr(e)); continue
-              docs=data.get('response',{}).get('docs',[]); examined+=len(docs)
-              for d in docs: seen.setdefault(d.get('identifier',''),d)
-          kw=re.compile(r'(?i)(bible|biblical|testament|hebrew|aramaic|syriac|semitic|septuagint|greek|gospel|psalm|isaiah|jeremiah|ezekiel|daniel|job|genesis|exodus|pentateuch|prophet|targum|talmud|mishnah|qumran|apocryph|pseudepig|josephus|philo|manuscript|codex|papyr|textual|archaeolog|assyri|babylon|akkad|ugarit|lexicon|grammar|concordance|commentar|calvin|luther|origen|augustine|chrysostom|irenaeus)')
+          for page in (12,18,24,30,36,42,48,54):
+            params={'q':q,'fl[]':['identifier','title','creator','date','year','volume','subject','language','contributor'],'rows':100,'page':page,'output':'json','sort[]':'identifier asc'}
+            try:
+              with urllib.request.urlopen('https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(params,doseq=True),timeout=15) as r: data=json.load(r)
+            except Exception as e:
+              print('SEARCH_ERROR',page,repr(e)); continue
+            docs=data.get('response',{}).get('docs',[]); examined+=len(docs)
+            for d in docs: seen.setdefault(d.get('identifier',''),d)
+          kw=re.compile(r'(?i)(bible|biblical|testament|hebrew|aramaic|syriac|semitic|septuagint|greek|gospel|psalm|isaiah|jeremiah|ezekiel|daniel|job|genesis|exodus|pentateuch|prophet|targum|talmud|mishnah|qumran|apocryph|pseudepig|josephus|philo|manuscript|codex|papyr|textual|archaeolog|assyri|babylon|akkad|ugarit|lexicon|grammar|concordance|commentar|calvin|luther|origen|augustine|chrysostom|irenaeus|church|theolog|reformation|patrist)')
           ranked=[]
           for ident,d in seen.items():
             text=' '.join(str(d.get(k,'')) for k in ('title','creator','subject'))
             score=len(kw.findall(text))
             if ident and score: ranked.append((score,ident,d))
-          ranked.sort(key=lambda x:(-x[0],x[1]))
-          ranked=ranked[:260]
+          ranked.sort(key=lambda x:(-x[0],x[1])); ranked=ranked[:180]
           def verify(t):
             score,ident,d=t
             try:
-              with urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident),timeout=15) as r: m=json.load(r)
-            except Exception: return None
+              with urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident),timeout=10) as r: m=json.load(r)
+            except Exception:return None
             md=m.get('metadata',{}); coll=md.get('collection',[])
-            if isinstance(coll,str): coll=[coll]
-            if 'graduatetheologicalunion' not in coll: return None
-            if str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true': return None
-            pdfs=[]
-            for f in m.get('files',[]):
-              n=f.get('name',''); priv=str(f.get('private','false')).lower()=='true'
-              if not priv and n.lower().endswith('.pdf') and not n.lower().endswith('encrypted.pdf') and not n.lower().endswith('.lcpdf'): pdfs.append(n)
+            if isinstance(coll,str):coll=[coll]
+            if 'graduatetheologicalunion' not in coll:return None
+            if str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true':return None
+            pdfs=[f.get('name','') for f in m.get('files',[]) if str(f.get('private','false')).lower()!='true' and f.get('name','').lower().endswith('.pdf') and not f.get('name','').lower().endswith('encrypted.pdf') and not f.get('name','').lower().endswith('.lcpdf')]
             if not pdfs:return None
-            pdf=(ident+'.pdf') if ident+'.pdf' in pdfs else pdfs[0]
-            subj=md.get('subject',[]); subj='; '.join(map(str,subj[:8])) if isinstance(subj,list) else str(subj or '')
-            creator=md.get('creator') or d.get('creator',''); creator='; '.join(map(str,creator)) if isinstance(creator,list) else creator
-            return {'score':score,'id':ident,'title':md.get('title') or d.get('title',''),'creator':creator,'year':md.get('date') or md.get('year') or d.get('date') or d.get('year') or '','volume':md.get('volume',''),'subject':subj,'contributor':md.get('contributor',''),'pages':md.get('imagecount',''),'pdf':pdf}
-          with concurrent.futures.ThreadPoolExecutor(max_workers=16) as ex:
-            out=[x for x in ex.map(verify,ranked) if x]
-          out.sort(key=lambda x:(-x['score'],str(x['year']),x['title']))
+            pdf=ident+'.pdf' if ident+'.pdf' in pdfs else pdfs[0]
+            creator=md.get('creator') or d.get('creator',''); creator='; '.join(map(str,creator)) if isinstance(creator,list) else str(creator or '')
+            subj=md.get('subject',[]); subj='; '.join(map(str,subj[:10])) if isinstance(subj,list) else str(subj or '')
+            return {'score':score,'id':ident,'title':str(md.get('title') or d.get('title','')),'creator':creator,'year':str(md.get('date') or md.get('year') or d.get('date') or d.get('year') or ''),'volume':str(md.get('volume','') or ''),'subject':subj,'contributor':str(md.get('contributor','') or ''),'pages':str(md.get('imagecount','') or ''),'pdf':pdf}
+          with concurrent.futures.ThreadPoolExecutor(max_workers=24) as ex: out=[x for x in ex.map(verify,ranked) if x]
+          out.sort(key=lambda x:(-x['score'],x['id']))
           print('EXAMINED_SEARCH_ROWS='+str(examined)); print('UNIQUE_SEARCH_IDS='+str(len(seen))); print('METADATA_CHECKED='+str(len(ranked))); print('VERIFIED_ELIGIBLE='+str(len(out))); print('===CANDIDATES_JSON===')
-          for x in out[:120]: print(json.dumps(x,ensure_ascii=False))
+          for x in out[:100]:print(json.dumps(x,ensure_ascii=False))
           PY
           python /tmp/mine.py
