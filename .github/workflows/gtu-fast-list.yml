@@ -1,0 +1,37 @@
+name: GTU fast list
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  list:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch GTU pages with curl
+        shell: bash
+        run: |
+          set -euo pipefail
+          : > ids.tsv
+          for page in 1 5 10 20 35 50; do
+            curl -fsSL --retry 2 --get 'https://archive.org/advancedsearch.php' \
+              --data-urlencode 'q=collection:graduatetheologicalunion' \
+              --data-urlencode 'fl[]=identifier' \
+              --data-urlencode 'fl[]=title' \
+              --data-urlencode 'fl[]=creator' \
+              --data-urlencode 'fl[]=year' \
+              --data-urlencode 'fl[]=date' \
+              --data-urlencode 'fl[]=volume' \
+              --data-urlencode 'fl[]=language' \
+              --data-urlencode 'fl[]=subject' \
+              --data-urlencode 'fl[]=contributor' \
+              --data-urlencode 'rows=100' \
+              --data-urlencode "page=$page" \
+              --data-urlencode 'output=json' -o page.json
+            jq -r '.response.docs[] | [(.identifier//""),(.title//""),((.creator//"")|if type=="array" then join("; ") else . end),(.year//.date//""),(.volume//""),((.language//"")|if type=="array" then join("; ") else . end),((.subject//"")|if type=="array" then join("; ") else . end),((.contributor//"")|if type=="array" then join("; ") else . end)] | @tsv' page.json >> ids.tsv
+          done
+          sort -u ids.tsv -o ids.tsv
+          echo COUNT=$(wc -l < ids.tsv)
+          head -100 ids.tsv
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-fast-list
+          path: ids.tsv
