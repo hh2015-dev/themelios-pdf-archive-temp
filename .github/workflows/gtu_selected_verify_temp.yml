@@ -1,0 +1,61 @@
+name: GTU selected verify temp
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  verify-selected:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify selected GTU items
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, urllib.request, urllib.parse, concurrent.futures
+          ids='''3rd4thbooksofmac0000cwem
+archivfurwissens0012unse
+ausfuhrlichesleh0001bott
+ausfuhrlichesleh0001bott_z9a8
+ausfuhrlichesleh0002bott
+ausfuhrlichesleh0002bott_v4u8
+cuneiformalphabe0008unse
+derzaddikintalmu0000mach_a9u0
+eachmancriedoutt0000brod
+enthronementofsa0000fall
+ephemerisfursemi0011lidz
+grundrissderverg0001broc
+gtu_32400003102278_1
+jewishstudiesinm0000jewi
+josephusjewsreli0000foak_j0a1
+lajusticesdqdedi0000kras
+lesprophetesdisr0000caus
+lesymboleeauespr0000mann
+liturgicalstudyo0000keet
+miscellaneaorien0000unse'''.splitlines()
+          def arr(x): return x if isinstance(x,list) else ([] if x in (None,'') else [x])
+          def one(i):
+            try:
+              with urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(i),timeout=20) as r:m=json.load(r)
+            except Exception as e:return {'identifier':i,'valid':False,'error':repr(e)}
+            md=m.get('metadata',{})
+            coll=arr(md.get('collection'))
+            files=m.get('files',[])
+            pdfs=[]
+            for f in files:
+              n=f.get('name','')
+              if n.lower().endswith('.pdf') and not n.lower().endswith('.lcpdf') and 'encrypted' not in n.lower() and str(f.get('private','false')).lower()!='true':pdfs.append(f)
+            valid='graduatetheologicalunion' in coll and str(md.get('access-restricted-item','')).lower()!='true' and str(md.get('printdisabled','')).lower()!='true' and bool(pdfs)
+            pdf=sorted(pdfs,key=lambda f:(0 if f.get('source')=='original' else 1,len(f.get('name',''))))[0] if pdfs else {}
+            c=md.get('creator') or ''
+            if isinstance(c,list):c='; '.join(map(str,c))
+            s=md.get('subject') or ''
+            if isinstance(s,list):s='; '.join(map(str,s[:12]))
+            lang=md.get('language') or ''
+            if isinstance(lang,list):lang=' | '.join(map(str,lang))
+            contrib=md.get('contributor') or ''
+            if isinstance(contrib,list):contrib='; '.join(map(str,contrib))
+            return {'identifier':i,'valid':valid,'title':str(md.get('title') or ''),'creator':str(c),'date':str(md.get('date') or ''),'year':str(md.get('year') or ''),'volume':str(md.get('volume') or ''),'edition':str(md.get('edition') or ''),'series':str(md.get('series') or ''),'language':str(lang),'subject':str(s),'contributor':str(contrib),'imagecount':str(md.get('imagecount') or ''),'pdf_name':pdf.get('name',''),'pdf_url':('https://archive.org/download/'+i+'/'+urllib.parse.quote(pdf.get('name',''))) if pdf else '', 'collection':coll}
+          with concurrent.futures.ThreadPoolExecutor(max_workers=20) as ex:out=list(ex.map(one,ids))
+          for x in out:print('SEL\t'+json.dumps(x,ensure_ascii=False,separators=(',',':')))
+          print('VALID_COUNT',sum(1 for x in out if x.get('valid')))
+          PY
