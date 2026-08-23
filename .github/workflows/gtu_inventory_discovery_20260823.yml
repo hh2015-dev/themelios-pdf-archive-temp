@@ -13,49 +13,37 @@ jobs:
           import urllib.request, urllib.parse, json, re, hashlib
           from concurrent.futures import ThreadPoolExecutor, as_completed
           BASE='https://archive.org'
-          queries=[
-            'title:(hebrew OR aramaic OR syriac OR semitic OR akkadian OR ugaritic)',
-            'title:(septuagint OR lxx OR hexapla OR greek testament OR new testament greek)',
-            'title:(textual criticism OR manuscript OR manuscripts OR papyri OR codex)',
-            'title:(targum OR talmud OR mishnah OR midrash OR qumran OR dead sea OR pseudepigrapha OR apocrypha)',
-            'title:(genesis OR exodus OR leviticus OR numbers OR deuteronomy OR isaiah OR jeremiah OR ezekiel OR daniel OR psalms OR job OR proverbs)',
-            'title:(matthew OR mark OR luke OR john OR acts OR romans OR corinthians OR galatians OR hebrews OR revelation)',
-            'title:(commentary OR exegetical OR exegesis OR hermeneutics OR biblical theology OR concordance OR lexicon OR grammar)',
-            'title:(philo OR josephus OR rabbinic OR jewish OR judaism OR palestine OR assyria OR babylonia OR archaeology)',
-            'title:(origen OR chrysostom OR jerome OR augustine OR ephraem OR irenaeus OR tertullian OR patristic)',
-            'title:(calvin OR luther OR reformation OR reformer OR commentary)',
-            'title:(theology OR doctrine OR creed OR confession OR apologetics OR missions OR church history)',
-            'subject:(Bible OR Biblical OR Hebrew OR Aramaic OR Syriac OR Semitic OR Greek OR Judaism OR Theology)'
-          ]
           fl=['identifier','title','creator','date','year','volume','language','contributor','subject','mediatype']
           docs={}; examined=0
-          for q0 in queries:
-            for page in (1,2,4):
-              q=f'collection:graduatetheologicalunion AND mediatype:texts AND ({q0})'
-              params=[('q',q),('rows','80'),('page',str(page)),('output','json')]+[('fl[]',f) for f in fl]
-              try: data=json.load(urllib.request.urlopen(BASE+'/advancedsearch.php?'+urllib.parse.urlencode(params),timeout=30))
-              except Exception: continue
-              for d in data.get('response',{}).get('docs',[]):
-                examined+=1
-                if d.get('identifier'): docs[d['identifier']]=d
-          A=re.compile(r'\b(bible|biblical|hebrew|aramaic|syriac|semitic|akkadian|ugarit|septuagint|lxx|hexapla|testament|textual|manuscript|papyri|codex|targum|talmud|mishnah|midrash|qumran|dead sea|pseudepigrapha|apocrypha|genesis|exodus|leviticus|deuteronomy|isaiah|jeremiah|ezekiel|daniel|psalm|job|proverb|matthew|mark|luke|john|acts|romans|corinth|galatian|hebrews|revelation|commentary|exeget|exegesis|hermeneut|concordance|lexicon|grammar|philo|josephus|rabbin|judaism|palestine|assyria|babylon|archaeolog|origen|chrysostom|jerome|augustine|ephraem|irenaeus|tertullian|calvin|luther)\b',re.I)
-          B=re.compile(r'\b(theology|doctrine|creed|confession|apologetic|mission|church history|patristic|reformation|religion|christianity)\b',re.I)
+          # Sample widely separated corpus pages, avoiding only top-ranked topical hits.
+          for page in (1,3,6,10,15,21,30,42):
+            q='collection:graduatetheologicalunion AND mediatype:texts'
+            params=[('q',q),('rows','250'),('page',str(page)),('output','json'),('sort[]','identifier asc')]+[('fl[]',f) for f in fl]
+            try: data=json.load(urllib.request.urlopen(BASE+'/advancedsearch.php?'+urllib.parse.urlencode(params),timeout=35))
+            except Exception: continue
+            for d in data.get('response',{}).get('docs',[]):
+              examined+=1
+              if d.get('identifier'): docs[d['identifier']]=d
+          A=re.compile(r'\b(bible|biblical|scripture|hebrew|aramaic|syriac|semitic|akkadian|assyri|babylon|ugarit|septuagint|lxx|hexapla|testament|textual|manuscript|papyri|codex|targum|talmud|mishnah|midrash|qumran|dead sea|pseudepigrapha|apocrypha|genesis|exodus|leviticus|numbers|deuteronomy|joshua|judges|samuel|kings|chronicles|ezra|nehemiah|isaiah|jeremiah|ezekiel|daniel|psalm|job|proverb|ecclesiastes|song of songs|matthew|mark|luke|john|acts|romans|corinth|galatian|ephesians|philippians|colossians|thessalonians|timothy|titus|philemon|hebrews|james|peter|jude|revelation|commentary|exeget|exegesis|hermeneut|concordance|lexicon|grammar|philo|josephus|rabbin|judaism|palestine|archaeolog|origen|chrysostom|jerome|augustine|ephraem|irenaeus|tertullian|calvin|luther)\b',re.I)
+          B=re.compile(r'\b(theology|doctrine|creed|confession|apologetic|mission|church history|patristic|reformation|religion|christianity|ecclesiastical|council|dogma)\b',re.I)
           def txt(d):
-            out=[]
+            vals=[]
             for k in ('title','creator','subject'):
               v=d.get(k,'')
-              out += [str(x) for x in v] if isinstance(v,list) else [str(v)]
-            return ' '.join(out)
+              vals += [str(x) for x in v] if isinstance(v,list) else [str(v)]
+            return ' '.join(vals)
           scored=[]
           for ident,d in docs.items():
-            t=txt(d); score=len(A.findall(t))*100+len(B.findall(t))*25
+            t=txt(d); a=len(A.findall(t)); b=len(B.findall(t))
+            if a==0 and b==0: continue
+            score=a*100+b*25
             h=int(hashlib.sha1(ident.encode()).hexdigest()[:8],16)%10000
             scored.append((score,h,ident,d))
           scored.sort(key=lambda x:(-x[0],x[1]))
-          targets=scored[:220]
+          targets=scored[:180]
           def verify(item):
             score,h,ident,d=item
-            try: m=json.load(urllib.request.urlopen(BASE+'/metadata/'+urllib.parse.quote(ident),timeout=30))
+            try: m=json.load(urllib.request.urlopen(BASE+'/metadata/'+urllib.parse.quote(ident),timeout=25))
             except Exception: return None
             md=m.get('metadata',{}); coll=md.get('collection',[])
             if isinstance(coll,str): coll=[coll]
@@ -84,15 +72,14 @@ jobs:
               'mediatype':md.get('mediatype','texts'),'item_link':BASE+'/details/'+ident,
               'pdf_link':BASE+'/download/'+ident+'/'+urllib.parse.quote(name),'score':score}
           verified=[]
-          with ThreadPoolExecutor(max_workers=24) as ex:
-            futs=[ex.submit(verify,x) for x in targets]
-            for fut in as_completed(futs):
+          with ThreadPoolExecutor(max_workers=28) as ex:
+            for fut in as_completed([ex.submit(verify,x) for x in targets]):
               r=fut.result()
               if r: verified.append(r)
           verified.sort(key=lambda r:(-r['score'],r['identifier']))
           with open('gtu_candidates.jsonl','w',encoding='utf-8') as f:
             for r in verified: f.write(json.dumps(r,ensure_ascii=False)+'\n')
-          stats={'search_hits_examined':examined,'unique_search_candidates':len(docs),'metadata_verified_eligible':len(verified)}
+          stats={'search_hits_examined':examined,'unique_search_candidates':len(docs),'scored_academic_candidates':len(scored),'metadata_verified_eligible':len(verified)}
           with open('gtu_stats.json','w') as f: json.dump(stats,f)
           print(json.dumps(stats))
           PY
