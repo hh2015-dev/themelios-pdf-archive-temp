@@ -1,0 +1,56 @@
+name: GTU inventory broad second pass 20260823
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  discover2:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mine distant GTU result windows
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,urllib.parse,urllib.request,re,csv
+          base='collection:graduatetheologicalunion AND mediatype:texts'
+          queries=['(pentateuch OR deuteronomy OR judges OR kings OR chronicles)','(wisdom OR proverbs OR ecclesiastes OR song OR minor prophets)','(matthew OR mark OR luke OR john OR acts OR paul OR epistle)','(greek OR koine OR syntax OR vocabulary)','(dead sea OR qumran OR pseudepigrapha OR apocrypha OR second temple)','(coptic OR ethiopic OR latin OR vulgate OR targum)','(canon OR hermeneutic OR interpretation OR preaching)','(eusebius OR irenaeus OR tertullian OR athanasius OR basil)','(creed OR dogma OR systematic theology OR church history)','(missions OR missiology OR religion history OR Judaism)']
+          docs={}; examined=0
+          for qi,q in enumerate(queries):
+            params={'q':f'{base} AND {q}','fl[]':['identifier','title','creator','date','year','subject','language','description'],'rows':'100','page':str(4+(qi%4)),'output':'json','sort[]':'date asc'}
+            u='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(params,doseq=True)
+            try: data=json.load(urllib.request.urlopen(u,timeout=30))
+            except Exception as e: print('SEARCHERR',q,e); continue
+            found=data.get('response',{}).get('docs',[]); examined+=len(found)
+            for d in found: docs[d.get('identifier','')]=d
+          print('SEARCH_APPEARANCES',examined,'UNIQUE',len(docs))
+          rx=re.compile(r'(bible|biblical|testament|gospel|hebrew|aramaic|syriac|semitic|septuagint|textual|manuscript|papy|talmud|mishnah|juda|philo|josephus|assyri|babylon|akkad|ugarit|archaeolog|commentar|exeges|calvin|luther|patrist|lexicon|grammar|psalm|prophet|genesis|exodus|deuter|matthew|mark|luke|john|acts|romans|corinth|revelation|qumran|coptic|vulgate|targum|canon|hermeneut|eusebius|irenaeus|tertullian)',re.I)
+          scored=[]
+          for ident,d in docs.items():
+            s=' '.join(str(d.get(k,'')) for k in ['title','creator','subject','description']); sc=len(rx.findall(s))
+            if sc: scored.append((sc,ident,d))
+          scored.sort(key=lambda x:(-x[0],x[1])); rows=[]
+          for sc,ident,d in scored[:200]:
+            try: meta=json.load(urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident),timeout=30))
+            except Exception: continue
+            md=meta.get('metadata',{}) or {}; coll=md.get('collection',[])
+            if isinstance(coll,str): coll=[coll]
+            if 'graduatetheologicalunion' not in coll: continue
+            if str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true': continue
+            pdf=''
+            for f in meta.get('files',[]):
+              n=f.get('name','')
+              if n.lower().endswith('.pdf') and not n.lower().endswith('.lcpdf') and 'encrypted' not in n.lower() and str(f.get('private','false')).lower()!='true': pdf=n; break
+            if not pdf: continue
+            def txt(v): return '; '.join(map(str,v)) if isinstance(v,list) else str(v or '')
+            title=txt(md.get('title') or d.get('title')); creator=txt(md.get('creator') or d.get('creator')); year=txt(md.get('date') or md.get('year') or d.get('year') or d.get('date')); volume=txt(md.get('volume')); edition=txt(md.get('edition')); series=txt(md.get('series')); lang=txt(md.get('language') or d.get('language')); subject=txt(md.get('subject') or d.get('subject')); contributor=txt(md.get('contributor'))
+            direct='https://archive.org/download/'+ident+'/'+urllib.parse.quote(pdf)
+            rows.append([sc,ident,title,creator,year,volume,edition,series,lang,subject,contributor,pdf,direct,''])
+            if len(rows)>=100: break
+          with open('gtu_candidates2.tsv','w',newline='',encoding='utf-8') as f:
+            w=csv.writer(f,delimiter='\t'); w.writerow(['score','identifier','title','creator','year','volume','edition','series','language','subject','contributor','pdf_name','direct_pdf','pages']); w.writerows(rows)
+          print('VERIFIED_PUBLIC_PDF',len(rows))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-candidates2-20260823
+          path: gtu_candidates2.tsv
