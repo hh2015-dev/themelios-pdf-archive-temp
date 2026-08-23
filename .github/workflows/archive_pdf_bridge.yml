@@ -11,12 +11,38 @@ jobs:
   fetch-archive-pdfs:
     runs-on: ubuntu-latest
     steps:
-      - name: Inspect public PDF variants on Archive.org
+      - name: Find smaller same-edition Archive.org scans
         shell: bash
         run: |
           set -euo pipefail
-          for id in bookofcommonpray00revs alnetanqustiones00huet abhandlungenvond00reim; do
-            echo "=== $id ==="
-            curl -fsSL "https://archive.org/metadata/$id" -o "/tmp/$id.json"
-            jq -r '.files[] | select((.name|ascii_downcase|endswith(".pdf"))) | select((.private // "false") != "true") | [.name, (.size // ""), (.source // ""), (.format // "")] | @tsv' "/tmp/$id.json" | sort -k2,2n
-          done
+          python3 - <<'PY'
+          import json, urllib.parse, urllib.request
+          qs = [
+            ('BCP1838','title:"The Book of Common Prayer with Notes and Useful Directions" AND year:1838'),
+            ('HUET1692','title:(Alnetanae Quaestiones) AND year:1692'),
+            ('REIM1791','title:(Abhandlungen von den vornehmsten Wahrheiten der natürlichen Religion) AND year:1791'),
+          ]
+          for label,q in qs:
+            print('===',label,'===')
+            params={'q':q,'fl[]':['identifier','title','creator','year','date'],'rows':'50','page':'1','output':'json'}
+            url='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(params,doseq=True)
+            try: docs=json.load(urllib.request.urlopen(url,timeout=30)).get('response',{}).get('docs',[])
+            except Exception as e: print('SEARCHERR',e); continue
+            for d in docs:
+              ident=d.get('identifier');
+              if not ident: continue
+              try: m=json.load(urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident),timeout=30))
+              except Exception: continue
+              md=m.get('metadata',{}) or {}
+              if str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true': continue
+              pdfs=[]
+              for f in m.get('files',[]) or []:
+                n=f.get('name',''); low=n.lower()
+                if low.endswith('.pdf') and 'encrypted' not in low and not low.endswith('.lcpdf') and str(f.get('private','false')).lower()!='true':
+                  try: sz=int(f.get('size') or 0)
+                  except: sz=0
+                  pdfs.append((sz,n))
+              if not pdfs: continue
+              pdfs.sort()
+              print(ident,'\t',pdfs[0][0],'\t',pdfs[0][1],'\t',md.get('title',''),'\t',md.get('date') or md.get('year') or '')
+          PY
