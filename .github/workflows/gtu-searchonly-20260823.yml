@@ -1,0 +1,38 @@
+name: TEMP GTU Search Only 20260823
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  search:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Broad GTU search only
+        shell: bash
+        run: |
+          python - <<'PY'
+          import requests,json
+          docs={}; hits=0
+          queries=[
+            'collection:graduatetheologicalunion AND mediatype:texts AND format:"Text PDF"',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (subject:bible OR subject:"old testament" OR subject:"new testament")',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (subject:hebrew OR subject:aramaic OR subject:syriac OR subject:greek)',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (subject:archaeology OR subject:assyrian OR subject:babylonian OR subject:judaism)',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (subject:reformation OR subject:patristics OR subject:"church history")'
+          ]
+          for qi,q in enumerate(queries):
+            pages=(1,5,10,20,30) if qi==0 else (1,2,3)
+            for page in pages:
+              p=[('q',q),('rows','100'),('page',str(page)),('output','json'),('sort[]','titleSorter asc')]
+              for f in ['identifier','title','creator','year','date','volume','language','subject','format','contributor','description']: p.append(('fl[]',f))
+              try: arr=requests.get('https://archive.org/advancedsearch.php',params=p,timeout=20).json()['response']['docs']
+              except Exception: continue
+              hits+=len(arr)
+              for d in arr:
+                if d.get('identifier'): docs[d['identifier']]=d
+          json.dump({'examined_search_hits':hits,'unique_candidates':len(docs),'items':list(docs.values())},open('gtu_search.json','w'),ensure_ascii=False,indent=2)
+          print('hits',hits,'unique',len(docs))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-search-20260823
+          path: gtu_search.json
