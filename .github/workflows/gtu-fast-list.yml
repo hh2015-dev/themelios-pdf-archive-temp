@@ -30,8 +30,79 @@ jobs:
           done
           sort -u ids.tsv -o ids.tsv
           echo COUNT=$(wc -l < ids.tsv)
-          head -100 ids.tsv
+      - name: Verify selected candidates
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, urllib.request, urllib.parse
+          from concurrent.futures import ThreadPoolExecutor, as_completed
+          COLL='graduatetheologicalunion'; UA={'User-Agent':'Mozilla/5.0 GTUInventory/1.0'}
+          ids='''guidetogreeksynt0000john
+einfuhrungindasm0000rudo
+studies-biblical-theology_1954_12
+sim_bible-translator_1954-10_5_4
+sim_journal-of-near-eastern-studies_1943-07_2_3
+calvinetlascienc0001unse
+guidetocareadmin0000luci
+sim_prooftexts_1988_8_index
+sim_prooftexts_1991_11_index
+harvard-theological-review_1910-04_3_2
+harvard-theological-review_1914-07_7_3
+harvard-theological-review_1916-01_9_1
+harvard-theological-review_1938-01_31_1
+harvard-theological-review_1942-07_35_3
+harvard-theological-review_1945_38_1
+harvard-theological-review_1952-07_45_3
+harvard-theological-review_1959-01_52_1
+histoireduchrist0004domc
+dictionarycatalo0004vari_c1f7
+shelflistofunion0007ppsf
+anslemofhavelber0000walt
+tractatusdefonti0000gvan_l6i6
+tractatusdeverar0000joan
+tractatustheolog0000domi
+uvrescompletesde0016boss
+religionsofworld0000clem_j6z6
+theologicalexist0000unse
+kircheundtheolog0000trut
+americanismcatho0000fred
+blondeletlechris0000henr
+christianfaithit0000vari
+book-reviews-of-the-month-index_may-1971-april-1972_7_index-part-2'''.splitlines()
+          def V(ident):
+            try:
+              with urllib.request.urlopen(urllib.request.Request('https://archive.org/metadata/'+urllib.parse.quote(ident),headers=UA),timeout=12) as r: meta=json.load(r)
+            except Exception as e: return {'identifier':ident,'valid':False,'error':repr(e)}
+            md=meta.get('metadata',{}) or {}; coll=md.get('collection',[])
+            if isinstance(coll,str): coll=[coll]
+            restricted=str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true'
+            pdfs=[]
+            for f in meta.get('files',[]) or []:
+              n=str(f.get('name','')); low=n.lower()
+              if low.endswith('.pdf') and str(f.get('private','false')).lower()!='true' and 'encrypted' not in low and not low.endswith('.lcpdf') and 'lcp' not in low: pdfs.append(n)
+            def val(k):
+              v=md.get(k,'')
+              if isinstance(v,list): return '; '.join(str(x) for x in v)
+              return str(v) if v is not None else ''
+            pdf=sorted(pdfs,key=lambda n:(('text.pdf' in n.lower()),len(n)))[0] if pdfs else ''
+            pages=''
+            for k in ('pages','page-count','page_count'):
+              if val(k).strip(): pages=val(k).strip(); break
+            return {'identifier':ident,'valid':bool(COLL in coll and not restricted and pdf),'title':val('title').strip(),'creator':val('creator').strip(),'year':val('date').strip() or val('year').strip(),'volume':val('volume').strip(),'edition':val('edition').strip(),'series':val('series').strip(),'language':val('language').strip(),'subject':val('subject').strip(),'contributor':val('contributor').strip(),'pdf':pdf,'pages':pages,'restricted':restricted,'in_gtu':COLL in coll}
+          out=[]
+          with ThreadPoolExecutor(max_workers=20) as ex:
+            for f in as_completed([ex.submit(V,i) for i in ids]): out.append(f.result())
+          out.sort(key=lambda x:ids.index(x['identifier']))
+          json.dump(out,open('verified.json','w'),ensure_ascii=False,indent=2)
+          print('VERIFIED',len(out),'VALID',sum(x.get('valid',False) for x in out))
+          for x in out: print(('OK' if x.get('valid') else 'NO'),x['identifier'],x.get('title','')[:95])
+          PY
       - uses: actions/upload-artifact@v4
         with:
           name: gtu-fast-list
           path: ids.tsv
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-verified-selected
+          path: verified.json
