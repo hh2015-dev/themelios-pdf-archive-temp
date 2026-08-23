@@ -10,11 +10,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          q='collection:graduatetheologicalunion AND format:"Text PDF"'
           enc=$(python3 -c 'import urllib.parse; print(urllib.parse.quote('"'"'collection:graduatetheologicalunion AND format:"Text PDF"'"'"'))')
-          url="https://archive.org/advancedsearch.php?q=$enc&fl[]=identifier,title,creator,date,year,volume,subject,language,contributor,format&rows=200&page=35&output=json&sort[]=identifier%20asc"
+          url="https://archive.org/advancedsearch.php?q=$enc&fl[]=identifier,title,creator,date,year,volume,subject,language,contributor,format&rows=200&page=70&output=json&sort[]=identifier%20asc"
           curl -fsSL --max-time 25 "$url" -o result.json
           echo EXAMINED_SEARCH_ROWS=$(jq '.response.docs|length' result.json)
           echo TOTAL_FOUND=$(jq '.response.numFound' result.json)
           echo '===CANDIDATES_JSON==='
-          jq -c '.response.docs[] | select((.title//"")|test("Bible|Biblical|Testament|Hebrew|Aramaic|Syriac|Semitic|Septuagint|Greek|Gospel|Psalm|Isaiah|Jeremiah|Ezekiel|Daniel|Job|Genesis|Exodus|Pentateuch|Prophet|Targum|Talmud|Mishnah|Qumran|Apocry|Pseudepig|Josephus|Philo|Manuscript|Codex|Papyr|Textual|Archaeolog|Assyri|Babylon|Akkad|Ugarit|Lexicon|Grammar|Concordance|Commentar|Calvin|Luther|Origen|Augustine|Chrysostom|Irenaeus|Church|Theolog|Reformation|Patrist";"i"))' result.json | head -100
+          jq -c '.response.docs[] | select((.title//"")|test("Bible|Biblical|Testament|Hebrew|Aramaic|Syriac|Semitic|Septuagint|Greek|Gospel|Psalm|Isaiah|Jeremiah|Ezekiel|Daniel|Job|Genesis|Exodus|Pentateuch|Prophet|Targum|Talmud|Mishnah|Qumran|Apocry|Pseudepig|Josephus|Philo|Manuscript|Codex|Papyr|Textual|Archaeolog|Assyri|Babylon|Akkad|Ugarit|Lexicon|Grammar|Concordance|Commentar|Calvin|Luther|Origen|Augustine|Chrysostom|Irenaeus|Church|Theolog|Reformation|Patrist";"i"))' result.json | head -120
