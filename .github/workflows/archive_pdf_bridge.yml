@@ -1,0 +1,57 @@
+name: Archive PDF Bridge
+
+on:
+  push:
+    paths:
+      - '.github/workflows/archive_pdf_bridge.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fetch-archive-pdfs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download verified PDFs from Archive.org only
+        shell: bash
+        run: |
+          set -u
+          mkdir -p archive_bridge
+          cat > /tmp/items.tsv <<'EOF'
+          catalogueofsyria0000wwri	https://archive.org/download/catalogueofsyria0000wwri/catalogueofsyria0000wwri.pdf
+          grammarofnewtest0001wine	https://archive.org/download/grammarofnewtest0001wine/grammarofnewtest0001wine.pdf
+          grammarofnewtest0002wine	https://archive.org/download/grammarofnewtest0002wine/grammarofnewtest0002wine.pdf
+          palaeographyofgr0000fred	https://archive.org/download/palaeographyofgr0000fred/palaeographyofgr0000fred.pdf
+          hebrewenglishlex0000edwa	https://archive.org/download/hebrewenglishlex0000edwa/hebrewenglishlex0000edwa.pdf
+          familypicodexale0000unse	https://archive.org/download/familypicodexale0000unse/familypicodexale0000unse.pdf
+          horaehebraicaeet0001ligh	https://archive.org/download/horaehebraicaeet0001ligh/horaehebraicaeet0001ligh.pdf
+          adametsonlignage0000defr	https://archive.org/download/adametsonlignage0000defr/adametsonlignage0000defr.pdf
+          EOF
+          while IFS=$'\t' read -r id url; do
+            echo "FETCH $id"
+            tmp="archive_bridge/${id}.part"
+            out="archive_bridge/${id}.pdf"
+            code=$(curl -L --retry 2 --connect-timeout 20 --max-time 300 -A 'Mozilla/5.0' -sS -w '%{http_code}' -o "$tmp" "$url" || true)
+            sig=$(head -c 5 "$tmp" 2>/dev/null || true)
+            if [ "$code" = "200" ] && [ "$sig" = "%PDF-" ]; then
+              mv "$tmp" "$out"
+              echo "OK $id $(stat -c%s "$out")"
+            else
+              echo "SKIP $id HTTP=$code SIG=$sig"
+              rm -f "$tmp"
+            fi
+          done < /tmp/items.tsv
+          ls -lh archive_bridge || true
+      - name: Commit successful PDFs
+        shell: bash
+        run: |
+          git config user.name 'archive-pdf-bridge'
+          git config user.email 'archive-pdf-bridge@users.noreply.github.com'
+          git add archive_bridge/*.pdf 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo 'No downloadable PDFs found'
+          else
+            git commit -m 'Temporary Archive.org PDF bridge'
+            git push
+          fi
