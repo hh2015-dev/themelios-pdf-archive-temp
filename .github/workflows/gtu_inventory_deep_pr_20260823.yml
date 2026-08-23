@@ -1,0 +1,89 @@
+name: GTU inventory deep PR 20260823
+on:
+  pull_request:
+    branches: [ main ]
+permissions:
+  contents: read
+jobs:
+  deep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Deep GTU-only windows and verification
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json,urllib.parse,urllib.request,concurrent.futures,re
+          B='https://archive.org'; fields=['identifier','title','creator','year','date','volume','edition','series','language','subject','mediatype']
+          cand={}; hits=0
+          # Broad, widely separated windows through the exact GTU collection.
+          for page in [7,19,31,43,55,67,79,91,103,115,127,139,151]:
+            p=[('q','collection:graduatetheologicalunion AND format:"Text PDF"')]+[('fl[]',x) for x in fields]+[('rows','100'),('page',str(page)),('sort[]','identifier asc'),('output','json')]
+            try:
+              with urllib.request.urlopen(B+'/advancedsearch.php?'+urllib.parse.urlencode(p),timeout=20) as r:ds=json.load(r).get('response',{}).get('docs',[])
+            except:ds=[]
+            hits+=len(ds)
+            for d in ds:
+              if d.get('identifier'):cand.setdefault(d['identifier'],d)
+          # A few deep topical windows to preserve subject breadth.
+          tq=[
+          'title:(Hebrew OR Aramaic OR Syriac OR Greek OR Septuagint OR lexicon OR grammar)',
+          'title:(manuscript OR codex OR papyri OR textual OR critical)',
+          'title:(Targum OR Mishnah OR Talmud OR Midrash OR Apocrypha OR Pseudepigrapha)',
+          'title:(Assyrian OR Babylonian OR Akkadian OR Sumerian OR Ugaritic OR archaeology)',
+          'title:(Origen OR Irenaeus OR Tertullian OR Chrysostom OR Jerome OR Calvin OR Luther)',
+          'title:(Biblical OR Bible OR Testament)'
+          ]
+          for q0 in tq:
+            for page in [13,23]:
+              p=[('q','collection:graduatetheologicalunion AND format:"Text PDF" AND ('+q0+')')]+[('fl[]',x) for x in fields]+[('rows','100'),('page',str(page)),('output','json')]
+              try:
+                with urllib.request.urlopen(B+'/advancedsearch.php?'+urllib.parse.urlencode(p),timeout=20) as r:ds=json.load(r).get('response',{}).get('docs',[])
+              except:ds=[]
+              hits+=len(ds)
+              for d in ds:
+                if d.get('identifier'):cand.setdefault(d['identifier'],d)
+          A=['bible','biblical','testament','hebrew','aramaic','syriac','semitic','greek','septuagint','lxx','textual','manuscript','codex','papyr','dead sea','qumran','apocry','pseudep','targum','mishnah','talmud','midrash','assyri','babylon','akkad','sumer','ugarit','canaan','archaeolog','genesis','exodus','leviticus','numbers','deuteronomy','joshua','judges','samuel','kings','job','psalm','proverb','ecclesiastes','isaiah','jeremiah','ezekiel','daniel','matthew','mark','luke','john','acts','romans','corinth','galatian','ephesian','philipp','hebrews','revelation','commentary','lexicon','grammar','concordance','exegesis','hermeneut','philo','josephus','origen','irenaeus','tertullian','chrysostom','jerome','ephraem','calvin','luther']
+          Bterms=['theology','doctrine','creed','confession','church history','reformation','patristic','apologetic','philosophy of religion','mission','judaism','christianity','christian origins','religious history']
+          BAD=['annual report','commencement','yearbook','alumni','bulletin of courses','minutes','directory']
+          def txt(d):
+            z=[]
+            for k in ['title','creator','subject','series']:
+              v=d.get(k,'');z += [str(x) for x in v] if isinstance(v,list) else [str(v)]
+            return ' '.join(z).lower()
+          def score(d):
+            t=txt(d)
+            if any(x in t for x in BAD):return -100
+            s=sum(3 for x in A if x in t)+sum(1 for x in Bterms if x in t)
+            if any(x in t for x in ['critical','commentary','lexicon','grammar','concordance','bibliography','journal','studies']):s+=3
+            return s
+          ranked=[d for d in sorted(cand.values(),key=score,reverse=True) if score(d)>0][:260]
+          def verify(d):
+            i=d['identifier']
+            try:
+              with urllib.request.urlopen(B+'/metadata/'+urllib.parse.quote(i),timeout=14) as r:o=json.load(r)
+            except:return None
+            m=o.get('metadata',{}) or {};c=m.get('collection',[]);c=[c] if isinstance(c,str) else c; tr=lambda x:str(x).lower() in ('true','1','yes')
+            if 'graduatetheologicalunion' not in c or tr(m.get('access-restricted-item')) or tr(m.get('printdisabled')) or str(m.get('mediatype','texts')).lower()!='texts':return None
+            ps=[]
+            for f in o.get('files',[]) or []:
+              n=str(f.get('name',''));low=n.lower();fmt=str(f.get('format','')).lower()
+              if not low.endswith('.pdf') or tr(f.get('private')) or low.endswith('.lcpdf') or 'encrypt' in low or 'encrypt' in fmt or 'lcp' in fmt:continue
+              ps.append(((10 if fmt=='text pdf' else 0)+(5 if n==i+'.pdf' else 0)+(3 if '_text.pdf' in low else 0),n))
+            if not ps:return None
+            ps.sort(reverse=True);n=ps[0][1]
+            def g(k):
+              x=m.get(k,d.get(k,''));return '; '.join(map(str,x)) if isinstance(x,list) else ('' if x is None else str(x))
+            return {'identifier':i,'title':g('title'),'creator':g('creator'),'year':g('year'),'volume':g('volume'),'edition':g('edition'),'series':g('series'),'language':g('language'),'subject':g('subject'),'contributor':g('contributor'),'pages':g('imagecount') or g('page-count'),'item_link':B+'/details/'+urllib.parse.quote(i),'direct_pdf':B+'/download/'+urllib.parse.quote(i)+'/'+urllib.parse.quote(n),'score':score({**d,'title':g('title'),'creator':g('creator'),'subject':g('subject'),'series':g('series')})}
+          rec=[]
+          with concurrent.futures.ThreadPoolExecutor(max_workers=24) as ex:
+            for r in ex.map(verify,ranked):
+              if r:rec.append(r)
+          rec.sort(key=lambda x:(-x['score'],x['title']))
+          obj={'examined_hits':hits,'unique_discovered':len(cand),'metadata_checked':len(ranked),'verified_public_pdf':len(rec),'records':rec[:180]}
+          open('gtu_deep.json','w',encoding='utf8').write(json.dumps(obj,ensure_ascii=False,indent=2));print(json.dumps({k:obj[k] for k in ['examined_hits','unique_discovered','metadata_checked','verified_public_pdf']}))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-inventory-deep-20260823
+          path: gtu_deep.json
