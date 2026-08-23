@@ -1,0 +1,61 @@
+name: GTU Inventory 20 Discovery
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mine and verify GTU candidates
+        shell: bash
+        run: |
+          set -euo pipefail
+          : > ids.txt
+          terms=(
+            'Septuagint' 'Peshitta' 'Masoretic' 'Targum' 'Qumran' 'Dead Sea Scrolls'
+            'Aramaic' 'Syriac' 'Hebrew' 'Akkadian' 'Assyrian' 'Ugaritic'
+            'Greek New Testament' 'textual criticism' 'manuscript' 'papyri'
+            'Origen' 'Jerome' 'Augustine' 'Chrysostom' 'Tertullian' 'Athanasius'
+            'Eusebius' 'Calvin' 'Luther' 'Josephus' 'Philo' 'Maccabees'
+            'biblical archaeology' 'Old Testament' 'New Testament' 'Bible commentary'
+          )
+          examined=0
+          for term in "${terms[@]}"; do
+            q="collection:graduatetheologicalunion AND mediatype:texts AND (title:(\"$term\") OR subject:(\"$term\"))"
+            enc=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "$q")
+            curl -fsSL "https://archive.org/advancedsearch.php?q=$enc&fl[]=identifier&rows=50&page=1&output=json" -o s.json
+            n=$(jq '.response.docs|length' s.json); examined=$((examined+n))
+            jq -r '.response.docs[].identifier' s.json >> ids.txt
+          done
+          sort -u ids.txt | head -n 300 > uniq.txt
+          echo "EXAMINED_SEARCH_HITS=$examined"
+          echo "UNIQUE_CANDIDATES=$(wc -l < uniq.txt)"
+          : > verified.tsv
+          while IFS= read -r id; do
+            curl -fsSL "https://archive.org/metadata/$id" -o m.json || continue
+            in_gtu=$(jq -r '[(.metadata.collection // [])] | flatten | map(select(.=="graduatetheologicalunion")) | length' m.json)
+            [[ "$in_gtu" -gt 0 ]] || continue
+            restricted=$(jq -r '.metadata["access-restricted-item"] // .metadata.printdisabled // ""' m.json)
+            [[ "$restricted" != "true" ]] || continue
+            pdf=$(jq -r '[.files[] | select((.private // "false") != "true") | select(.name|test("\\.pdf$";"i")) | select((.name|test("encrypted|lcpdf";"i"))|not) | .name][0] // ""' m.json)
+            [[ -n "$pdf" ]] || continue
+            title=$(jq -r '.metadata.title // "" | if type=="array" then join("; ") else . end' m.json | tr '\t\r\n' '   ')
+            creator=$(jq -r '.metadata.creator // "" | if type=="array" then join("; ") else . end' m.json | tr '\t\r\n' '   ')
+            date=$(jq -r '.metadata.date // .metadata.year // "" | if type=="array" then join("; ") else tostring end' m.json | tr '\t\r\n' '   ')
+            lang=$(jq -r '.metadata.language // "" | if type=="array" then join("; ") else . end' m.json | tr '\t\r\n' '   ')
+            subj=$(jq -r '.metadata.subject // "" | if type=="array" then join(" | ") else . end' m.json | tr '\t\r\n' '   ')
+            vol=$(jq -r '.metadata.volume // "" | if type=="array" then join("; ") else tostring end' m.json | tr '\t\r\n' '   ')
+            ed=$(jq -r '.metadata.edition // "" | if type=="array" then join("; ") else . end' m.json | tr '\t\r\n' '   ')
+            series=$(jq -r '.metadata.series // "" | if type=="array" then join("; ") else . end' m.json | tr '\t\r\n' '   ')
+            contrib=$(jq -r '.metadata.contributor // "" | if type=="array" then join("; ") else . end' m.json | tr '\t\r\n' '   ')
+            pages=$(jq -r '.metadata.imagecount // "" | tostring' m.json)
+            printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$id" "$title" "$creator" "$date" "$vol" "$ed" "$series" "$lang" "$subj" "$pages" "$contrib" "$pdf" >> verified.tsv
+          done < uniq.txt
+          echo "VERIFIED_PUBLIC_PDF=$(wc -l < verified.tsv)"
+          echo '---VERIFIED TSV START---'
+          cat verified.tsv
+          echo '---VERIFIED TSV END---'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-inventory-verified
+          path: verified.tsv
