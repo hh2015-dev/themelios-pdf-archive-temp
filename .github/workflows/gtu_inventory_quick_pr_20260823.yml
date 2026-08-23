@@ -1,0 +1,87 @@
+name: GTU inventory quick PR 20260823
+on:
+  pull_request:
+    branches: [ main ]
+permissions:
+  contents: read
+jobs:
+  quick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Fast GTU-only verified mining
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json,urllib.parse,urllib.request,concurrent.futures
+          B='https://archive.org'; F=['identifier','title','creator','year','date','volume','edition','series','language','subject','mediatype']
+          qs=[
+          'title:(Hebrew OR Aramaic OR Syriac OR Greek OR Septuagint OR lexicon OR grammar OR concordance)',
+          'title:(manuscript OR codex OR papyri OR textual OR critical OR commentary)',
+          'title:(Genesis OR Exodus OR Numbers OR Deuteronomy OR Job OR Psalms OR Isaiah OR Jeremiah OR Ezekiel OR Daniel)',
+          'title:(Matthew OR Mark OR Luke OR John OR Acts OR Romans OR Corinthians OR Galatians OR Hebrews OR Revelation)',
+          'title:(Targum OR Mishnah OR Talmud OR Midrash OR Apocrypha OR Pseudepigrapha OR Enoch OR Maccabees)',
+          'title:(Assyrian OR Babylonian OR Akkadian OR Sumerian OR Ugaritic OR archaeology OR Palestine)',
+          'title:(Origen OR Irenaeus OR Tertullian OR Chrysostom OR Jerome OR Calvin OR Luther)',
+          'title:(theology OR doctrine OR church OR missions OR Judaism)'
+          ]
+          cand={}; hits=0
+          for q0 in qs:
+            for page in [3,8]:
+              p=[('q','collection:graduatetheologicalunion AND format:"Text PDF" AND ('+q0+')')]+[('fl[]',x) for x in F]+[('rows','50'),('page',str(page)),('output','json')]
+              try:
+                with urllib.request.urlopen(B+'/advancedsearch.php?'+urllib.parse.urlencode(p),timeout=18) as r: ds=json.load(r).get('response',{}).get('docs',[])
+              except: ds=[]
+              hits+=len(ds)
+              for d in ds:
+                if d.get('identifier'):cand.setdefault(d['identifier'],d)
+          # Two broad windows for diversity
+          for page in [29,73]:
+            p=[('q','collection:graduatetheologicalunion AND format:"Text PDF"')]+[('fl[]',x) for x in F]+[('rows','50'),('page',str(page)),('sort[]','identifier asc'),('output','json')]
+            try:
+              with urllib.request.urlopen(B+'/advancedsearch.php?'+urllib.parse.urlencode(p),timeout=18) as r: ds=json.load(r).get('response',{}).get('docs',[])
+            except: ds=[]
+            hits+=len(ds)
+            for d in ds:
+              if d.get('identifier'):cand.setdefault(d['identifier'],d)
+          A=['bible','biblical','testament','hebrew','aramaic','syriac','greek','septuagint','textual','manuscript','codex','papyr','targum','mishnah','talmud','midrash','assyri','babylon','akkad','sumer','ugarit','archaeolog','genesis','exodus','numbers','deuteronomy','job','psalm','isaiah','jeremiah','ezekiel','daniel','matthew','mark','luke','john','acts','romans','corinth','galatian','hebrews','revelation','commentary','lexicon','grammar','concordance','origen','irenaeus','calvin','luther']
+          def text(d):
+            z=[]
+            for k in ['title','creator','subject','series']:
+              v=d.get(k,'');z += [str(x) for x in v] if isinstance(v,list) else [str(v)]
+            return ' '.join(z).lower()
+          def sc(d):
+            t=text(d)
+            if any(x in t for x in ['annual report','commencement','yearbook','alumni','bulletin of courses']):return -99
+            return sum(3 for x in A if x in t)+sum(1 for x in ['theology','church history','mission','judaism','christianity'] if x in t)
+          ranked=sorted(cand.values(),key=sc,reverse=True)[:140]
+          def vfy(d):
+            i=d['identifier']
+            try:
+              with urllib.request.urlopen(B+'/metadata/'+urllib.parse.quote(i),timeout=15) as r:o=json.load(r)
+            except:return None
+            m=o.get('metadata',{}) or {}; c=m.get('collection',[]); c=[c] if isinstance(c,str) else c
+            tr=lambda x:str(x).lower() in ('true','1','yes')
+            if 'graduatetheologicalunion' not in c or tr(m.get('access-restricted-item')) or tr(m.get('printdisabled')) or str(m.get('mediatype','texts')).lower()!='texts':return None
+            ps=[]
+            for f in o.get('files',[]) or []:
+              n=str(f.get('name','')); low=n.lower();fmt=str(f.get('format','')).lower()
+              if low.endswith('.pdf') and not tr(f.get('private')) and not low.endswith('.lcpdf') and 'encrypt' not in low and 'encrypt' not in fmt and 'lcp' not in fmt:
+                ps.append(((10 if fmt=='text pdf' else 0)+(5 if n==i+'.pdf' else 0),n))
+            if not ps:return None
+            ps.sort(reverse=True); n=ps[0][1]
+            def g(k):
+              x=m.get(k,d.get(k,''));return '; '.join(map(str,x)) if isinstance(x,list) else ('' if x is None else str(x))
+            return {'identifier':i,'title':g('title'),'creator':g('creator'),'year':g('year'),'volume':g('volume'),'edition':g('edition'),'series':g('series'),'language':g('language'),'subject':g('subject'),'contributor':g('contributor'),'pages':g('imagecount') or g('page-count'),'item_link':B+'/details/'+urllib.parse.quote(i),'direct_pdf':B+'/download/'+urllib.parse.quote(i)+'/'+urllib.parse.quote(n),'score':sc({**d,'title':g('title'),'creator':g('creator'),'subject':g('subject'),'series':g('series')})}
+          rec=[]
+          with concurrent.futures.ThreadPoolExecutor(max_workers=20) as ex:
+            for r in ex.map(vfy,ranked):
+              if r:rec.append(r)
+          rec.sort(key=lambda x:(-x['score'],x['title']))
+          obj={'examined_hits':hits,'unique_discovered':len(cand),'metadata_checked':len(ranked),'verified_public_pdf':len(rec),'records':rec[:120]}
+          open('gtu_quick.json','w',encoding='utf8').write(json.dumps(obj,ensure_ascii=False,indent=2));print(json.dumps({k:obj[k] for k in ['examined_hits','unique_discovered','metadata_checked','verified_public_pdf']}))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-inventory-quick-20260823
+          path: gtu_quick.json
