@@ -28,16 +28,16 @@ jobs:
           docs_by_id={}; examined=0
           for qi,q in enumerate(queries):
             for page in (2,5,9):
-              params={'q':q,'fl[]':['identifier','title','creator','date','year','volume','subject','language','contributor'],'rows':'60','page':str(page),'output':'json','sort[]':'identifier asc'}
+              params={'q':q,'fl[]':['identifier','title','creator','date','year','volume','subject','language','contributor'],'rows':'40','page':str(page),'output':'json','sort[]':'identifier asc'}
               url='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(params,doseq=True)
-              try: data=json.load(urllib.request.urlopen(url,timeout=20))
+              try: data=json.load(urllib.request.urlopen(url,timeout=12))
               except Exception as e: print('SEARCHERR',qi,page,e); continue
               docs=data.get('response',{}).get('docs',[]); examined += len(docs)
               for d in docs:
                 if d.get('identifier'): docs_by_id.setdefault(d['identifier'],d)
           def verify(pair):
             ident,d=pair
-            try: meta=json.load(urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident),timeout=20))
+            try: meta=json.load(urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident),timeout=12))
             except Exception: return None
             md=meta.get('metadata',{}); coll=md.get('collection',[])
             if isinstance(coll,str): coll=[coll]
@@ -50,13 +50,13 @@ jobs:
             if not pdf: return None
             return {'identifier':ident,'title':md.get('title',d.get('title','')),'creator':md.get('creator',d.get('creator','')),'date':md.get('date',d.get('date',d.get('year',''))),'volume':md.get('volume',d.get('volume','')),'subject':md.get('subject',d.get('subject','')),'language':md.get('language',d.get('language','')),'contributor':md.get('contributor',d.get('contributor','')),'pages':md.get('imagecount') or md.get('numpages') or '','pdf':pdf}
           verified=[]
-          with ThreadPoolExecutor(max_workers=16) as ex:
-            futs=[ex.submit(verify,p) for p in list(docs_by_id.items())[:700]]
+          with ThreadPoolExecutor(max_workers=32) as ex:
+            futs=[ex.submit(verify,p) for p in list(docs_by_id.items())[:260]]
             for fut in as_completed(futs):
               r=fut.result()
               if r: verified.append(r)
           verified.sort(key=lambda r:r['identifier'])
           print('EXAMINED='+str(examined)); print('UNIQUE='+str(len(docs_by_id))); print('VERIFIED='+str(len(verified)))
           def s(v): return '; '.join(map(str,v)) if isinstance(v,list) else str(v or '')
-          for r in verified[:260]: print('GTU\t'+'\t'.join(s(r[k]).replace('\t',' ').replace('\n',' ') for k in ['identifier','title','creator','date','volume','pages','pdf','subject','language','contributor']))
+          for r in verified: print('GTU\t'+'\t'.join(s(r[k]).replace('\t',' ').replace('\n',' ') for k in ['identifier','title','creator','date','volume','pages','pdf','subject','language','contributor']))
           PY
