@@ -33,6 +33,10 @@ jobs:
             echo "FETCH $id"
             tmp="archive_bridge/${id}.part"
             out="archive_bridge/${id}.pdf"
+            if [ -f "$out" ] && [ "$(head -c 5 "$out" 2>/dev/null || true)" = "%PDF-" ]; then
+              echo "EXISTS $id $(stat -c%s "$out")"
+              continue
+            fi
             code=$(curl -L --retry 2 --connect-timeout 20 --max-time 300 -A 'Mozilla/5.0' -sS -w '%{http_code}' -o "$tmp" "$url" || true)
             sig=$(head -c 5 "$tmp" 2>/dev/null || true)
             if [ "$code" = "200" ] && [ "$sig" = "%PDF-" ]; then
@@ -44,17 +48,11 @@ jobs:
             fi
           done < /tmp/items.tsv
           ls -lh archive_bridge || true
-      - name: Commit successful PDFs to main
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          git config user.name 'archive-pdf-bridge'
-          git config user.email 'archive-pdf-bridge@users.noreply.github.com'
-          git add archive_bridge/*.pdf 2>/dev/null || true
-          if git diff --cached --quiet; then
-            echo 'No downloadable PDFs found'
-          else
-            git commit -m 'Temporary Archive.org PDF bridge'
-            git push origin HEAD:main
-          fi
+      - name: Upload PDF bundle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: archive-pdf-bridge-bundle
+          path: archive_bridge/*.pdf
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
