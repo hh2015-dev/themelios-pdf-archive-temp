@@ -21,7 +21,7 @@ jobs:
           american-academy-of-religion-journal_1940-05_8_2	https://archive.org/download/american-academy-of-religion-journal_1940-05_8_2/american-academy-of-religion-journal_1940-05_8_2.pdf
           american-academy-of-religion-journal_1940-08_8_3	https://archive.org/download/american-academy-of-religion-journal_1940-08_8_3/american-academy-of-religion-journal_1940-08_8_3.pdf
           american-academy-of-religion-journal_1940-11_8_4	https://archive.org/download/american-academy-of-religion-journal_1940-11_8_4/american-academy-of-religion-journal_1940-11_8_4.pdf
-          africanjournalof0012unse	https://archive.org/download/africanjournalof0012unse/africanjournalof0012unse.pdf
+          expository-times_1910-11_22_2	https://archive.org/download/expository-times_1910-11_22_2/expository-times_1910-11_22_2.pdf
           EOF
           while IFS=$'\t' read -r id url; do
             curl -L --retry 3 --connect-timeout 20 --max-time 900 -A 'Mozilla/5.0' -fSs -o "out/$id.pdf" "$url"
