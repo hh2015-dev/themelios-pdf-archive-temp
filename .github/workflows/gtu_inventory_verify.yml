@@ -1,0 +1,77 @@
+name: GTU inventory verify
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify selected GTU items only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, urllib.request, urllib.parse
+          ids = '''gtu_32400001857840
+gtu_32400003109091
+internationalcri0000stlu
+criticalexegetic0002rhch_a8t0
+apocryphapseudep0001rhch_e9d0
+apocryphapseudep0002rhch_w1w3
+textualcriticism0003matl
+biblicalcommenta0001cfke
+biblicalcommenta0000cfke
+psalmsingreekacc0000henr
+greekenglishlexi0000jose_o7d5
+manualgreeklexic0000gabb
+grammarofgreekne0000atro
+grammarofnewtest0000frie
+catalogueofsyria0001will_q1r3
+dictionaryoftarg0001marc
+dictionaryoftarg0002marc
+catalogueofsyria0000wwri_r6z2
+gtu_32400004227710_8
+introductiontote0000atro
+manualaramaiclan0000maxl
+gtu_32400005869056
+geekmanuscriptsn0000will
+geekmanuscriptso0000will
+textbookofsyrian0001john
+septuagintversio0000vari
+gtu_A32400000614762B
+introductoryhebr0000abda_h0r9
+analyticalgreekl0000vari_f4v8
+greekofgospelofm0000john_m6w5'''.splitlines()
+          out=[]
+          for ident in ids:
+            with urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident),timeout=60) as r:
+              m=json.load(r)
+            md=m.get('metadata',{})
+            coll=md.get('collection',[])
+            if isinstance(coll,str): coll=[coll]
+            files=m.get('files',[])
+            pdfs=[]
+            for f in files:
+              n=f.get('name','')
+              if not n.lower().endswith('.pdf'): continue
+              if str(f.get('private','false')).lower()=='true': continue
+              nl=n.lower()
+              if nl.endswith('.lcpdf') or 'encrypted' in nl: continue
+              pdfs.append({'name':n,'size':f.get('size'),'source':f.get('source'),'format':f.get('format')})
+            preferred=None
+            if pdfs:
+              ranked=sorted(pdfs,key=lambda x:(('_text.pdf' in x['name'].lower()),('searchable' in x['name'].lower()),len(x['name'])))
+              preferred=ranked[0]
+            rec={'identifier':ident,'in_gtu':'graduatetheologicalunion' in coll,'collection':coll,'title':md.get('title'),'creator':md.get('creator'),'date':md.get('date'),'year':md.get('year'),'volume':md.get('volume'),'edition':md.get('edition'),'series':md.get('series'),'language':md.get('language'),'subject':md.get('subject'),'contributor':md.get('contributor'),'description':md.get('description'),'mediatype':md.get('mediatype'),'preferred_pdf':preferred,'item_link':'https://archive.org/details/'+ident,'direct_pdf_link':('https://archive.org/download/'+ident+'/'+urllib.parse.quote(preferred['name'])) if preferred else None}
+            out.append(rec)
+          with open('gtu_verified.jsonl','w',encoding='utf-8') as f:
+            for rec in out: f.write(json.dumps(rec,ensure_ascii=False)+'\n')
+          print('VERIFIED',len(out),'GTU',sum(x['in_gtu'] for x in out),'WITH_PUBLIC_PDF',sum(bool(x['preferred_pdf']) for x in out))
+          for x in out:
+            print(x['identifier'], 'GTU='+str(x['in_gtu']), 'PDF='+str(bool(x['preferred_pdf'])), '|', x.get('title'))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-verified
+          path: gtu_verified.jsonl
+          compression-level: 6
