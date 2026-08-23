@@ -15,9 +15,10 @@ jobs:
           BASE='https://archive.org'
           fl=['identifier','title','creator','date','year','volume','language','contributor','subject','mediatype']
           docs={}; examined=0
-          for page in (1,8,20,35):
-            params=[('q','collection:graduatetheologicalunion AND mediatype:texts'),('rows','250'),('page',str(page)),('output','json'),('sort[]','identifier asc')]+[('fl[]',f) for f in fl]
-            try: data=json.load(urllib.request.urlopen(BASE+'/advancedsearch.php?'+urllib.parse.urlencode(params),timeout=15))
+          for page in (1,4,8,13,19,26):
+            q='collection:graduatetheologicalunion AND mediatype:texts AND format:"Text PDF"'
+            params=[('q',q),('rows','250'),('page',str(page)),('output','json'),('sort[]','identifier asc')]+[('fl[]',f) for f in fl]
+            try: data=json.load(urllib.request.urlopen(BASE+'/advancedsearch.php?'+urllib.parse.urlencode(params),timeout=18))
             except Exception: continue
             for d in data.get('response',{}).get('docs',[]):
               examined+=1
@@ -35,7 +36,7 @@ jobs:
             if not a and not b: continue
             score=a*100+b*25; h=int(hashlib.sha1(ident.encode()).hexdigest()[:8],16)%10000
             scored.append((score,h,ident,d))
-          scored.sort(key=lambda x:(-x[0],x[1])); targets=scored[:100]
+          scored.sort(key=lambda x:(-x[0],x[1])); targets=scored[:150]
           def verify(x):
             score,h,ident,d=x
             try: m=json.load(urllib.request.urlopen(BASE+'/metadata/'+urllib.parse.quote(ident),timeout=12))
