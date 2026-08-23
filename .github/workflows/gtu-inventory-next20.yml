@@ -14,38 +14,24 @@ jobs:
           import json, urllib.parse, urllib.request, random
           from concurrent.futures import ThreadPoolExecutor, as_completed
           COLL='graduatetheologicalunion'; UA={'User-Agent':'Mozilla/5.0 GTUInventory/1.0'}
-          base='collection:'+COLL+' AND mediatype:texts'
-          queries=[
-            base+' AND (subject:(Bible OR Biblical OR "Old Testament" OR "New Testament" OR Hebrew OR Aramaic OR Syriac OR Septuagint))',
-            base+' AND (title:(commentary OR commentaries OR lexicon OR grammar OR concordance OR manuscript OR manuscripts))',
-            base+' AND (subject:("textual criticism" OR manuscripts OR papyri OR Qumran OR Apocrypha OR Pseudepigrapha))',
-            base+' AND (subject:(Assyriology OR Babylonia OR Akkadian OR Ugaritic OR Palestine OR archaeology))',
-            base+' AND (title:(Syriac OR Aramaic OR Hebrew OR Greek OR Coptic OR Septuagint OR Targum OR Talmud OR Midrash))',
-            base+' AND (title:(Isaiah OR Jeremiah OR Ezekiel OR Daniel OR Psalms OR Job OR Genesis OR Exodus OR Deuteronomy))',
-            base+' AND (title:(Matthew OR Mark OR Luke OR John OR Acts OR Romans OR Corinthians OR Galatians OR Hebrews OR Revelation))',
-            base+' AND (title:(Josephus OR Philo OR Origen OR Augustine OR Chrysostom OR Calvin OR Luther))',
-            base+' AND (subject:(Judaism OR rabbinic OR Talmud OR Midrash OR "early Christianity"))',
-            base+' AND (title:(bibliography OR index OR dictionary OR archaeology OR papyri OR inscriptions))',
-            base+' AND language:(heb OR grc OR syr OR arc OR akk OR cop)',
-            base]
+          q='collection:'+COLL+' AND mediatype:texts'
           seen={}
-          for qi,q in enumerate(queries):
-            pages=[1,3,7] if qi<11 else [2,8,20,40]
-            for page in pages:
-              parts=[('q',q),('rows','75'),('page',str(page)),('output','json'),('fl[]','identifier'),('fl[]','title'),('fl[]','creator'),('fl[]','date'),('fl[]','year'),('fl[]','language'),('fl[]','volume'),('fl[]','subject'),('fl[]','contributor')]
-              url='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(parts)
-              try:
-                with urllib.request.urlopen(urllib.request.Request(url,headers=UA),timeout=20) as r: data=json.load(r)
-              except Exception as e:
-                print('SEARCHERR',qi,page,repr(e)); continue
-              for d in data.get('response',{}).get('docs',[]):
-                i=d.get('identifier')
-                if i and i not in seen: seen[i]=d
-          ids=list(seen); random.Random(20260823).shuffle(ids); ids=ids[:360]
+          for page in [1,2,5,10,20,30,40,55,70]:
+            parts=[('q',q),('rows','100'),('page',str(page)),('output','json'),('fl[]','identifier'),('fl[]','title'),('fl[]','creator'),('fl[]','date'),('fl[]','year'),('fl[]','language'),('fl[]','volume'),('fl[]','subject'),('fl[]','contributor'),('sort[]','identifier asc')]
+            url='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(parts)
+            try:
+              with urllib.request.urlopen(urllib.request.Request(url,headers=UA),timeout=15) as r: data=json.load(r)
+            except Exception as e:
+              print('SEARCHERR',page,repr(e)); continue
+            print('PAGE',page,'N',len(data.get('response',{}).get('docs',[])))
+            for d in data.get('response',{}).get('docs',[]):
+              i=d.get('identifier')
+              if i and i not in seen: seen[i]=d
+          ids=list(seen); random.Random(202608231840).shuffle(ids)
           def verify(ident):
             try:
               u='https://archive.org/metadata/'+urllib.parse.quote(ident)
-              with urllib.request.urlopen(urllib.request.Request(u,headers=UA),timeout=15) as r: meta=json.load(r)
+              with urllib.request.urlopen(urllib.request.Request(u,headers=UA),timeout=12) as r: meta=json.load(r)
             except Exception: return None
             md=meta.get('metadata',{}) or {}; coll=md.get('collection',[])
             if isinstance(coll,str): coll=[coll]
@@ -69,7 +55,7 @@ jobs:
               if x: pages=x; break
             return {'identifier':ident,'title':val('title').strip(),'creator':val('creator').strip(),'year':(val('date').strip() or val('year').strip()),'volume':val('volume').strip(),'edition':val('edition').strip(),'series':val('series').strip(),'language':val('language').strip(),'contributor':val('contributor').strip(),'subject':val('subject').strip(),'pdf':pdfname,'pages':pages}
           out=[]
-          with ThreadPoolExecutor(max_workers=24) as ex:
+          with ThreadPoolExecutor(max_workers=30) as ex:
             futs={ex.submit(verify,i):i for i in ids}
             for fut in as_completed(futs):
               x=fut.result()
@@ -77,7 +63,7 @@ jobs:
           out.sort(key=lambda x:x['identifier'])
           with open('candidates.json','w',encoding='utf-8') as f: json.dump({'pool':len(seen),'examined':len(ids),'eligible':len(out),'items':out},f,ensure_ascii=False,indent=2)
           print('POOL',len(seen),'EXAMINED',len(ids),'ELIGIBLE',len(out))
-          for x in out[:120]: print(x['identifier'],'\t',x['title'][:110])
+          for x in out[:160]: print(x['identifier'],'\t',x['title'][:115])
           PY
       - uses: actions/upload-artifact@v4
         with:
