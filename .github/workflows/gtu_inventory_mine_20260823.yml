@@ -1,0 +1,99 @@
+name: TEMP GTU inventory mine 20260823
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  mine:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mine and verify GTU-only candidates
+        shell: bash
+        run: |
+          cat > /tmp/mine.py <<'PY'
+          import requests, json, urllib.parse, time, re
+          S=requests.Session(); S.headers['User-Agent']='GTU-inventory-research/1.0'
+          queries=[
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Hebrew) OR subject:(Hebrew))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Greek) OR subject:(Greek))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Syriac) OR subject:(Syriac))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Aramaic) OR subject:(Aramaic))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Septuagint) OR subject:(Septuagint))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Bible) OR subject:(Bible))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Testament) OR subject:(Testament))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Talmud) OR title:(Mishnah) OR subject:(Rabbinic))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Assyrian) OR title:(Babylonian) OR title:(Ugaritic) OR subject:(Archaeology))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Calvin) OR title:(Luther) OR title:(Origen) OR title:(Augustine) OR title:(Chrysostom))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (subject:(Church history) OR subject:(Theology))',
+            'collection:graduatetheologicalunion AND mediatype:texts'
+          ]
+          docs={}
+          pages=[1,2,4,7,11,17]
+          examined=0
+          for qi,q in enumerate(queries):
+            usepages=pages if qi==11 else [1,2,3]
+            for p in usepages:
+              params={'q':q,'fl[]':['identifier','title','creator','year','date','subject','language','contributor'],'rows':100,'page':p,'output':'json','sort[]':'identifier asc'}
+              try:
+                r=S.get('https://archive.org/advancedsearch.php',params=params,timeout=30); r.raise_for_status(); js=r.json()
+              except Exception:
+                continue
+              arr=js.get('response',{}).get('docs',[]); examined += len(arr)
+              for d in arr:
+                if d.get('identifier'): docs[d['identifier']]=d
+          def score(d):
+            t=' '.join(str(d.get(k,'')) for k in ['title','subject']).lower()
+            a=['hebrew','aramaic','syriac','semitic','septuagint','greek new testament','new testament','old testament','hebrew bible','biblical','bible','gospel','epistle','psalm','genesis','exodus','isaiah','jeremiah','ezekiel','daniel','job','proverbs','textual','manuscript','targum','talmud','mishnah','qumran','pseudepigrapha','apocrypha','assyrian','babylonian','ugaritic','palestine','archaeolog','concordance','lexicon','grammar']
+            b=['theology','patrist','church history','reformation','calvin','luther','augustine','origen','chrysostom','mission','judaism','early christian']
+            return sum(8 for x in a if x in t)+sum(3 for x in b if x in t)
+          ranked=sorted(docs.values(),key=lambda d:(score(d),str(d.get('year',''))),reverse=True)
+          out=[]; meta_checked=0
+          for d in ranked:
+            if len(out)>=260: break
+            ident=d['identifier']
+            try:
+              m=S.get('https://archive.org/metadata/'+urllib.parse.quote(ident,safe=''),timeout=30).json(); meta_checked+=1
+            except Exception: continue
+            md=m.get('metadata',{}); coll=md.get('collection',[])
+            if isinstance(coll,str): coll=[coll]
+            if 'graduatetheologicalunion' not in coll: continue
+            if str(md.get('mediatype','')).lower() not in ('texts',''): continue
+            if str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true': continue
+            pdfs=[]
+            for f in m.get('files',[]):
+              n=f.get('name',''); priv=str(f.get('private','false')).lower()
+              if n.lower().endswith('.pdf') and not n.lower().endswith('.lcpdf') and 'encrypted' not in n.lower() and priv!='true':
+                pdfs.append(f)
+            if not pdfs: continue
+            # prefer original source pdf over derived text pdfs where metadata says original
+            pdf=pdfs[0]
+            originals=[f for f in pdfs if str(f.get('source','')).lower()=='original']
+            if originals: pdf=originals[0]
+            title=md.get('title') or d.get('title') or ''
+            creator=md.get('creator') or d.get('creator') or ''
+            if isinstance(creator,list): creator='; '.join(map(str,creator))
+            subj=md.get('subject') or d.get('subject') or ''
+            if isinstance(subj,list): subj='; '.join(map(str,subj[:12]))
+            contributor=md.get('contributor') or d.get('contributor') or 'Graduate Theological Union'
+            if isinstance(contributor,list): contributor='; '.join(map(str,contributor))
+            year=md.get('year') or md.get('date') or d.get('year') or d.get('date') or ''
+            volume=md.get('volume') or ''
+            edition=md.get('edition') or ''
+            series=md.get('series') or ''
+            # pages only from explicit metadata/file fields, never infer from file size
+            pages=md.get('pages') or md.get('page_count') or ''
+            direct='https://archive.org/download/{}/{}'.format(ident,urllib.parse.quote(pdf['name']))
+            rec={'identifier':ident,'title':title,'creator':creator,'year':year,'subject':subj,'language':md.get('language',''),'contributor':contributor,'volume':volume,'edition':edition,'series':series,'pages':pages,'pdf_name':pdf['name'],'direct_pdf':direct,'item_link':'https://archive.org/details/'+ident,'score':score({'title':title,'subject':subj})}
+            out.append(rec)
+          with open('gtu_candidates.jsonl','w',encoding='utf-8') as f:
+            for x in out: f.write(json.dumps(x,ensure_ascii=False)+'\n')
+          with open('gtu_stats.json','w') as f: json.dump({'search_hits_examined':examined,'unique_search_docs':len(docs),'metadata_checked':meta_checked,'verified_public_pdf_candidates':len(out)},f)
+          print(json.dumps({'search_hits_examined':examined,'unique_search_docs':len(docs),'metadata_checked':meta_checked,'verified_public_pdf_candidates':len(out)}))
+          PY
+          python /tmp/mine.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-inventory-candidates-20260823
+          path: |
+            gtu_candidates.jsonl
+            gtu_stats.json
+          compression-level: 6
