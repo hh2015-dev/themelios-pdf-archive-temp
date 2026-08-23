@@ -5,54 +5,29 @@ on:
     types: [opened, synchronize, reopened]
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   fetch-archive-pdfs:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: main
-      - name: Download verified PDFs from Archive.org only
+      - name: Download original PDF from Archive.org
         shell: bash
         run: |
-          set -u
+          set -euo pipefail
           mkdir -p archive_bridge
-          cat > /tmp/items.tsv <<'EOF'
-          catalogueofsyria0000wwri	https://archive.org/download/catalogueofsyria0000wwri/catalogueofsyria0000wwri.pdf
-          grammarofnewtest0001wine	https://archive.org/download/grammarofnewtest0001wine/grammarofnewtest0001wine.pdf
-          grammarofnewtest0002wine	https://archive.org/download/grammarofnewtest0002wine/grammarofnewtest0002wine.pdf
-          palaeographyofgr0000fred	https://archive.org/download/palaeographyofgr0000fred/palaeographyofgr0000fred.pdf
-          hebrewenglishlex0000edwa	https://archive.org/download/hebrewenglishlex0000edwa/hebrewenglishlex0000edwa.pdf
-          familypicodexale0000unse	https://archive.org/download/familypicodexale0000unse/familypicodexale0000unse.pdf
-          horaehebraicaeet0001ligh	https://archive.org/download/horaehebraicaeet0001ligh/horaehebraicaeet0001ligh.pdf
-          adametsonlignage0000defr	https://archive.org/download/adametsonlignage0000defr/adametsonlignage0000defr.pdf
-          EOF
-          while IFS=$'\t' read -r id url; do
-            echo "FETCH $id"
-            tmp="archive_bridge/${id}.part"
-            out="archive_bridge/${id}.pdf"
-            if [ -f "$out" ] && [ "$(head -c 5 "$out" 2>/dev/null || true)" = "%PDF-" ]; then
-              echo "EXISTS $id $(stat -c%s "$out")"
-              continue
-            fi
-            code=$(curl -L --retry 2 --connect-timeout 20 --max-time 300 -A 'Mozilla/5.0' -sS -w '%{http_code}' -o "$tmp" "$url" || true)
-            sig=$(head -c 5 "$tmp" 2>/dev/null || true)
-            if [ "$code" = "200" ] && [ "$sig" = "%PDF-" ]; then
-              mv "$tmp" "$out"
-              echo "OK $id $(stat -c%s "$out")"
-            else
-              echo "SKIP $id HTTP=$code SIG=$sig"
-              rm -f "$tmp"
-            fi
-          done < /tmp/items.tsv
-          ls -lh archive_bridge || true
-      - name: Upload PDF bundle artifact
+          id='achtsermon00luth'
+          url='https://archive.org/download/achtsermon00luth/achtsermon00luth.pdf'
+          out="archive_bridge/${id}.pdf"
+          curl -L --retry 3 --connect-timeout 20 --max-time 300 -A 'Mozilla/5.0' -fSs -o "$out" "$url"
+          [ "$(head -c 5 "$out")" = "%PDF-" ]
+          sha256sum "$out"
+          stat -c 'SIZE=%s' "$out"
+      - name: Upload original PDF artifact
         uses: actions/upload-artifact@v4
         with:
-          name: archive-pdf-bridge-bundle
-          path: archive_bridge/*.pdf
+          name: achtsermon00luth-original-pdf
+          path: archive_bridge/achtsermon00luth.pdf
           compression-level: 0
           retention-days: 1
           if-no-files-found: error
