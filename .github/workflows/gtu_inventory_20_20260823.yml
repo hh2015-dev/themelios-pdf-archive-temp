@@ -1,0 +1,75 @@
+name: GTU inventory discovery 20
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mine and verify GTU candidates
+        shell: bash
+        run: |
+          cat > /tmp/mine.py <<'PY'
+          import json, urllib.parse, urllib.request, re, time
+          base='https://archive.org/advancedsearch.php'
+          queries=[
+            '(title:(manuscript OR codex OR papyri OR textual OR criticism) OR subject:(manuscript OR papyri OR textual))',
+            '(title:(hebrew OR aramaic OR syriac OR semitic OR targum OR talmud OR mishnah) OR subject:(hebrew OR aramaic OR syriac OR semitic))',
+            '(title:(septuagint OR greek OR gospel OR testament OR psalms OR prophets OR commentary) OR subject:(septuagint OR biblical OR bible))',
+            '(title:(assyrian OR babylonian OR ugarit OR egypt OR archaeology OR palestine) OR subject:(assyrian OR babylonian OR archaeology))',
+            '(title:(calvin OR luther OR origen OR augustine OR chrysostom OR irenaeus) OR subject:(patristics OR reformation))',
+            '(title:(lexicon OR grammar OR concordance OR bibliography) OR subject:(lexicon OR grammar))'
+          ]
+          seen={}; examined=0
+          for qi,q0 in enumerate(queries):
+            q=f'collection:graduatetheologicalunion AND format:"Text PDF" AND {q0}'
+            for page in (2,4,6,8,10):
+              params={'q':q,'fl[]':['identifier','title','creator','date','year','volume','subject','language','contributor'],'rows':100,'page':page,'output':'json','sort[]':'identifier asc'}
+              url=base+'?'+urllib.parse.urlencode(params,doseq=True)
+              try:
+                with urllib.request.urlopen(url,timeout=30) as r: data=json.load(r)
+              except Exception as e:
+                print('SEARCH_ERROR',qi,page,repr(e)); continue
+              docs=data.get('response',{}).get('docs',[]); examined += len(docs)
+              for d in docs: seen.setdefault(d.get('identifier',''),d)
+          kwsA=re.compile(r'(?i)\b(bible|biblical|testament|hebrew|aramaic|syriac|semitic|septuagint|lxx|greek|gospel|psalm|isaiah|jeremiah|ezekiel|daniel|job|genesis|exodus|pentateuch|prophet|targum|talmud|mishnah|qumran|scroll|apocryph|pseudepig|josephus|philo|manuscript|codex|papyr|textual|archaeolog|assyri|babylon|akkad|ugarit|lexicon|grammar|concordance|commentar|calvin|luther|origen|augustine|chrysostom|irenaeus)\b')
+          out=[]
+          for ident,d in list(seen.items()):
+            if not ident: continue
+            text=' '.join(str(d.get(k,'')) for k in ('title','creator','subject'))
+            score=len(kwsA.findall(text))
+            if score<1: continue
+            try:
+              with urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident),timeout=25) as r: m=json.load(r)
+            except Exception: continue
+            md=m.get('metadata',{})
+            coll=md.get('collection',[])
+            if isinstance(coll,str): coll=[coll]
+            if 'graduatetheologicalunion' not in coll: continue
+            if str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true': continue
+            pdfs=[]
+            for f in m.get('files',[]):
+              n=f.get('name',''); priv=str(f.get('private','false')).lower()=='true'
+              if priv or not n.lower().endswith('.pdf') or n.lower().endswith('encrypted.pdf') or n.lower().endswith('.lcpdf'): continue
+              pdfs.append((n,f.get('size','')))
+            if not pdfs: continue
+            title=md.get('title') or d.get('title','')
+            creator=md.get('creator') or d.get('creator','')
+            year=md.get('date') or md.get('year') or d.get('date') or d.get('year') or ''
+            vol=md.get('volume','')
+            subj=md.get('subject',[])
+            if isinstance(subj,list): subj='; '.join(map(str,subj[:8]))
+            contributor=md.get('contributor','')
+            pages=md.get('imagecount') or md.get('page-progression') or ''
+            # Prefer a canonical identifier.pdf when present, otherwise first public PDF.
+            pdf=next((x for x in pdfs if x[0]==ident+'.pdf'),pdfs[0])
+            out.append({'score':score,'id':ident,'title':title,'creator':creator,'year':year,'volume':vol,'subject':subj,'contributor':contributor,'pages':pages,'pdf':pdf[0],'pdf_size':pdf[1]})
+            if len(out)>=180: break
+          out.sort(key=lambda x:(-x['score'],str(x['year']),x['title']))
+          print('EXAMINED_SEARCH_ROWS='+str(examined))
+          print('UNIQUE_SEARCH_IDS='+str(len(seen)))
+          print('VERIFIED_ELIGIBLE='+str(len(out)))
+          print('===CANDIDATES_JSON===')
+          for x in out[:100]: print(json.dumps(x,ensure_ascii=False))
+          PY
+          python /tmp/mine.py
