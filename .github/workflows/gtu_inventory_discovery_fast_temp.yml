@@ -1,0 +1,39 @@
+name: GTU inventory discovery fast temp
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  discover-fast:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Broad GTU advanced-search inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, urllib.parse, urllib.request
+          searches=[
+           ('collection:graduatetheologicalunion AND mediatype:texts',1),
+           ('collection:graduatetheologicalunion AND mediatype:texts',4),
+           ('collection:graduatetheologicalunion AND mediatype:texts',8),
+           ('collection:graduatetheologicalunion AND (subject:(Bible OR Biblical OR Testament OR Hebrew OR Greek OR Syriac OR Aramaic))',1),
+           ('collection:graduatetheologicalunion AND (subject:(Judaism OR Talmud OR Rabbinic OR Semitic OR Archaeology))',1),
+           ('collection:graduatetheologicalunion AND (subject:(Theology OR Church OR Reformation OR Patristic OR Missions))',2),
+           ('collection:graduatetheologicalunion AND (title:(commentary OR grammar OR lexicon OR concordance OR manuscript OR theology))',2),
+           ('collection:graduatetheologicalunion AND year:[1800 TO 1899] AND mediatype:texts',3),
+           ('collection:graduatetheologicalunion AND year:[1900 TO 1949] AND mediatype:texts',3),
+           ('collection:graduatetheologicalunion AND year:[1950 TO 1999] AND mediatype:texts',2)
+          ]
+          docs={}
+          for q,page in searches:
+            p={'q':q,'fl[]':['identifier','title','creator','date','year','language','subject','volume','edition','series','contributor'],'rows':'100','page':str(page),'output':'json','sort[]':'identifier asc'}
+            u='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(p,doseq=True)
+            try:
+              with urllib.request.urlopen(u,timeout=25) as r: d=json.load(r)
+            except Exception as e:
+              print('QUERYERR',repr(e)); continue
+            for x in d.get('response',{}).get('docs',[]): docs[x['identifier']]=x
+          print('CANDIDATES_EXAMINED',len(docs))
+          for x in docs.values():
+            print('REC\t'+json.dumps(x,ensure_ascii=False,separators=(',',':')))
+          PY
