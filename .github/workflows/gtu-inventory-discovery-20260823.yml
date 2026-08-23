@@ -6,38 +6,34 @@ jobs:
   discover:
     runs-on: ubuntu-latest
     steps:
-      - name: Mine GTU collection and verify public PDFs
+      - name: Mine diverse GTU subjects and verify public PDFs
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
           import json, urllib.parse, urllib.request
           from concurrent.futures import ThreadPoolExecutor, as_completed
-          queries = [
-            'collection:graduatetheologicalunion AND title:(biblical OR bible OR testament OR gospel OR psalm OR isaiah OR genesis OR exodus OR jeremiah OR ezekiel OR daniel OR prophets)',
-            'collection:graduatetheologicalunion AND title:(hebrew OR aramaic OR syriac OR semitic OR chaldee OR targum OR talmud OR mishnah OR rabbinic)',
-            'collection:graduatetheologicalunion AND title:(greek OR septuagint OR papyri OR manuscript OR textual OR criticism OR lexicon OR grammar OR concordance)',
-            'collection:graduatetheologicalunion AND title:(archaeology OR assyrian OR babylonian OR akkadian OR ugarit OR palestine OR egyptian OR cuneiform)',
-            'collection:graduatetheologicalunion AND title:(philo OR josephus OR apocrypha OR pseudepigrapha OR maccabees OR qumran OR scrolls)',
-            'collection:graduatetheologicalunion AND title:(commentary OR commentaries OR interpretation OR exegesis OR exegetical)',
-            'collection:graduatetheologicalunion AND title:(patristic OR fathers OR origen OR augustine OR chrysostom OR irenaeus OR tertullian OR eusebius OR ephraem)',
-            'collection:graduatetheologicalunion AND title:(calvin OR luther OR reformation OR reformers)',
-            'collection:graduatetheologicalunion AND title:(journal OR quarterly OR studies OR review OR bulletin)',
-            'collection:graduatetheologicalunion AND subject:(Bible OR Biblical OR Hebrew OR Greek OR Syriac OR Aramaic OR Septuagint OR manuscripts OR archaeology)'
+          terms=[
+            '"Old Testament in Greek"','Septuagint','"Greek New Testament"','"textual criticism"','codex','manuscript',
+            'Syriac','Aramaic','"Hebrew grammar"','"Hebrew lexicon"','Targum','Mishnah','Talmud','papyri',
+            'Apocrypha','Pseudepigrapha','Josephus','Philo','Assyrian','Babylonian','Akkadian','Ugaritic',
+            '"biblical archaeology"','Palestine','Origen','Chrysostom','Irenaeus','Eusebius','Calvin','Luther',
+            '"Journal of Biblical Literature"','"New Testament Studies"','"Expository Times"','Expositor'
           ]
-          docs_by_id={}; examined=0
-          for qi,q in enumerate(queries):
-            for page in (2,5,9):
-              params={'q':q,'fl[]':['identifier','title','creator','date','year','volume','subject','language','contributor'],'rows':'40','page':str(page),'output':'json','sort[]':'identifier asc'}
-              url='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(params,doseq=True)
-              try: data=json.load(urllib.request.urlopen(url,timeout=12))
-              except Exception as e: print('SEARCHERR',qi,page,e); continue
-              docs=data.get('response',{}).get('docs',[]); examined += len(docs)
-              for d in docs:
-                if d.get('identifier'): docs_by_id.setdefault(d['identifier'],d)
+          docs={}; examined=0
+          for term in terms:
+            q=f'collection:graduatetheologicalunion AND (title:({term}) OR subject:({term}))'
+            params={'q':q,'fl[]':['identifier','title','creator','date','year','volume','subject','language','contributor'],'rows':'12','page':'1','output':'json','sort[]':'date asc'}
+            url='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(params,doseq=True)
+            try: data=json.load(urllib.request.urlopen(url,timeout=25))
+            except Exception as e: print('SEARCHERR',term,e); continue
+            arr=data.get('response',{}).get('docs',[]); examined+=len(arr)
+            for d in arr:
+              ident=d.get('identifier','')
+              if ident and not ident.startswith('american-bible-society-record'): docs.setdefault(ident,d)
           def verify(pair):
             ident,d=pair
-            try: meta=json.load(urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident),timeout=12))
+            try: meta=json.load(urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident),timeout=25))
             except Exception: return None
             md=meta.get('metadata',{}); coll=md.get('collection',[])
             if isinstance(coll,str): coll=[coll]
@@ -50,13 +46,13 @@ jobs:
             if not pdf: return None
             return {'identifier':ident,'title':md.get('title',d.get('title','')),'creator':md.get('creator',d.get('creator','')),'date':md.get('date',d.get('date',d.get('year',''))),'volume':md.get('volume',d.get('volume','')),'subject':md.get('subject',d.get('subject','')),'language':md.get('language',d.get('language','')),'contributor':md.get('contributor',d.get('contributor','')),'pages':md.get('imagecount') or md.get('numpages') or '','pdf':pdf}
           verified=[]
-          with ThreadPoolExecutor(max_workers=32) as ex:
-            futs=[ex.submit(verify,p) for p in list(docs_by_id.items())[:260]]
+          with ThreadPoolExecutor(max_workers=20) as ex:
+            futs=[ex.submit(verify,p) for p in docs.items()]
             for fut in as_completed(futs):
               r=fut.result()
               if r: verified.append(r)
-          verified.sort(key=lambda r:r['identifier'])
-          print('EXAMINED='+str(examined)); print('UNIQUE='+str(len(docs_by_id))); print('VERIFIED='+str(len(verified)))
+          verified.sort(key=lambda r:(str(r['date']),r['title']))
+          print('EXAMINED='+str(examined)); print('UNIQUE='+str(len(docs))); print('VERIFIED='+str(len(verified)))
           def s(v): return '; '.join(map(str,v)) if isinstance(v,list) else str(v or '')
           for r in verified: print('GTU\t'+'\t'.join(s(r[k]).replace('\t',' ').replace('\n',' ') for k in ['identifier','title','creator','date','volume','pages','pdf','subject','language','contributor']))
           PY
