@@ -8,35 +8,31 @@ permissions:
   contents: read
 
 jobs:
-  fetch-archive-pdfs:
+  drive-credential-diagnostic:
     runs-on: ubuntu-latest
+    env:
+      RCLONE_CONFIG_SECRET: ${{ secrets.RCLONE_CONFIG }}
+      RCLONE_CONFIG_BASE64_SECRET: ${{ secrets.RCLONE_CONFIG_BASE64 }}
+      GOOGLE_SERVICE_ACCOUNT_JSON_SECRET: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+      GDRIVE_SERVICE_ACCOUNT_JSON_SECRET: ${{ secrets.GDRIVE_SERVICE_ACCOUNT_JSON }}
+      GOOGLE_CREDENTIALS_SECRET: ${{ secrets.GOOGLE_CREDENTIALS }}
+      GDRIVE_TOKEN_SECRET: ${{ secrets.GDRIVE_TOKEN }}
+      RCLONE_TOKEN_SECRET: ${{ secrets.RCLONE_TOKEN }}
     steps:
-      - name: Download four original PDFs from Archive.org
+      - name: Check whether an existing Drive credential is available
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p archive_bridge
-          cat > /tmp/items.tsv <<'EOF'
-          bookofcommonpray00revs	https://archive.org/download/bookofcommonpray00revs/bookofcommonpray00revs.pdf
-          alnetanqustiones00huet	https://archive.org/download/alnetanqustiones00huet/alnetanqustiones00huet.pdf
-          abhandlungenvond00reim	https://archive.org/download/abhandlungenvond00reim/abhandlungenvond00reim.pdf
-          b12788405	https://archive.org/download/b12788405/b12788405.pdf
-          EOF
-          ok=0
-          while IFS=$'\t' read -r id url; do
-            echo "FETCH $id"
-            out="archive_bridge/${id}.pdf"
-            curl -L --retry 3 --connect-timeout 20 --max-time 900 -A 'Mozilla/5.0' -fSs -o "$out" "$url"
-            [ "$(head -c 5 "$out")" = "%PDF-" ]
-            echo "OK $id SIZE=$(stat -c%s "$out") SHA256=$(sha256sum "$out" | cut -d' ' -f1)"
-            ok=$((ok+1))
-          done < /tmp/items.tsv
-          [ "$ok" -eq 4 ]
-      - name: Upload four-PDF artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: gtu-four-original-pdfs
-          path: archive_bridge/*.pdf
-          compression-level: 0
-          retention-days: 1
-          if-no-files-found: error
+          found=0
+          check() {
+            n="$1"; v="$2"
+            if [ -n "$v" ]; then echo "PRESENT:$n"; found=1; else echo "ABSENT:$n"; fi
+          }
+          check RCLONE_CONFIG "$RCLONE_CONFIG_SECRET"
+          check RCLONE_CONFIG_BASE64 "$RCLONE_CONFIG_BASE64_SECRET"
+          check GOOGLE_SERVICE_ACCOUNT_JSON "$GOOGLE_SERVICE_ACCOUNT_JSON_SECRET"
+          check GDRIVE_SERVICE_ACCOUNT_JSON "$GDRIVE_SERVICE_ACCOUNT_JSON_SECRET"
+          check GOOGLE_CREDENTIALS "$GOOGLE_CREDENTIALS_SECRET"
+          check GDRIVE_TOKEN "$GDRIVE_TOKEN_SECRET"
+          check RCLONE_TOKEN "$RCLONE_TOKEN_SECRET"
+          echo "FOUND_ANY=$found"
