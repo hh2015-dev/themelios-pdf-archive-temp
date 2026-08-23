@@ -11,20 +11,32 @@ jobs:
   fetch-archive-pdfs:
     runs-on: ubuntu-latest
     steps:
-      - name: Download Reimarus alternate PDF from Archive.org
+      - name: Download four original PDFs from Archive.org
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p archive_bridge
-          curl -L --retry 3 --connect-timeout 20 --max-time 600 -A 'Mozilla/5.0' -fSs -o archive_bridge/10041651bsb_text.pdf 'https://archive.org/download/10041651bsb/10041651bsb_text.pdf'
-          [ "$(head -c 5 archive_bridge/10041651bsb_text.pdf)" = "%PDF-" ]
-          sha256sum archive_bridge/10041651bsb_text.pdf
-          stat -c 'SIZE=%s' archive_bridge/10041651bsb_text.pdf
-      - name: Upload Reimarus PDF artifact
+          cat > /tmp/items.tsv <<'EOF'
+          bookofcommonpray00revs	https://archive.org/download/bookofcommonpray00revs/bookofcommonpray00revs.pdf
+          alnetanqustiones00huet	https://archive.org/download/alnetanqustiones00huet/alnetanqustiones00huet.pdf
+          abhandlungenvond00reim	https://archive.org/download/abhandlungenvond00reim/abhandlungenvond00reim.pdf
+          b12788405	https://archive.org/download/b12788405/b12788405.pdf
+          EOF
+          ok=0
+          while IFS=$'\t' read -r id url; do
+            echo "FETCH $id"
+            out="archive_bridge/${id}.pdf"
+            curl -L --retry 3 --connect-timeout 20 --max-time 900 -A 'Mozilla/5.0' -fSs -o "$out" "$url"
+            [ "$(head -c 5 "$out")" = "%PDF-" ]
+            echo "OK $id SIZE=$(stat -c%s "$out") SHA256=$(sha256sum "$out" | cut -d' ' -f1)"
+            ok=$((ok+1))
+          done < /tmp/items.tsv
+          [ "$ok" -eq 4 ]
+      - name: Upload four-PDF artifact
         uses: actions/upload-artifact@v4
         with:
-          name: reimarus-1791-alt-pdf
-          path: archive_bridge/10041651bsb_text.pdf
+          name: gtu-four-original-pdfs
+          path: archive_bridge/*.pdf
           compression-level: 0
           retention-days: 1
           if-no-files-found: error
