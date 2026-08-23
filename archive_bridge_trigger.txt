@@ -1,1 +1,1 @@
-trigger archive.org PDF bridge
+trigger archive.org PDF bridge - artifact pass
