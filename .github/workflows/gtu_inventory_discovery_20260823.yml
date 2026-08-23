@@ -10,60 +10,47 @@ jobs:
         shell: bash
         run: |
           cat > /tmp/mine.py <<'PY'
-          import json, urllib.parse, urllib.request, time, re
+          import json, urllib.parse, urllib.request, re
+          from concurrent.futures import ThreadPoolExecutor, as_completed
           BASE='collection:graduatetheologicalunion AND format:"Text PDF"'
-          queries=[
-            ('bible',1),('testament',2),('hebrew',3),('greek',4),('syriac',2),('aramaic',3),
-            ('septuagint',1),('manuscript',4),('archaeology',3),('judaism',2),('rabbinic',1),
-            ('patristic',3),('reformation',4),('theology',2),('missions',3),('church history',4),
-            ('commentary',2),('lexicon',3),('grammar',4),('concordance',1),('apocrypha',2),
-            ('pseudepigrapha',3),('assyrian',4),('babylonian',2),('philo',3),('josephus',4),
-            ('augustine',2),('luther',3),('calvin',4),('biblical literature',1)
-          ]
+          queries=[('bible',1),('testament',2),('hebrew',3),('greek',4),('syriac',2),('aramaic',3),('septuagint',1),('manuscript',4),('archaeology',3),('judaism',2),('rabbinic',1),('patristic',3),('reformation',4),('theology',2),('missions',3),('church history',4),('commentary',2),('lexicon',3),('grammar',4),('concordance',1),('apocrypha',2),('pseudepigrapha',3),('assyrian',4),('babylonian',2),('philo',3),('josephus',4),('augustine',2),('luther',3),('calvin',4),('biblical literature',1)]
           seen={}; examined=0
           for term,page in queries:
             q=f'{BASE} AND (title:({term}) OR subject:({term}))'
             params={'q':q,'fl[]':['identifier','title','creator','date','year','language','subject','volume','contributor'],'rows':25,'page':page,'output':'json'}
             url='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(params,doseq=True)
             try:
-              with urllib.request.urlopen(url,timeout=30) as r: docs=json.load(r)['response']['docs']
+              with urllib.request.urlopen(url,timeout=20) as r: docs=json.load(r)['response']['docs']
             except Exception: continue
             examined += len(docs)
             for d in docs: seen.setdefault(d.get('identifier'),d)
-          out=[]
-          for ident,d in list(seen.items()):
-            if not ident: continue
+          def verify(pair):
+            ident,d=pair
+            if not ident: return None
             try:
-              with urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident),timeout=30) as r: m=json.load(r)
-            except Exception: continue
-            md=m.get('metadata',{})
-            coll=md.get('collection',[])
+              with urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident),timeout=20) as r: m=json.load(r)
+            except Exception: return None
+            md=m.get('metadata',{}); coll=md.get('collection',[])
             if isinstance(coll,str): coll=[coll]
-            if 'graduatetheologicalunion' not in coll: continue
-            if str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true': continue
+            if 'graduatetheologicalunion' not in coll: return None
+            if str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true': return None
             pdfs=[]
             for f in m.get('files',[]):
               n=f.get('name','')
               if not re.search(r'\.pdf$',n,re.I): continue
-              if str(f.get('private','false')).lower()=='true': continue
-              if re.search(r'(encrypted|\.lcpdf$)',n,re.I): continue
+              if str(f.get('private','false')).lower()=='true' or re.search(r'(encrypted|\.lcpdf$)',n,re.I): continue
               pdfs.append(f)
-            if not pdfs: continue
-            # prefer original or largest public PDF
-            pdfs.sort(key=lambda f:(str(f.get('source','')).lower()=='original', int(f.get('size') or 0)), reverse=True)
+            if not pdfs: return None
+            pdfs.sort(key=lambda f:(str(f.get('source','')).lower()=='original', int(f.get('size') or 0)),reverse=True)
             pf=pdfs[0]; pn=pf.get('name','')
-            direct='https://archive.org/download/'+urllib.parse.quote(ident,safe='')+'/'+urllib.parse.quote(pn)
-            out.append({
-              'identifier':ident,'title':md.get('title') or d.get('title'),'creator':md.get('creator') or d.get('creator'),
-              'date':md.get('date') or md.get('year') or d.get('date') or d.get('year'),'volume':md.get('volume') or d.get('volume'),
-              'edition':md.get('edition'),'series':md.get('series'),'language':md.get('language') or d.get('language'),
-              'subject':md.get('subject') or d.get('subject'),'contributor':md.get('contributor') or d.get('contributor'),
-              'item_link':'https://archive.org/details/'+ident,'direct_pdf':direct,
-              'pdf_name':pn,'pdf_size':pf.get('size'),'page_count':md.get('page-progression') and None,
-              'collection_verified':True
-            })
-            if len(out)>=180: break
-            time.sleep(.03)
+            return {'identifier':ident,'title':md.get('title') or d.get('title'),'creator':md.get('creator') or d.get('creator'),'date':md.get('date') or md.get('year') or d.get('date') or d.get('year'),'volume':md.get('volume') or d.get('volume'),'edition':md.get('edition'),'series':md.get('series'),'language':md.get('language') or d.get('language'),'subject':md.get('subject') or d.get('subject'),'contributor':md.get('contributor') or d.get('contributor'),'item_link':'https://archive.org/details/'+ident,'direct_pdf':'https://archive.org/download/'+urllib.parse.quote(ident,safe='')+'/'+urllib.parse.quote(pn),'pdf_name':pn,'pdf_size':pf.get('size'),'collection_verified':True}
+          out=[]
+          with ThreadPoolExecutor(max_workers=24) as ex:
+            futs=[ex.submit(verify,p) for p in seen.items()]
+            for f in as_completed(futs):
+              x=f.result()
+              if x: out.append(x)
+          out.sort(key=lambda x:(str(x.get('title','')).lower(),x['identifier']))
           with open('gtu_candidates.json','w',encoding='utf-8') as f: json.dump({'examined':examined,'unique_discovered':len(seen),'verified':len(out),'items':out},f,ensure_ascii=False,indent=2)
           print('examined',examined,'unique',len(seen),'verified',len(out))
           PY
