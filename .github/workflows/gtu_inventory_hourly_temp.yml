@@ -1,0 +1,83 @@
+name: GTU inventory hourly temp
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mine and verify GTU candidates
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, urllib.parse, urllib.request, time
+          queries = [
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:bible OR title:commentary OR title:testament OR title:scripture)',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:hebrew OR title:aramaic OR title:syriac OR title:semitic)',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:greek OR title:septuagint OR title:papyri OR title:manuscript)',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:talmud OR title:mishnah OR title:jewish OR title:judaism OR title:rabbinic)',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:assyrian OR title:babylonian OR title:ugarit OR title:archaeology OR title:palestine)',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:patristic OR title:church OR title:theology OR title:reformation OR title:luther OR title:calvin)',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:mission OR title:missions OR title:christian OR title:ecclesiastical)',
+            'collection:graduatetheologicalunion AND mediatype:texts AND year:[1800 TO 1899]',
+            'collection:graduatetheologicalunion AND mediatype:texts AND year:[1900 TO 1949]',
+            'collection:graduatetheologicalunion AND mediatype:texts AND year:[1950 TO 1999]'
+          ]
+          seen=set(); cand=[]
+          for qi,q in enumerate(queries):
+            for page in (1,3,6,10):
+              params={'q':q,'fl[]':['identifier','title','creator','date','year','language','volume'],'rows':'100','page':str(page),'output':'json'}
+              url='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(params,doseq=True)
+              try:
+                data=json.load(urllib.request.urlopen(url,timeout=30))
+              except Exception as e:
+                print('SEARCHERR',qi,page,e); continue
+              for d in data.get('response',{}).get('docs',[]):
+                ident=d.get('identifier')
+                if ident and ident not in seen:
+                  seen.add(ident); cand.append(d)
+          print('DISCOVERED',len(cand))
+          out=[]
+          for i,d in enumerate(cand[:700]):
+            ident=d['identifier']
+            try:
+              m=json.load(urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident),timeout=30))
+            except Exception as e:
+              continue
+            md=m.get('metadata',{})
+            coll=md.get('collection',[])
+            if isinstance(coll,str): coll=[coll]
+            if 'graduatetheologicalunion' not in coll: continue
+            pdfs=[]
+            for f in m.get('files',[]):
+              n=f.get('name','')
+              if not n.lower().endswith('.pdf'): continue
+              if 'encrypted' in n.lower() or n.lower().endswith('.lcpdf'): continue
+              if str(f.get('private','false')).lower()=='true': continue
+              pdfs.append((n,f.get('size')))
+            if not pdfs: continue
+            # prefer canonical identifier.pdf when available
+            pdf=next((x for x in pdfs if x[0]==ident+'.pdf'),pdfs[0])
+            title=md.get('title') or d.get('title') or ''
+            creator=md.get('creator') or d.get('creator') or ''
+            if isinstance(creator,list): creator='; '.join(map(str,creator))
+            date=md.get('date') or md.get('year') or d.get('date') or d.get('year') or ''
+            volume=md.get('volume') or d.get('volume') or ''
+            language=md.get('language') or d.get('language') or ''
+            if isinstance(language,list): language='; '.join(map(str,language))
+            subject=md.get('subject','')
+            if isinstance(subject,list): subject=' | '.join(map(str,subject[:8]))
+            pages=md.get('page-progression','')
+            # derive pages only from scandata/page count if explicit metadata field exists
+            pagecount=md.get('pages') or md.get('page_count') or md.get('imagecount') or ''
+            out.append({'identifier':ident,'title':title,'creator':creator,'date':date,'volume':volume,'language':language,'subject':subject,'pdf':pdf[0],'pdfsize':pdf[1] or '', 'pagecount':pagecount,'contributor':md.get('contributor',''),'publisher':md.get('publisher',''),'edition':md.get('edition',''),'series':md.get('series','')})
+            if len(out)>=220: break
+          with open('gtu_candidates.json','w',encoding='utf-8') as f: json.dump(out,f,ensure_ascii=False,indent=2)
+          print('VERIFIED_PUBLIC_PDF',len(out))
+          for x in out[:220]: print(json.dumps(x,ensure_ascii=False))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-candidates
+          path: gtu_candidates.json
