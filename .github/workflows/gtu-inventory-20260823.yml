@@ -10,98 +10,68 @@ jobs:
         shell: bash
         run: |
           cat > /tmp/gtu.py <<'PY'
-          import requests, urllib.parse, json, re, time
-          terms = [
-            'title:(lexicon OR grammar OR concordance) AND (hebrew OR aramaic OR syriac OR greek)',
-            'title:(septuagint OR lxx OR hexapla OR targum OR peshitta)',
-            'title:(textual criticism OR manuscripts OR manuscript OR papyri OR codex)',
-            'title:(dead sea OR qumran OR pseudepigrapha OR apocrypha OR maccabees)',
-            'title:(genesis OR exodus OR leviticus OR numbers OR deuteronomy OR joshua OR judges OR samuel OR kings)',
-            'title:(isaiah OR jeremiah OR ezekiel OR daniel OR hosea OR amos OR micah OR psalms OR proverbs OR job)',
-            'title:(matthew OR mark OR luke OR john OR acts OR romans OR corinthians OR galatians OR hebrews OR revelation)',
-            'title:(philo OR josephus OR mishnah OR talmud OR midrash)',
-            'title:(ugaritic OR akkadian OR assyrian OR babylonian OR cuneiform OR palestine archaeology)',
-            'title:(eusebius OR origen OR chrysostom OR augustine OR jerome OR irenaeus OR tertullian)',
-            'title:(calvin OR luther) AND (commentary OR commentaries OR sermons)',
-            'subject:(Bible) AND subject:(Criticism OR Commentaries OR Language)',
-            'subject:(Greek language, Biblical)',
-            'subject:(Hebrew language) AND (grammar OR lexicon OR dictionary)',
-            'subject:(Aramaic language OR Syriac language)',
-            'subject:(Dead Sea scrolls OR Jews History 586 B.C.-70 A.D.)',
-            'subject:(Assyriology OR Babylonia OR Palestine Antiquities)',
-            'title:(Bible dictionary OR biblical archaeology OR biblical theology)',
-            'title:(international critical commentary OR critical and exegetical commentary)',
-            'title:(expository times OR biblical archaeology review OR journal of biblical literature OR scripture)'
-          ]
+          import requests, urllib.parse, concurrent.futures
+          terms=[
+          'title:(lexicon OR grammar OR concordance) AND (hebrew OR aramaic OR syriac OR greek)',
+          'title:(septuagint OR lxx OR hexapla OR targum OR peshitta)',
+          'title:(textual criticism OR manuscript OR manuscripts OR papyri OR codex)',
+          'title:(dead sea OR qumran OR pseudepigrapha OR apocrypha OR maccabees)',
+          'title:(genesis OR exodus OR leviticus OR numbers OR deuteronomy OR joshua OR judges OR samuel OR kings)',
+          'title:(isaiah OR jeremiah OR ezekiel OR daniel OR hosea OR amos OR micah OR psalms OR proverbs OR job)',
+          'title:(matthew OR mark OR luke OR john OR acts OR romans OR corinthians OR galatians OR hebrews OR revelation)',
+          'title:(philo OR josephus OR mishnah OR talmud OR midrash)',
+          'title:(ugaritic OR akkadian OR assyrian OR babylonian OR cuneiform OR palestine)',
+          'title:(eusebius OR origen OR chrysostom OR augustine OR jerome OR irenaeus OR tertullian)',
+          'title:(calvin OR luther) AND (commentary OR commentaries OR sermons)',
+          'subject:(Bible) AND subject:(Criticism OR Commentaries OR Language)',
+          'subject:(Greek language, Biblical)','subject:(Hebrew language)','subject:(Aramaic language OR Syriac language)',
+          'subject:(Dead Sea scrolls)','subject:(Assyriology OR Babylonia OR Palestine Antiquities)',
+          'title:(Bible dictionary OR biblical archaeology OR biblical theology)',
+          'title:(critical and exegetical commentary)','title:(expository times OR journal of biblical literature OR scripture)']
           seen={}
+          def search(q,page=1,rows=60):
+            p={'q':q,'fl[]':['identifier','title','creator','date','year','language','subject','volume','contributor'],'rows':rows,'page':page,'output':'json'}
+            try:return requests.get('https://archive.org/advancedsearch.php',params=p,timeout=12).json()['response']['docs']
+            except:return []
           for t in terms:
-            q=f'collection:graduatetheologicalunion AND mediatype:texts AND ({t})'
-            params={'q':q,'fl[]':['identifier','title','creator','date','year','language','subject','volume','contributor'],'rows':80,'page':1,'output':'json'}
-            try:
-              r=requests.get('https://archive.org/advancedsearch.php',params=params,timeout=30); r.raise_for_status()
-              docs=r.json()['response']['docs']
-            except Exception as e:
-              continue
-            for d in docs:
-              seen.setdefault(d.get('identifier'),d)
-          # also sample distant corpus pages by identifier order, then keyword-rank locally
-          for page in [7,13,19,25,31,37,43,49]:
-            params={'q':'collection:graduatetheologicalunion AND mediatype:texts','fl[]':['identifier','title','creator','date','year','language','subject','volume','contributor'],'rows':100,'page':page,'sort[]':'identifier asc','output':'json'}
-            try:
-              docs=requests.get('https://archive.org/advancedsearch.php',params=params,timeout=30).json()['response']['docs']
-            except: continue
-            for d in docs:
+            for d in search('collection:graduatetheologicalunion AND mediatype:texts AND ('+t+')'):
+              if d.get('identifier'): seen.setdefault(d['identifier'],d)
+          for page in [9,17,25,33,41,49]:
+            for d in search('collection:graduatetheologicalunion AND mediatype:texts',page,100):
               txt=' '.join(str(d.get(k,'')) for k in ['title','subject','creator']).lower()
-              keys=['bible','biblical','hebrew','aramaic','syriac','greek','septuagint','targum','peshitta','manuscript','papyri','qumran','talmud','mishnah','philo','josephus','assyri','babylon','ugarit','commentar','theology','patrist','reformation','luther','calvin','archaeolog']
-              if any(k in txt for k in keys): seen.setdefault(d.get('identifier'),d)
+              if any(k in txt for k in ['bible','biblical','hebrew','aramaic','syriac','greek','septuagint','targum','manuscript','papyri','qumran','talmud','mishnah','philo','josephus','assyri','babylon','ugarit','commentar','patrist','reformation','calvin','luther','archaeolog']): seen.setdefault(d['identifier'],d)
           def score(d):
-            txt=' '.join(str(d.get(k,'')) for k in ['title','subject','creator']).lower()
-            w=[('septuagint',10),('textual criticism',10),('manuscript',9),('hebrew',8),('aramaic',8),('syriac',8),('greek',7),('qumran',10),('dead sea',10),('targum',9),('peshitta',9),('lexicon',8),('grammar',7),('concordance',7),('biblical',6),('bible',5),('commentar',5),('philo',6),('josephus',6),('talmud',7),('mishnah',7),('assyri',6),('babylon',6),('ugarit',7),('archaeolog',5),('calvin',4),('luther',4),('eusebius',4),('origen',4)]
-            return sum(v for k,v in w if k in txt)
-          cand=sorted([d for k,d in seen.items() if k],key=score,reverse=True)
-          out=[]
-          examined=0
-          for d in cand[:220]:
-            ident=d['identifier']; examined += 1
-            try:
-              m=requests.get('https://archive.org/metadata/'+urllib.parse.quote(ident),timeout=30).json()
-            except: continue
-            md=m.get('metadata',{})
-            coll=md.get('collection',[])
-            if isinstance(coll,str): coll=[coll]
-            if 'graduatetheologicalunion' not in coll: continue
-            # exclude restricted/borrow-only/encrypted; require public plain pdf
-            if str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true': continue
-            pdfs=[]
+            txt=' '.join(str(d.get(k,'')) for k in ['title','subject','creator']).lower(); s=0
+            for k,v in [('septuagint',12),('textual criticism',12),('manuscript',10),('hebrew',9),('aramaic',9),('syriac',9),('greek',8),('qumran',12),('dead sea',12),('targum',10),('peshitta',10),('lexicon',9),('grammar',8),('concordance',8),('biblical',7),('bible',5),('commentar',6),('philo',7),('josephus',7),('talmud',8),('mishnah',8),('assyri',7),('babylon',7),('ugarit',8),('archaeolog',6),('calvin',5),('luther',5),('origen',5)]:
+              if k in txt:s+=v
+            return s
+          cand=sorted(seen.values(),key=score,reverse=True)[:180]
+          def verify(d):
+            ident=d['identifier']
+            try:m=requests.get('https://archive.org/metadata/'+urllib.parse.quote(ident),timeout=10).json()
+            except:return None
+            md=m.get('metadata',{}); coll=md.get('collection',[]); coll=[coll] if isinstance(coll,str) else coll
+            if 'graduatetheologicalunion' not in coll:return None
+            if str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true':return None
+            pdf=[]
             for f in m.get('files',[]):
-              n=f.get('name','')
-              if not n.lower().endswith('.pdf'): continue
-              if n.lower().endswith('.lcpdf') or 'encrypted' in n.lower(): continue
-              if str(f.get('private','false')).lower()=='true': continue
-              pdfs.append(f)
-            if not pdfs: continue
-            # prefer original/plain item pdf, not text pdf if multiple
-            pdf=sorted(pdfs,key=lambda f:(('_text.pdf' in f.get('name','').lower()), len(f.get('name',''))))[0]
-            pages=md.get('page-progression','')
-            # derive page count only from verified scandata/page_numbers if an explicit numeric metadata field exists
-            pagecount=md.get('pages') or md.get('page_count') or ''
-            rec={
-              'id':ident,'title':md.get('title') or d.get('title',''),'creator':md.get('creator') or d.get('creator',''),
-              'date':md.get('date') or md.get('year') or d.get('date') or d.get('year',''),'language':md.get('language') or d.get('language',''),
-              'subject':md.get('subject') or d.get('subject',''),'volume':md.get('volume') or d.get('volume',''),
-              'contributor':md.get('contributor') or d.get('contributor',''),'pdf':pdf.get('name',''),'pagecount':pagecount,'score':score(d)
-            }
-            out.append(rec)
-            if len(out)>=100: break
-          print('EXAMINED',examined,'VERIFIED',len(out))
-          for r in out:
-            def s(x):
-              if isinstance(x,list): x='; '.join(map(str,x))
+              n=f.get('name',''); lo=n.lower()
+              if lo.endswith('.pdf') and not lo.endswith('.lcpdf') and 'encrypted' not in lo and str(f.get('private','false')).lower()!='true': pdf.append(f)
+            if not pdf:return None
+            p=sorted(pdf,key=lambda f:(('_text.pdf' in f.get('name','').lower()),len(f.get('name',''))))[0]
+            return [ident,score(d),md.get('title') or d.get('title',''),md.get('creator') or d.get('creator',''),md.get('date') or md.get('year') or d.get('date') or d.get('year',''),md.get('volume') or d.get('volume',''),md.get('language') or d.get('language',''),md.get('subject') or d.get('subject',''),md.get('contributor') or d.get('contributor',''),p.get('name',''),md.get('pages') or md.get('page_count') or '']
+          with concurrent.futures.ThreadPoolExecutor(max_workers=24) as ex:
+            rows=[r for r in ex.map(verify,cand) if r]
+          rows=sorted(rows,key=lambda r:r[1],reverse=True)
+          print('EXAMINED',len(cand),'VERIFIED',len(rows))
+          for r in rows[:100]:
+            def clean(x):
+              if isinstance(x,list):x='; '.join(map(str,x))
               return str(x).replace('\t',' ').replace('\n',' ')
-            print('\t'.join(s(r[k]) for k in ['id','score','title','creator','date','volume','language','subject','contributor','pdf','pagecount']))
+            print('\t'.join(clean(x) for x in r))
           PY
           python3 /tmp/gtu.py | tee /tmp/gtu-results.tsv
       - uses: actions/upload-artifact@v4
         with:
-          name: gtu-results
+          name: gtu-results-fast
           path: /tmp/gtu-results.tsv
