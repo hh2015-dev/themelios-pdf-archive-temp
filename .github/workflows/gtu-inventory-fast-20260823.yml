@@ -1,0 +1,55 @@
+name: TEMP GTU Inventory Fast 20260823
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fast GTU discovery and verification
+        shell: bash
+        run: |
+          python - <<'PY'
+          import requests,json,re,time
+          from urllib.parse import quote
+          terms=['hebrew bible','syriac','septuagint','textual criticism','biblical archaeology','apocrypha','targum','assyrian','commentary','biblical literature','church history','reformation']
+          docs={}; hits=0
+          for term in terms:
+            q=f'collection:graduatetheologicalunion AND mediatype:texts AND (title:("{term}") OR subject:("{term}"))'
+            for page in (1,2):
+              p=[('q',q),('rows','50'),('page',str(page)),('output','json'),('sort[]','date desc')]
+              for f in ['identifier','title','creator','year','volume','language','subject']: p.append(('fl[]',f))
+              try:
+                arr=requests.get('https://archive.org/advancedsearch.php',params=p,timeout=20).json()['response']['docs']
+              except Exception: continue
+              hits+=len(arr)
+              for d in arr:
+                if d.get('identifier'): docs[d['identifier']]=d
+          out=[]
+          for d in list(docs.values())[:140]:
+            ident=d['identifier']
+            try: m=requests.get('https://archive.org/metadata/'+quote(ident,safe=''),timeout=15).json()
+            except Exception: continue
+            md=m.get('metadata',{}); coll=md.get('collection',[])
+            if isinstance(coll,str): coll=[coll]
+            if 'graduatetheologicalunion' not in coll: continue
+            if str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true': continue
+            fs=[]
+            for f in m.get('files',[]):
+              n=f.get('name','')
+              if re.search(r'\.pdf$',n,re.I) and not re.search(r'(lcpdf|encrypted)\.pdf$',n,re.I) and str(f.get('private','false')).lower()!='true': fs.append((int(f.get('size') or 0),n))
+            if not fs: continue
+            pdf=max(fs)[1]
+            def val(k,default=''):
+              v=md.get(k,default)
+              if isinstance(v,list): return '; '.join(map(str,v))
+              return str(v or '')
+            out.append({'identifier':ident,'title':val('title',d.get('title','')),'creator':val('creator',d.get('creator','')),'year':val('year',val('date',d.get('year',''))),'volume':val('volume',d.get('volume','')),'edition':val('edition'),'series':val('series'),'language':val('language',d.get('language','')),'subject':val('subject',d.get('subject','')),'pages':val('imagecount'),'contributor':val('contributor','Internet Archive; Graduate Theological Union collection'),'pdf_name':pdf,'item_link':'https://archive.org/details/'+ident,'pdf_link':'https://archive.org/download/'+ident+'/'+quote(pdf)})
+            if len(out)>=80: break
+          json.dump({'examined_search_hits':hits,'unique_candidates':len(docs),'verified_candidates':len(out),'items':out},open('gtu_fast.json','w'),ensure_ascii=False,indent=2)
+          print('hits',hits,'unique',len(docs),'verified',len(out))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-fast-20260823
+          path: gtu_fast.json
