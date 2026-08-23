@@ -6,75 +6,72 @@ jobs:
   discover:
     runs-on: ubuntu-latest
     steps:
-      - name: Mine GTU collection and verify public PDFs
+      - name: Mine diversified GTU sample and verify PDFs
         shell: bash
         run: |
           cat > /tmp/mine.py <<'PY'
-          import requests, json, re
+          import requests,json,re
           from collections import OrderedDict
-          from concurrent.futures import ThreadPoolExecutor, as_completed
-          base='https://archive.org/advancedsearch.php'
+          from concurrent.futures import ThreadPoolExecutor,as_completed
           queries=[
-            'title:(bible OR biblical OR testament OR gospel OR psalm OR isaiah OR jeremiah OR ezekiel OR daniel OR job OR genesis)',
-            'title:(hebrew OR aramaic OR syriac OR semitic OR akkadian OR assyrian OR babylonian OR ugaritic OR coptic OR ethiopic)',
-            'title:(greek OR septuagint OR papyri OR manuscript OR codex OR textual OR criticism OR lexicon OR grammar OR concordance)',
-            'title:(targum OR talmud OR mishnah OR midrash OR philo OR josephus OR qumran OR maccabee OR apocrypha OR pseudepigrapha)',
-            'title:(commentary OR commentaries OR exegetical OR exposition OR interpretation OR hermeneutic)',
-            'title:(archaeology OR Palestine OR Israel OR Canaan OR Mesopotamia OR Egypt OR Assyria OR Babylonia OR Ugarit)',
-            'title:(Augustine OR Chrysostom OR Origen OR Jerome OR Irenaeus OR Eusebius OR Tertullian OR Calvin OR Luther OR Reformation)',
-            'subject:(Bible OR Hebrew OR Aramaic OR Syriac OR Septuagint OR textual criticism OR manuscripts OR Judaism OR Assyriology)'
+            ('biblical','title:(testament OR gospel OR psalms OR isaiah OR jeremiah OR ezekiel OR daniel OR genesis OR exodus)'),
+            ('languages','title:(hebrew OR aramaic OR syriac OR semitic OR akkadian OR ugaritic OR coptic)'),
+            ('textual','title:(septuagint OR textual OR manuscript OR codex OR papyri OR greek OR lexicon OR grammar)'),
+            ('jewish','title:(targum OR talmud OR mishnah OR midrash OR philo OR josephus OR qumran OR apocrypha OR pseudepigrapha)'),
+            ('ane','title:(archaeology OR assyria OR babylonia OR palestine OR canaan OR mesopotamia OR egypt)'),
+            ('patristic','title:(Augustine OR Origen OR Jerome OR Irenaeus OR Eusebius OR Tertullian OR Chrysostom)'),
+            ('reformation','title:(Calvin OR Luther OR Reformation OR commentary OR exegetical)'),
+            ('theology','title:(theology OR doctrine OR creed OR confession OR mission OR church history)')
           ]
-          seen=OrderedDict(); examined=0
-          session=requests.Session()
-          for q0 in queries:
-            q='collection:graduatetheologicalunion AND mediatype:texts AND ('+q0+')'
-            for page in (1,2,4,7):
-              try:
-                d=session.get(base,params={'q':q,'fl[]':['identifier','title','creator','date','year','language','volume','subject'],'rows':100,'page':page,'output':'json','sort[]':'identifier asc'},timeout=15).json()['response']['docs']
-              except Exception: continue
-              examined += len(d)
-              for x in d:
-                ident=x.get('identifier')
-                if ident: seen.setdefault(ident,x)
+          found=[]; examined=0
+          for idx,(bucket,q0) in enumerate(queries):
+            page=(2,4,6,8,10,12,14,16)[idx]
+            q='collection:graduatetheologicalunion AND mediatype:texts AND '+q0
+            try:
+              docs=requests.get('https://archive.org/advancedsearch.php',params={'q':q,'fl[]':['identifier','title','creator','date','year','language','volume','subject'],'rows':35,'page':page,'output':'json','sort[]':'identifier asc'},timeout=20).json()['response']['docs']
+            except Exception: docs=[]
+            examined += len(docs)
+            for x in docs:
+              if x.get('identifier'): found.append((bucket,x))
+          # stable unique while preserving cross-topic breadth
+          seen=set(); pairs=[]
+          for bucket,x in found:
+            if x['identifier'] not in seen:
+              seen.add(x['identifier']); pairs.append((bucket,x))
+          def flat(v): return '; '.join(map(str,v)) if isinstance(v,list) else (v or '')
           def verify(pair):
-            ident,x=pair
-            try: m=requests.get('https://archive.org/metadata/'+ident,timeout=15).json()
-            except Exception: return None
+            bucket,x=pair; ident=x['identifier']
+            try: m=requests.get('https://archive.org/metadata/'+ident,timeout=12).json()
+            except Exception:return None
             meta=m.get('metadata') or {}; coll=meta.get('collection',[])
             if isinstance(coll,str): coll=[coll]
-            if 'graduatetheologicalunion' not in coll: return None
+            if 'graduatetheologicalunion' not in coll:return None
             pdfs=[]
-            for f in (m.get('files') or []):
+            for f in m.get('files') or []:
               n=f.get('name','')
-              if not re.search(r'\.pdf$',n,re.I) or re.search(r'encrypted\.pdf$|\.lcpdf$',n,re.I): continue
-              if str(f.get('private','false')).lower()=='true': continue
+              if not re.search(r'\.pdf$',n,re.I) or re.search(r'encrypted\.pdf$|\.lcpdf$',n,re.I):continue
+              if str(f.get('private','false')).lower()=='true':continue
               pdfs.append(f)
-            if not pdfs: return None
+            if not pdfs:return None
             pdf=sorted(pdfs,key=lambda f:(('text pdf' in str(f.get('format','')).lower()),len(f.get('name',''))))[0]
-            def flat(v): return '; '.join(map(str,v)) if isinstance(v,list) else (v or '')
-            return {'identifier':ident,'title':flat(meta.get('title') or x.get('title')),'creator':flat(meta.get('creator') or x.get('creator')),
-              'year':flat(meta.get('year') or meta.get('date') or x.get('year') or x.get('date')),'volume':flat(meta.get('volume') or x.get('volume')),
-              'language':flat(meta.get('language') or x.get('language')),'subject':flat(meta.get('subject') or x.get('subject')),
-              'pdf':pdf.get('name',''),'pages':flat(meta.get('pages')),'imagecount':flat(meta.get('imagecount')),
-              'contributor':flat(meta.get('contributor')) or 'Internet Archive','collection':coll}
-          records=[]
-          pairs=list(seen.items())[:900]
-          with ThreadPoolExecutor(max_workers=28) as ex:
+            return {'bucket':bucket,'identifier':ident,'title':flat(meta.get('title') or x.get('title')),'creator':flat(meta.get('creator') or x.get('creator')),'year':flat(meta.get('year') or meta.get('date') or x.get('year') or x.get('date')),'volume':flat(meta.get('volume') or x.get('volume')),'language':flat(meta.get('language') or x.get('language')),'subject':flat(meta.get('subject') or x.get('subject')),'pdf':pdf.get('name',''),'pages':flat(meta.get('pages')),'imagecount':flat(meta.get('imagecount')),'contributor':flat(meta.get('contributor')) or 'Internet Archive','collection':coll}
+          out=[]
+          with ThreadPoolExecutor(max_workers=16) as ex:
             futs=[ex.submit(verify,p) for p in pairs]
             for f in as_completed(futs):
               r=f.result()
-              if r: records.append(r)
-          records.sort(key=lambda r:r['identifier'])
-          print(json.dumps({'examined':examined,'unique_candidates':len(seen),'metadata_checked':len(pairs),'verified':len(records),'records':records},ensure_ascii=False))
+              if r:out.append(r)
+          out.sort(key=lambda r:(r['bucket'],r['identifier']))
+          print(json.dumps({'examined':examined,'unique_candidates':len(pairs),'verified':len(out),'records':out},ensure_ascii=False))
           PY
           python /tmp/mine.py > gtu_candidates.json
           python - <<'PY'
           import json
-          d=json.load(open('gtu_candidates.json')); print('EXAMINED',d['examined'],'UNIQUE',d['unique_candidates'],'CHECKED',d['metadata_checked'],'VERIFIED',d['verified'])
-          for r in d['records'][:80]: print(r['identifier'],'\t',r['title'][:120])
+          d=json.load(open('gtu_candidates.json'));print('EXAMINED',d['examined'],'UNIQUE',d['unique_candidates'],'VERIFIED',d['verified'])
+          for r in d['records']:print(r['bucket'],r['identifier'],'\t',r['title'][:100])
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: gtu-candidates-20260823-1441-fast
+          name: gtu-candidates-20260823-1441-diverse
           path: gtu_candidates.json
           compression-level: 6
