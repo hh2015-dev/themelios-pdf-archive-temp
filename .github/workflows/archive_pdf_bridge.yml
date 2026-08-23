@@ -8,83 +8,31 @@ permissions:
   contents: read
 
 jobs:
-  exact-alternates:
+  verify-journal-proposals:
     runs-on: ubuntu-latest
     steps:
-      - name: Download Reimarus exact alternate and discover Piggott exact alternates
+      - name: Download five proposed journal PDFs from Archive.org
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p out bcp_candidates
-
-          # Exact 1791 Reimarus alternate already identified on Archive.org.
-          curl -L --retry 3 --connect-timeout 20 --max-time 900 -A 'Mozilla/5.0' -fSs \
-            -o out/abhandlungenvon00reimgoog.pdf \
-            'https://archive.org/download/abhandlungenvon00reimgoog/abhandlungenvon00reimgoog.pdf'
-          [ "$(head -c 5 out/abhandlungenvon00reimgoog.pdf)" = "%PDF-" ]
-          echo "REIMARUS SIZE=$(stat -c%s out/abhandlungenvon00reimgoog.pdf) SHA256=$(sha256sum out/abhandlungenvon00reimgoog.pdf | cut -d' ' -f1)"
-
-          python3 - <<'PY'
-          import json, urllib.parse, urllib.request, re, os, subprocess
-          queries = [
-              'title:("Book of Common Prayer" AND "Notes and Useful Directions")',
-              'creator:(Piggott) AND title:("Book of Common Prayer")',
-              'title:("Book of Common Prayer with Notes and Useful Directions")'
-          ]
-          seen={}
-          for q in queries:
-              params=[('q',q),('fl[]','identifier'),('fl[]','title'),('fl[]','creator'),('fl[]','date'),('rows','100'),('output','json')]
-              url='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(params)
-              try:
-                  data=json.load(urllib.request.urlopen(url,timeout=30))
-              except Exception as e:
-                  print('SEARCHERR',repr(e)); continue
-              for d in data.get('response',{}).get('docs',[]):
-                  if d.get('identifier'): seen[d['identifier']]=d
-          rows=[]
-          for ident,d in seen.items():
-              try: m=json.load(urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident),timeout=30))
-              except Exception: continue
-              md=m.get('metadata',{}) or {}
-              title=md.get('title',d.get('title','')); creator=md.get('creator',d.get('creator','')); date=md.get('date',d.get('date',''))
-              if isinstance(title,list): title='; '.join(map(str,title))
-              if isinstance(creator,list): creator='; '.join(map(str,creator))
-              if isinstance(date,list): date='; '.join(map(str,date))
-              restricted=str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true'
-              pdfs=[]
-              for f in m.get('files',[]):
-                  n=f.get('name',''); low=n.lower()
-                  if low.endswith('.pdf') and 'encrypted' not in low and not low.endswith('.lcpdf') and str(f.get('private','false')).lower()!='true':
-                      try: size=int(f.get('size') or 0)
-                      except: size=0
-                      pdfs.append((size,n))
-              pdfs.sort()
-              rows.append({'identifier':ident,'title':title,'creator':creator,'date':date,'restricted':restricted,'pdfs':pdfs})
-              # Download only plausible, public, sub-105MB scans for first-page inspection.
-              t=(title+' '+creator).lower()
-              if not restricted and 'common prayer' in t and ('piggott' in t or 'useful directions' in t):
-                  for size,n in pdfs:
-                      if 0 < size <= 110_000_000:
-                          url='https://archive.org/download/'+urllib.parse.quote(ident)+'/'+urllib.parse.quote(n)
-                          dest='bcp_candidates/'+re.sub(r'[^A-Za-z0-9._-]+','_',ident+'__'+n)
-                          try:
-                              subprocess.run(['curl','-L','--retry','2','--connect-timeout','20','--max-time','900','-A','Mozilla/5.0','-fSs','-o',dest,url],check=True)
-                              if open(dest,'rb').read(5)!=b'%PDF-': os.remove(dest)
-                          except Exception:
-                              if os.path.exists(dest): os.remove(dest)
-                          break
-          with open('out/bcp_candidates.json','w',encoding='utf-8') as f: json.dump(rows,f,ensure_ascii=False,indent=2)
-          print('BCP_DISCOVERED',len(rows))
-          for r in rows: print(json.dumps(r,ensure_ascii=False))
-          PY
-
-      - name: Upload exact-alternates artifact
+          mkdir -p out
+          cat > /tmp/items.tsv <<'EOF'
+          american-academy-of-religion-journal_1940-02_8_1	https://archive.org/download/american-academy-of-religion-journal_1940-02_8_1/american-academy-of-religion-journal_1940-02_8_1.pdf
+          american-academy-of-religion-journal_1940-05_8_2	https://archive.org/download/american-academy-of-religion-journal_1940-05_8_2/american-academy-of-religion-journal_1940-05_8_2.pdf
+          american-academy-of-religion-journal_1940-08_8_3	https://archive.org/download/american-academy-of-religion-journal_1940-08_8_3/american-academy-of-religion-journal_1940-08_8_3.pdf
+          american-academy-of-religion-journal_1940-11_8_4	https://archive.org/download/american-academy-of-religion-journal_1940-11_8_4/american-academy-of-religion-journal_1940-11_8_4.pdf
+          africanjournalof0012unse	https://archive.org/download/africanjournalof0012unse/africanjournalof0012unse.pdf
+          EOF
+          while IFS=$'\t' read -r id url; do
+            curl -L --retry 3 --connect-timeout 20 --max-time 900 -A 'Mozilla/5.0' -fSs -o "out/$id.pdf" "$url"
+            [ "$(head -c 5 "out/$id.pdf")" = "%PDF-" ]
+            echo "$id SIZE=$(stat -c%s "out/$id.pdf") SHA256=$(sha256sum "out/$id.pdf" | cut -d' ' -f1)"
+          done < /tmp/items.tsv
+      - name: Upload journal proposal PDFs
         uses: actions/upload-artifact@v4
         with:
-          name: gtu-exact-alternates
-          path: |
-            out/*
-            bcp_candidates/*
+          name: gtu-journal-proposal-pdfs
+          path: out/*.pdf
           compression-level: 0
           retention-days: 1
           if-no-files-found: error
