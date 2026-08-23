@@ -1,9 +1,8 @@
 name: Archive PDF Bridge
 
 on:
-  push:
-    paths:
-      - '.github/workflows/archive_pdf_bridge.yml'
+  pull_request:
+    types: [opened, synchronize, reopened]
 
 permissions:
   contents: write
@@ -13,6 +12,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
       - name: Download verified PDFs from Archive.org only
         shell: bash
         run: |
@@ -43,8 +44,10 @@ jobs:
             fi
           done < /tmp/items.tsv
           ls -lh archive_bridge || true
-      - name: Commit successful PDFs
+      - name: Commit successful PDFs to main
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           git config user.name 'archive-pdf-bridge'
           git config user.email 'archive-pdf-bridge@users.noreply.github.com'
@@ -53,5 +56,5 @@ jobs:
             echo 'No downloadable PDFs found'
           else
             git commit -m 'Temporary Archive.org PDF bridge'
-            git push
+            git push origin HEAD:main
           fi
