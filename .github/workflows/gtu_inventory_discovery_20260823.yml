@@ -14,21 +14,23 @@ jobs:
           from concurrent.futures import ThreadPoolExecutor, as_completed
           BASE='collection:graduatetheologicalunion AND format:"Text PDF"'
           queries=[('bible',1),('testament',2),('hebrew',3),('greek',4),('syriac',2),('aramaic',3),('septuagint',1),('manuscript',4),('archaeology',3),('judaism',2),('rabbinic',1),('patristic',3),('reformation',4),('theology',2),('missions',3),('church history',4),('commentary',2),('lexicon',3),('grammar',4),('concordance',1),('apocrypha',2),('pseudepigrapha',3),('assyrian',4),('babylonian',2),('philo',3),('josephus',4),('augustine',2),('luther',3),('calvin',4),('biblical literature',1)]
-          seen={}; examined=0
-          for term,page in queries:
-            q=f'{BASE} AND (title:({term}) OR subject:({term}))'
+          def search(qp):
+            term,page=qp; q=f'{BASE} AND (title:({term}) OR subject:({term}))'
             params={'q':q,'fl[]':['identifier','title','creator','date','year','language','subject','volume','contributor'],'rows':25,'page':page,'output':'json'}
-            url='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(params,doseq=True)
             try:
-              with urllib.request.urlopen(url,timeout=20) as r: docs=json.load(r)['response']['docs']
-            except Exception: continue
-            examined += len(docs)
-            for d in docs: seen.setdefault(d.get('identifier'),d)
+              with urllib.request.urlopen('https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(params,doseq=True),timeout=15) as r: docs=json.load(r)['response']['docs']
+              return docs
+            except Exception: return []
+          seen={}; examined=0
+          with ThreadPoolExecutor(max_workers=16) as ex:
+            for docs in ex.map(search,queries):
+              examined += len(docs)
+              for d in docs: seen.setdefault(d.get('identifier'),d)
           def verify(pair):
             ident,d=pair
             if not ident: return None
             try:
-              with urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident),timeout=20) as r: m=json.load(r)
+              with urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident),timeout=15) as r: m=json.load(r)
             except Exception: return None
             md=m.get('metadata',{}); coll=md.get('collection',[])
             if isinstance(coll,str): coll=[coll]
@@ -45,10 +47,11 @@ jobs:
             pf=pdfs[0]; pn=pf.get('name','')
             return {'identifier':ident,'title':md.get('title') or d.get('title'),'creator':md.get('creator') or d.get('creator'),'date':md.get('date') or md.get('year') or d.get('date') or d.get('year'),'volume':md.get('volume') or d.get('volume'),'edition':md.get('edition'),'series':md.get('series'),'language':md.get('language') or d.get('language'),'subject':md.get('subject') or d.get('subject'),'contributor':md.get('contributor') or d.get('contributor'),'item_link':'https://archive.org/details/'+ident,'direct_pdf':'https://archive.org/download/'+urllib.parse.quote(ident,safe='')+'/'+urllib.parse.quote(pn),'pdf_name':pn,'pdf_size':pf.get('size'),'collection_verified':True}
           out=[]
-          with ThreadPoolExecutor(max_workers=24) as ex:
+          with ThreadPoolExecutor(max_workers=32) as ex:
             futs=[ex.submit(verify,p) for p in seen.items()]
             for f in as_completed(futs):
-              x=f.result()
+              try: x=f.result()
+              except Exception: x=None
               if x: out.append(x)
           out.sort(key=lambda x:(str(x.get('title','')).lower(),x['identifier']))
           with open('gtu_candidates.json','w',encoding='utf-8') as f: json.dump({'examined':examined,'unique_discovered':len(seen),'verified':len(out),'items':out},f,ensure_ascii=False,indent=2)
