@@ -1,0 +1,70 @@
+name: TEMP GTU deep mine 20260823
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  mine:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deep GTU-only mining
+        shell: bash
+        run: |
+          cat > /tmp/d.py <<'PY'
+          import requests,json,urllib.parse
+          from concurrent.futures import ThreadPoolExecutor,as_completed
+          H={'User-Agent':'GTU-inventory-research/1.0'}; base='collection:graduatetheologicalunion AND mediatype:texts'
+          jobs=[]
+          for p in [4,12,20,28,40,55,75,95,120,150,180,220]:jobs.append((base,p))
+          terms=['church','theology','history','mission','patristic','reformation','judaism','christian','commentary','biblical','hebrew','greek','syriac','aramaic','archaeology','manuscript','lexicon','grammar','concordance','gospel']
+          for t in terms:
+            for p in [1,4,8]:jobs.append((base+' AND (title:('+t+') OR subject:('+t+'))',p))
+          def s(j):
+            q,p=j
+            try:
+              r=requests.get('https://archive.org/advancedsearch.php',params={'q':q,'fl[]':['identifier','title','creator','year','date','subject','language','contributor'],'rows':100,'page':p,'output':'json','sort[]':'identifier asc'},headers=H,timeout=20);r.raise_for_status();return r.json().get('response',{}).get('docs',[])
+            except:return []
+          docs={};hits=0
+          with ThreadPoolExecutor(max_workers=24) as ex:
+            for f in as_completed([ex.submit(s,j) for j in jobs]):
+              a=f.result();hits+=len(a)
+              for d in a:
+                if d.get('identifier'):docs[d['identifier']]=d
+          A=['hebrew','aramaic','syriac','semitic','septuagint','greek','new testament','old testament','bible','biblical','gospel','epistle','psalm','genesis','exodus','isaiah','jeremiah','ezekiel','daniel','job','proverbs','textual','manuscript','targum','talmud','mishnah','qumran','apocrypha','pseudepigrapha','assyrian','babylonian','ugaritic','archaeolog','concordance','lexicon','grammar','commentary']
+          B=['theology','patrist','church history','reformation','calvin','luther','augustine','origen','chrysostom','mission','judaism','early christian','creed','doctrine','apolog','religion']
+          def sc(d):
+            t=(str(d.get('title',''))+' '+str(d.get('subject',''))).lower();return sum(8 for x in A if x in t)+sum(3 for x in B if x in t)
+          ranked=sorted(docs.values(),key=lambda d:(sc(d),str(d.get('year',''))),reverse=True)[:500]
+          def v(d):
+            i=d['identifier']
+            try:m=requests.get('https://archive.org/metadata/'+urllib.parse.quote(i,safe=''),headers=H,timeout=20).json()
+            except:return None
+            md=m.get('metadata',{});c=md.get('collection',[]);c=[c] if isinstance(c,str) else c
+            if 'graduatetheologicalunion' not in c:return None
+            if str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true':return None
+            pdf=[]
+            for x in m.get('files',[]):
+              n=x.get('name','')
+              if n.lower().endswith('.pdf') and not n.lower().endswith('.lcpdf') and 'encrypted' not in n.lower() and str(x.get('private','false')).lower()!='true':pdf.append(x)
+            if not pdf:return None
+            f=next((x for x in pdf if str(x.get('source','')).lower()=='original'),pdf[0])
+            cr=md.get('creator') or d.get('creator') or '';cr='; '.join(map(str,cr)) if isinstance(cr,list) else cr
+            su=md.get('subject') or d.get('subject') or '';su='; '.join(map(str,su[:12])) if isinstance(su,list) else su
+            co=md.get('contributor') or d.get('contributor') or 'Graduate Theological Union';co='; '.join(map(str,co)) if isinstance(co,list) else co
+            ti=md.get('title') or d.get('title') or ''
+            return {'identifier':i,'title':ti,'creator':cr,'year':md.get('year') or md.get('date') or d.get('year') or d.get('date') or '','subject':su,'language':md.get('language',''),'contributor':co,'volume':md.get('volume') or '','edition':md.get('edition') or '','series':md.get('series') or '','pages':md.get('pages') or md.get('page_count') or '','direct_pdf':'https://archive.org/download/{}/{}'.format(i,urllib.parse.quote(f['name'])),'item_link':'https://archive.org/details/'+i,'score':sc({'title':ti,'subject':su})}
+          out=[]
+          with ThreadPoolExecutor(max_workers=50) as ex:
+            for f in as_completed([ex.submit(v,d) for d in ranked]):
+              x=f.result()
+              if x:out.append(x)
+          out.sort(key=lambda x:(x['score'],str(x['year'])),reverse=True)
+          open('deep.jsonl','w',encoding='utf-8').write('\n'.join(json.dumps(x,ensure_ascii=False) for x in out))
+          st={'search_hits_examined':hits,'unique_search_docs':len(docs),'metadata_checked':len(ranked),'verified_public_pdf_candidates':len(out)};open('deep_stats.json','w').write(json.dumps(st));print(st)
+          PY
+          python /tmp/d.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-deep-20260823
+          path: |
+            deep.jsonl
+            deep_stats.json
