@@ -6,38 +6,76 @@ jobs:
   discover:
     runs-on: ubuntu-latest
     steps:
-      - name: Mine GTU candidate metadata
+      - name: Verify selected GTU candidates
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
           import json, urllib.parse, urllib.request
           from concurrent.futures import ThreadPoolExecutor, as_completed
-          base='https://archive.org/advancedsearch.php'
-          specs=[
-            ('collection:graduatetheologicalunion AND mediatype:texts AND (title:(bible OR biblical OR testament OR gospel OR psalm OR isaiah OR genesis OR exodus OR commentary OR concordance OR lexicon OR grammar))',[4,10,16,22]),
-            ('collection:graduatetheologicalunion AND mediatype:texts AND (title:(hebrew OR aramaic OR syriac OR septuagint OR greek OR papyri OR manuscript OR talmud OR targum OR ugarit OR assyrian OR babylonian))',[3,8,13,18]),
-            ('collection:graduatetheologicalunion AND mediatype:texts AND (subject:(Bible OR Hebrew OR Syriac OR Aramaic OR Septuagint OR Talmud OR Manuscripts OR Assyriology OR Babylonia OR Archaeology))',[5,12,19]),
-            ('collection:graduatetheologicalunion AND mediatype:texts AND (title:(Calvin OR Luther OR Chrysostom OR Augustine OR Origen OR Eusebius OR Philo OR Josephus OR Irenaeus))',[3,7,11]),
-            ('collection:graduatetheologicalunion AND mediatype:texts AND (title:(Journal OR Quarterly OR Expository OR Scripture OR Archaeologist OR Studies))',[9,18,27]),
-          ]
-          def one(q,page):
-            p={'q':q,'fl[]':['identifier','title','creator','date','year','volume','edition','series','subject','contributor','format'],'rows':100,'page':page,'output':'json'}
-            try:return json.load(urllib.request.urlopen(base+'?'+urllib.parse.urlencode(p,doseq=True),timeout=20)).get('response',{}).get('docs',[])
-            except Exception:return []
-          jobs=[(q,p) for q,ps in specs for p in ps]
-          docs=[]
-          with ThreadPoolExecutor(max_workers=12) as ex:
-            futs=[ex.submit(one,q,p) for q,p in jobs]
-            for f in as_completed(futs): docs.extend(f.result())
-          byid={}
-          for d in docs:
-            i=d.get('identifier')
-            if i: byid[i]=d
-          print('SEARCH_HITS',len(docs),'UNIQUE_IDS',len(byid))
-          with open('gtu_search_candidates.json','w',encoding='utf-8') as f:json.dump({'examined':len(docs),'candidates':list(byid.values())},f,ensure_ascii=False,indent=2)
+          ids='''labibletraductio0007unse
+labibletraductio0012unse
+geschichtedesvol0006ewal
+textkritischestu0000hout
+bibleislamorinfl0000smit_h7p6
+introductionauno0000gogu_f3r2
+servantofjehovah0000work_v6x5
+manualofhistoric0002karl
+grammatikdergrie0002mays_z8l6
+calvinscommentar0001calv_g7g9
+firstdraftofstlu0000tayl
+b14093613
+popularreligiono00unse
+bookofisaiahinfi0000robi_n1z3
+essaysinbiblical0000edwi
+oldbabylonianlet0006henr
+neobabylonianadm0009henr
+calvinscommentar0000calv_z1o6
+calvinscommentar0043calv
+expositionofstpa0000thol
+manuelbibliqueou0003vigo
+messageoffourthg0000lewi_j5a6
+sixthbookofselec0022seve
+chaptersofcoming0002unse
+mucrocardcatalog0000igna
+handbookofaramai0000ross
+introductoryhebr0000abda_h0r9
+archivesfromerec0002doug
+keytosiddurgramm0000slot
+comparisonofegyp0000port
+historicbiblesin0000wrig
+practicalcomment0000fred
+commentaryongosp0000revc
+storyofenglishne0009gilm
+lateroldtestamen0000will
+nineveholdtestam0000andr_l3r5'''.splitlines()
+          def flat(v):
+            if isinstance(v,list): return '; '.join(str(x) for x in v)
+            return '' if v is None else str(v)
+          def verify(i):
+            try: m=json.load(urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(i),timeout=15))
+            except Exception as e: return {'identifier':i,'eligible':False,'error':str(e)}
+            md=m.get('metadata',{}); coll=md.get('collection',[])
+            if isinstance(coll,str): coll=[coll]
+            pdfs=[]
+            for f in m.get('files',[]):
+              n=f.get('name','')
+              if n.lower().endswith('.pdf') and not n.lower().endswith('.lcpdf') and 'encrypted' not in n.lower() and str(f.get('private','false')).lower()!='true':
+                pdfs.append((int(f.get('size',0) or 0),n))
+            restricted=str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true'
+            eligible=('graduatetheologicalunion' in coll and not restricted and bool(pdfs))
+            pdf=max(pdfs)[1] if pdfs else ''
+            return {'identifier':i,'eligible':eligible,'title':flat(md.get('title')),'creator':flat(md.get('creator')),'date':flat(md.get('date') or md.get('year')),'volume':flat(md.get('volume')),'edition':flat(md.get('edition')),'series':flat(md.get('series')),'contributor':flat(md.get('contributor')),'subject':flat(md.get('subject')),'pages':flat(md.get('imagecount')),'pdf':pdf,'restricted':restricted,'collections':coll}
+          out=[]
+          with ThreadPoolExecutor(max_workers=20) as ex:
+            futs=[ex.submit(verify,i) for i in ids]
+            for f in as_completed(futs): out.append(f.result())
+          out.sort(key=lambda x:ids.index(x['identifier']))
+          print('VERIFIED',sum(1 for x in out if x.get('eligible')),'OF',len(out))
+          with open('gtu_verified_selected.json','w',encoding='utf-8') as f: json.dump(out,f,ensure_ascii=False,indent=2)
+          for x in out: print(('OK' if x.get('eligible') else 'NO')+'\t'+x['identifier']+'\t'+x.get('title',''))
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: gtu-search-candidates
-          path: gtu_search_candidates.json
+          name: gtu-verified-selected
+          path: gtu_verified_selected.json
