@@ -10,8 +10,9 @@ jobs:
         shell: bash
         run: |
           cat > /tmp/mine.py <<'PY'
-          import requests, json, urllib.parse, time, re
-          S=requests.Session(); S.headers['User-Agent']='GTU-inventory-research/1.0'
+          import requests, json, urllib.parse
+          from concurrent.futures import ThreadPoolExecutor, as_completed
+          H={'User-Agent':'GTU-inventory-research/1.0'}
           queries=[
             'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Hebrew) OR subject:(Hebrew))',
             'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Greek) OR subject:(Greek))',
@@ -26,18 +27,14 @@ jobs:
             'collection:graduatetheologicalunion AND mediatype:texts AND (subject:(Church history) OR subject:(Theology))',
             'collection:graduatetheologicalunion AND mediatype:texts'
           ]
-          docs={}
-          pages=[1,2,4,7,11,17]
-          examined=0
+          docs={}; examined=0
           for qi,q in enumerate(queries):
-            usepages=pages if qi==11 else [1,2,3]
-            for p in usepages:
-              params={'q':q,'fl[]':['identifier','title','creator','year','date','subject','language','contributor'],'rows':100,'page':p,'output':'json','sort[]':'identifier asc'}
+            pages=[1,2,3] if qi<11 else [2,5,9,14,21,30]
+            for p in pages:
               try:
-                r=S.get('https://archive.org/advancedsearch.php',params=params,timeout=30); r.raise_for_status(); js=r.json()
-              except Exception:
-                continue
-              arr=js.get('response',{}).get('docs',[]); examined += len(arr)
+                r=requests.get('https://archive.org/advancedsearch.php',params={'q':q,'fl[]':['identifier','title','creator','year','date','subject','language','contributor'],'rows':100,'page':p,'output':'json','sort[]':'identifier asc'},headers=H,timeout=25); r.raise_for_status(); arr=r.json().get('response',{}).get('docs',[])
+              except Exception: continue
+              examined+=len(arr)
               for d in arr:
                 if d.get('identifier'): docs[d['identifier']]=d
           def score(d):
@@ -45,54 +42,45 @@ jobs:
             a=['hebrew','aramaic','syriac','semitic','septuagint','greek new testament','new testament','old testament','hebrew bible','biblical','bible','gospel','epistle','psalm','genesis','exodus','isaiah','jeremiah','ezekiel','daniel','job','proverbs','textual','manuscript','targum','talmud','mishnah','qumran','pseudepigrapha','apocrypha','assyrian','babylonian','ugaritic','palestine','archaeolog','concordance','lexicon','grammar']
             b=['theology','patrist','church history','reformation','calvin','luther','augustine','origen','chrysostom','mission','judaism','early christian']
             return sum(8 for x in a if x in t)+sum(3 for x in b if x in t)
-          ranked=sorted(docs.values(),key=lambda d:(score(d),str(d.get('year',''))),reverse=True)
-          out=[]; meta_checked=0
-          for d in ranked:
-            if len(out)>=260: break
+          ranked=sorted(docs.values(),key=lambda d:(score(d),str(d.get('year',''))),reverse=True)[:420]
+          def verify(d):
             ident=d['identifier']
-            try:
-              m=S.get('https://archive.org/metadata/'+urllib.parse.quote(ident,safe=''),timeout=30).json(); meta_checked+=1
-            except Exception: continue
+            try: m=requests.get('https://archive.org/metadata/'+urllib.parse.quote(ident,safe=''),headers=H,timeout=25).json()
+            except Exception: return None
             md=m.get('metadata',{}); coll=md.get('collection',[])
             if isinstance(coll,str): coll=[coll]
-            if 'graduatetheologicalunion' not in coll: continue
-            if str(md.get('mediatype','')).lower() not in ('texts',''): continue
-            if str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true': continue
+            if 'graduatetheologicalunion' not in coll: return None
+            if str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true': return None
             pdfs=[]
             for f in m.get('files',[]):
               n=f.get('name',''); priv=str(f.get('private','false')).lower()
-              if n.lower().endswith('.pdf') and not n.lower().endswith('.lcpdf') and 'encrypted' not in n.lower() and priv!='true':
-                pdfs.append(f)
-            if not pdfs: continue
-            # prefer original source pdf over derived text pdfs where metadata says original
-            pdf=pdfs[0]
-            originals=[f for f in pdfs if str(f.get('source','')).lower()=='original']
-            if originals: pdf=originals[0]
-            title=md.get('title') or d.get('title') or ''
+              if n.lower().endswith('.pdf') and not n.lower().endswith('.lcpdf') and 'encrypted' not in n.lower() and priv!='true': pdfs.append(f)
+            if not pdfs: return None
+            pdf=next((f for f in pdfs if str(f.get('source','')).lower()=='original'),pdfs[0])
             creator=md.get('creator') or d.get('creator') or ''
             if isinstance(creator,list): creator='; '.join(map(str,creator))
             subj=md.get('subject') or d.get('subject') or ''
             if isinstance(subj,list): subj='; '.join(map(str,subj[:12]))
             contributor=md.get('contributor') or d.get('contributor') or 'Graduate Theological Union'
             if isinstance(contributor,list): contributor='; '.join(map(str,contributor))
-            year=md.get('year') or md.get('date') or d.get('year') or d.get('date') or ''
-            volume=md.get('volume') or ''
-            edition=md.get('edition') or ''
-            series=md.get('series') or ''
-            # pages only from explicit metadata/file fields, never infer from file size
-            pages=md.get('pages') or md.get('page_count') or ''
-            direct='https://archive.org/download/{}/{}'.format(ident,urllib.parse.quote(pdf['name']))
-            rec={'identifier':ident,'title':title,'creator':creator,'year':year,'subject':subj,'language':md.get('language',''),'contributor':contributor,'volume':volume,'edition':edition,'series':series,'pages':pages,'pdf_name':pdf['name'],'direct_pdf':direct,'item_link':'https://archive.org/details/'+ident,'score':score({'title':title,'subject':subj})}
-            out.append(rec)
+            title=md.get('title') or d.get('title') or ''
+            return {'identifier':ident,'title':title,'creator':creator,'year':md.get('year') or md.get('date') or d.get('year') or d.get('date') or '','subject':subj,'language':md.get('language',''),'contributor':contributor,'volume':md.get('volume') or '','edition':md.get('edition') or '','series':md.get('series') or '','pages':md.get('pages') or md.get('page_count') or '','direct_pdf':'https://archive.org/download/{}/{}'.format(ident,urllib.parse.quote(pdf['name'])),'item_link':'https://archive.org/details/'+ident,'score':score({'title':title,'subject':subj})}
+          out=[]
+          with ThreadPoolExecutor(max_workers=24) as ex:
+            futs=[ex.submit(verify,d) for d in ranked]
+            for f in as_completed(futs):
+              x=f.result()
+              if x: out.append(x)
+          out.sort(key=lambda x:(x['score'],str(x['year'])),reverse=True)
           with open('gtu_candidates.jsonl','w',encoding='utf-8') as f:
             for x in out: f.write(json.dumps(x,ensure_ascii=False)+'\n')
-          with open('gtu_stats.json','w') as f: json.dump({'search_hits_examined':examined,'unique_search_docs':len(docs),'metadata_checked':meta_checked,'verified_public_pdf_candidates':len(out)},f)
-          print(json.dumps({'search_hits_examined':examined,'unique_search_docs':len(docs),'metadata_checked':meta_checked,'verified_public_pdf_candidates':len(out)}))
+          stats={'search_hits_examined':examined,'unique_search_docs':len(docs),'metadata_checked':len(ranked),'verified_public_pdf_candidates':len(out)}
+          open('gtu_stats.json','w').write(json.dumps(stats)); print(json.dumps(stats))
           PY
           python /tmp/mine.py
       - uses: actions/upload-artifact@v4
         with:
-          name: gtu-inventory-candidates-20260823
+          name: gtu-inventory-candidates-20260823-fast
           path: |
             gtu_candidates.jsonl
             gtu_stats.json
