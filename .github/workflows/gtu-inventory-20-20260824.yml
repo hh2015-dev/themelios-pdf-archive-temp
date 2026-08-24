@@ -6,46 +6,67 @@ jobs:
   discover:
     runs-on: ubuntu-latest
     steps:
-      - name: Deep-mine GTU collection only
+      - name: Verify selected GTU items
         shell: bash
         run: |
-          cat > /tmp/deep.py <<'PY'
+          cat > /tmp/verify.py <<'PY'
           import json, urllib.parse, urllib.request
-          from collections import OrderedDict
+          from concurrent.futures import ThreadPoolExecutor, as_completed
           BASE='https://archive.org'; coll='graduatetheologicalunion'
-          def get(url, timeout=15):
+          ids='''elijahelishainso0000unse
+epistlegeneralof0000lang
+diepolisinkirche0000schm
+lexegesepatristi0000roov
+gotteshymnusundc0000deic_v1e2
+variaelectionesr0000eiss
+biblicalcommenta0002carl
+textbookofnorths0000gaco
+biblischercommen0000vari_t6q8
+biblischercommen0000vari_p7b7
+biblischercommen0000vari_o1c3
+biblischercommen0000vari_z0o0
+ugariticnarrativ0009unse
+diehexaplarische0022bojo
+studierirabbinsk0017eric
+thesaurusoflangu0002samu
+baalinhetoudetes0000muld
+dieteologievandi0000muld
+derachtundsechzi0000mowi
+diejudischenprop0000scho'''.split()
+          def get(url,timeout=20):
             req=urllib.request.Request(url,headers={'User-Agent':'Mozilla/5.0 GTU-inventory-research/1.0'})
             with urllib.request.urlopen(req,timeout=timeout) as r:return json.load(r)
-          specs=[
-            (f'collection:{coll} AND mediatype:texts',[21,26,31,36,41,46,51,56,61,66]),
-            (f'collection:{coll} AND mediatype:texts AND (Bible OR Biblical OR Testament OR Gospel OR Psalms OR Isaiah OR Genesis OR Exodus OR Job OR Daniel OR Prophets)',[3,4,5,6,7]),
-            (f'collection:{coll} AND mediatype:texts AND (Hebrew OR Aramaic OR Syriac OR Semitic OR Ugaritic OR Akkadian OR Assyrian OR Babylonian)',[3,4,5,6,7]),
-            (f'collection:{coll} AND mediatype:texts AND (Greek OR Septuagint OR papyri OR manuscript OR textual OR criticism OR lexicon OR grammar OR concordance)',[3,4,5,6,7]),
-            (f'collection:{coll} AND mediatype:texts AND (Qumran OR "Dead Sea" OR Targum OR Talmud OR Mishnah OR Midrash OR Philo OR Josephus)',[2,3,4,5]),
-            (f'collection:{coll} AND mediatype:texts AND (archaeology OR Palestine OR Canaan OR Mesopotamia OR Egypt OR inscriptions OR epigraphy)',[3,4,5,6]),
-            (f'collection:{coll} AND mediatype:texts AND (Augustine OR Origen OR Jerome OR Chrysostom OR Irenaeus OR Calvin OR Luther OR Reformation)',[3,4,5,6]),
-            (f'collection:{coll} AND mediatype:texts AND (theology OR church OR doctrine OR creed OR mission OR missions OR Judaism OR Christianity)',[4,6,8,10]),
-          ]
-          docs=OrderedDict(); appearances=0; calls=0
-          for q,pages in specs:
-            for page in pages:
-              params=[('q',q),('rows','200'),('page',str(page)),('output','json'),('sort[]','identifier asc')]
-              for f in ['identifier','title','creator','year','date','volume','edition','series','language','subject','format','collection','contributor']:params.append(('fl[]',f))
-              try: got=get(BASE+'/advancedsearch.php?'+urllib.parse.urlencode(params)).get('response',{}).get('docs',[])
-              except Exception as e: print('ERR',page,repr(e));continue
-              calls+=1; appearances+=len(got)
-              for d in got:
-                if d.get('identifier'): docs.setdefault(d['identifier'],d)
-          out=list(docs.values())
-          json.dump(out,open('deep_candidates.json','w',encoding='utf-8'),ensure_ascii=False)
-          summary={'calls':calls,'appearances':appearances,'unique_discovered':len(out)}
-          json.dump(summary,open('summary.json','w'));print(json.dumps(summary))
+          def verify(ident):
+            try:m=get(BASE+'/metadata/'+urllib.parse.quote(ident))
+            except Exception as e:return {'identifier':ident,'error':repr(e)}
+            md=m.get('metadata',{}) or {}; cs=md.get('collection',[])
+            if isinstance(cs,str):cs=[cs]
+            member=coll in cs
+            def sv(k):
+              v=md.get(k,'')
+              if isinstance(v,list):return '; '.join(map(str,v))
+              return str(v or '')
+            restricted=str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true'
+            pdf=''
+            if not restricted:
+              for f in m.get('files',[]):
+                n=str(f.get('name','')); low=n.lower(); fmt=str(f.get('format','')).lower()
+                if not low.endswith('.pdf') or str(f.get('private','false')).lower()=='true' or 'encrypted' in low or low.endswith('.lcpdf'):continue
+                if not pdf or fmt=='text pdf':pdf=n
+                if fmt=='text pdf':break
+            year=md.get('year') or md.get('date') or ''
+            return {'identifier':ident,'member_gtu':member,'mediatype':sv('mediatype'),'title':sv('title'),'creator':sv('creator'),'year':str(year),'volume':sv('volume'),'edition':sv('edition'),'series':sv('series'),'language':sv('language'),'subject':sv('subject'),'contributor':sv('contributor'),'pages':sv('imagecount'),'restricted':restricted,'public_pdf':bool(pdf),'pdf_name':pdf,'item_link':BASE+'/details/'+ident,'pdf_link':BASE+'/download/'+ident+'/'+urllib.parse.quote(pdf) if pdf else ''}
+          out=[]
+          with ThreadPoolExecutor(max_workers=10) as ex:
+            futs={ex.submit(verify,i):i for i in ids}
+            for f in as_completed(futs):out.append(f.result())
+          order={x:i for i,x in enumerate(ids)};out.sort(key=lambda x:order[x['identifier']])
+          json.dump(out,open('verified.json','w',encoding='utf-8'),ensure_ascii=False,indent=2)
+          print(json.dumps({'requested':len(ids),'returned':len(out),'gtu_members':sum(1 for x in out if x.get('member_gtu')),'errors':sum(1 for x in out if x.get('error'))}))
           PY
-          python3 /tmp/deep.py
+          python3 /tmp/verify.py
       - uses: actions/upload-artifact@v4
         with:
-          name: gtu-deep-candidates
-          path: |
-            deep_candidates.json
-            summary.json
+          name: gtu-verified-20
+          path: verified.json
           compression-level: 6
