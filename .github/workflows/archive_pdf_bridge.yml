@@ -8,15 +8,30 @@ permissions:
   contents: read
 
 jobs:
-  verify-three-replacements:
+  transfer-eighteen-approved:
     runs-on: ubuntu-latest
     steps:
-      - name: Verify three Archive.org PDFs
+      - name: Download eighteen approved Archive.org PDFs
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p out
           cat > /tmp/items.tsv <<'EOF'
+          bookofcommonpray00prot_22	https://archive.org/download/bookofcommonpray00prot_22/bookofcommonpray00prot_22.pdf
+          american-missionary_1866-05_10_5	https://archive.org/download/american-missionary_1866-05_10_5/american-missionary_1866-05_10_5.pdf
+          american-missionary_1868-04_12_4	https://archive.org/download/american-missionary_1868-04_12_4/american-missionary_1868-04_12_4.pdf
+          american-missionary_1873-04_17_4	https://archive.org/download/american-missionary_1873-04_17_4/american-missionary_1873-04_17_4.pdf
+          american-missionary_1874-03_18_3	https://archive.org/download/american-missionary_1874-03_18_3/american-missionary_1874-03_18_3.pdf
+          actsmonumentsofc00foxe_0	https://archive.org/download/actsmonumentsofc00foxe_0/actsmonumentsofc00foxe_0.pdf
+          165ecritsdeluthe0000guil	https://archive.org/download/165ecritsdeluthe0000guil/165ecritsdeluthe0000guil.pdf
+          calvinscommentar0004calv	https://archive.org/download/calvinscommentar0004calv/calvinscommentar0004calv.pdf
+          calvinscommentar0001calv	https://archive.org/download/calvinscommentar0001calv/calvinscommentar0001calv.pdf
+          calvinscommentar0002calv	https://archive.org/download/calvinscommentar0002calv/calvinscommentar0002calv.pdf
+          bibilicalcomment0002fran_n0b4	https://archive.org/download/bibilicalcomment0002fran_n0b4/bibilicalcomment0002fran_n0b4.pdf
+          eusebiipamphilip0000euse	https://archive.org/download/eusebiipamphilip0000euse/eusebiipamphilip0000euse.pdf
+          christianitylibe0000jgre	https://archive.org/download/christianitylibe0000jgre/christianitylibe0000jgre.pdf
+          actsofapostleswi0037lumb	https://archive.org/download/actsofapostleswi0037lumb/actsofapostleswi0037lumb.pdf
+          american-bible-society-record_1863-08_8_8	https://archive.org/download/american-bible-society-record_1863-08_8_8/american-bible-society-record_1863-08_8_8.pdf
           abridgedprayerbo00jews	https://archive.org/download/abridgedprayerbo00jews/abridgedprayerbo00jews.pdf
           actsofearlymarty0000jamf	https://archive.org/download/actsofearlymarty0000jamf/actsofearlymarty0000jamf.pdf
           calvinscommentar0000calv_f0b6	https://archive.org/download/calvinscommentar0000calv_f0b6/calvinscommentar0000calv_f0b6.pdf
@@ -24,5 +39,13 @@ jobs:
           while IFS=$'\t' read -r id url; do
             curl -L --retry 2 --connect-timeout 20 --max-time 1200 -A 'Mozilla/5.0' -fSs -o "out/$id.pdf" "$url"
             [ "$(head -c 5 "out/$id.pdf")" = "%PDF-" ]
-            echo "PASS $id SIZE=$(stat -c%s "out/$id.pdf")"
+            echo "$id SIZE=$(stat -c%s "out/$id.pdf") SHA256=$(sha256sum "out/$id.pdf" | cut -d' ' -f1)"
           done < /tmp/items.tsv
+      - name: Upload approved PDFs artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gtu-eighteen-approved
+          path: out/*.pdf
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
