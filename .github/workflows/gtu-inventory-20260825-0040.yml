@@ -1,4 +1,4 @@
-name: GTU inventory discovery 20260825 deep
+name: GTU inventory discovery 20260825 deep parallel
 on:
   pull_request:
     branches: [ main ]
@@ -12,22 +12,13 @@ jobs:
           cat > /tmp/d.py <<'PY'
           import json,urllib.parse,urllib.request,re
           from collections import OrderedDict
+          from concurrent.futures import ThreadPoolExecutor,as_completed
           BASE='collection:graduatetheologicalunion AND mediatype:texts'
-          qs=[
-          'subject:(Bible OR biblical criticism OR biblical archaeology)',
-          'subject:(Hebrew language OR Aramaic language OR Syriac language OR Semitic languages)',
-          'subject:(Jews OR Judaism OR rabbinical literature OR Talmud OR Midrash)',
-          'subject:(Assyria OR Babylonia OR Akkadian OR cuneiform OR Ugarit OR Palestine antiquities)',
-          'subject:(church history OR theology OR missions OR early church)',
-          'title:(commentary OR commentaries OR lexicon OR grammar OR concordance OR dictionary)',
-          'title:(prophets OR pentateuch OR psalms OR isaiah OR jeremiah OR ezekiel OR job)',
-          'title:(gospel OR epistle OR apostles OR revelation OR testament)',
-          'title:(semitic OR syriac OR hebrew OR aramaic OR assyrian OR babylonian)',
-          'title:(calvin OR luther OR augustine OR origen OR jerome OR chrysostom)']
+          qs=['subject:(Bible OR biblical criticism OR biblical archaeology)','subject:(Hebrew language OR Aramaic language OR Syriac language OR Semitic languages)','subject:(Jews OR Judaism OR rabbinical literature OR Talmud OR Midrash)','subject:(Assyria OR Babylonia OR Akkadian OR cuneiform OR Ugarit OR Palestine antiquities)','subject:(church history OR theology OR missions OR early church)','title:(commentary OR commentaries OR lexicon OR grammar OR concordance OR dictionary)','title:(prophets OR pentateuch OR psalms OR isaiah OR jeremiah OR ezekiel OR job)','title:(gospel OR epistle OR apostles OR revelation OR testament)','title:(semitic OR syriac OR hebrew OR aramaic OR assyrian OR babylonian)','title:(calvin OR luther OR augustine OR origen OR jerome OR chrysostom)']
           def get(u):
             q=urllib.request.Request(u,headers={'User-Agent':'GTU inventory bot'})
-            with urllib.request.urlopen(q,timeout=30) as r:return json.load(r)
-          docs=OrderedDict(); seen=0
+            with urllib.request.urlopen(q,timeout=25) as r:return json.load(r)
+          docs=OrderedDict();seen=0
           for q in qs:
             for p in (8,12,18,25,35):
               pa={'q':BASE+' AND '+q,'fl[]':['identifier','title','creator','date','year','language','subject'],'rows':50,'page':p,'output':'json','sort[]':'identifier asc'}
@@ -37,25 +28,29 @@ jobs:
                 seen+=1
                 if x.get('identifier'):docs.setdefault(x['identifier'],x)
           print('DEEP_EXAMINED',seen);print('DEEP_UNIQUE',len(docs))
-          out=[]
-          for x in docs.values():
+          def verify(x):
             i=x['identifier']
             try:m=get('https://archive.org/metadata/'+urllib.parse.quote(i))
-            except:continue
-            md=m.get('metadata',{}) or {}; c=md.get('collection',[])
+            except:return None
+            md=m.get('metadata',{}) or {};c=md.get('collection',[])
             if isinstance(c,str):c=[c]
-            if 'graduatetheologicalunion' not in c:continue
-            fs=m.get('files',[]) or []; restricted=str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true'; pdf=''
+            if 'graduatetheologicalunion' not in c:return None
+            restricted=str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true';pdf=''
             if not restricted:
-              for f in fs:
+              for f in m.get('files',[]) or []:
                 n=f.get('name','') or ''
                 if re.search(r'\.pdf$',n,re.I) and 'encrypted' not in n.lower() and not n.lower().endswith('.lcpdf') and str(f.get('private','false')).lower()!='true':pdf=n;break
-            cr=md.get('creator',x.get('creator','')) or ''; su=md.get('subject',x.get('subject','')) or ''; co=md.get('contributor','') or ''
+            cr=md.get('creator',x.get('creator','')) or '';su=md.get('subject',x.get('subject','')) or '';co=md.get('contributor','') or ''
             if isinstance(cr,list):cr='; '.join(map(str,cr))
             if isinstance(su,list):su='; '.join(map(str,su[:10]))
             if isinstance(co,list):co='; '.join(map(str,co))
-            out.append({'id':i,'title':md.get('title',x.get('title','')) or '','creator':cr,'date':md.get('date',md.get('year',x.get('year',''))) or '','volume':md.get('volume','') or '','edition':md.get('edition','') or '','series':md.get('series','') or '','contributor':co,'subject':su,'language':md.get('language',x.get('language','')) or '','pdf':pdf,'pages':md.get('numpages','') or '','restricted':restricted})
-            if len(out)>=180:break
+            return {'id':i,'title':md.get('title',x.get('title','')) or '','creator':cr,'date':md.get('date',md.get('year',x.get('year',''))) or '','volume':md.get('volume','') or '','edition':md.get('edition','') or '','series':md.get('series','') or '','contributor':co,'subject':su,'language':md.get('language',x.get('language','')) or '','pdf':pdf,'pages':md.get('numpages','') or '','restricted':restricted}
+          arr=list(docs.values())[:260];out=[]
+          with ThreadPoolExecutor(max_workers=24) as ex:
+            futs=[ex.submit(verify,x) for x in arr]
+            for f in as_completed(futs):
+              v=f.result()
+              if v:out.append(v)
           print('DEEP_VERIFIED',len(out))
           for x in out:print('CAND\t'+json.dumps(x,ensure_ascii=False,separators=(',',':')))
           PY
