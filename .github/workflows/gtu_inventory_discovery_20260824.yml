@@ -6,7 +6,7 @@ jobs:
   discover:
     runs-on: ubuntu-latest
     steps:
-      - name: Mine GTU collection and verify metadata
+      - name: Fast GTU-only candidate mining
         shell: bash
         run: |
           set -euo pipefail
@@ -25,36 +25,16 @@ jobs:
             'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Calvin OR Luther OR Reformation) AND (commentary OR commentaries OR exposition OR exegesis))'
             'collection:graduatetheologicalunion AND mediatype:texts AND (title:(archaeology OR archaeological OR Palestine OR Israel OR Jordan OR Jerusalem))'
           )
-          : > work/ids.txt
+          : > work/candidates.tsv
           for q in "${queries[@]}"; do
             enc=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "$q")
-            curl -fsSL "https://archive.org/advancedsearch.php?q=$enc&fl[]=identifier&rows=60&page=1&output=json" -o work/search.json
-            jq -r '.response.docs[].identifier' work/search.json >> work/ids.txt
+            curl -fsSL "https://archive.org/advancedsearch.php?q=$enc&fl[]=identifier&fl[]=title&fl[]=creator&fl[]=year&fl[]=date&fl[]=language&fl[]=volume&fl[]=description&rows=80&page=1&output=json" -o work/search.json
+            jq -r '.response.docs[] | [(.identifier//""),(.title//""),((.creator//"")|if type=="array" then join("; ") else . end),((.year//.date//"")|tostring),((.volume//"")|tostring),((.language//"")|if type=="array" then join("; ") else . end)] | @tsv' work/search.json >> work/candidates.tsv
           done
-          sort -u work/ids.txt > work/uniq.txt
-          : > work/candidates.tsv
-          count=0
-          while IFS= read -r id; do
-            count=$((count+1)); [ "$count" -gt 90 ] && break
-            curl -fsSL "https://archive.org/metadata/$id" -o work/meta.json || continue
-            ingtu=$(jq -r '(.metadata.collection // []) | if type=="array" then any(. == "graduatetheologicalunion") else . == "graduatetheologicalunion" end' work/meta.json)
-            [ "$ingtu" = "true" ] || continue
-            title=$(jq -r '.metadata.title // "" | if type=="array" then join("; ") else . end' work/meta.json | tr '\t\n' '  ')
-            creator=$(jq -r '.metadata.creator // "" | if type=="array" then join("; ") else . end' work/meta.json | tr '\t\n' '  ')
-            year=$(jq -r '.metadata.year // .metadata.date // "" | if type=="array" then join("; ") else . end' work/meta.json | tr '\t\n' '  ')
-            volume=$(jq -r '.metadata.volume // "" | if type=="array" then join("; ") else . end' work/meta.json | tr '\t\n' '  ')
-            edition=$(jq -r '.metadata.edition // "" | if type=="array" then join("; ") else . end' work/meta.json | tr '\t\n' '  ')
-            series=$(jq -r '.metadata.series // "" | if type=="array" then join("; ") else . end' work/meta.json | tr '\t\n' '  ')
-            lang=$(jq -r '.metadata.language // "" | if type=="array" then join("; ") else . end' work/meta.json | tr '\t\n' '  ')
-            contributor=$(jq -r '.metadata.contributor // .metadata.scanningcenter // "" | if type=="array" then join("; ") else . end' work/meta.json | tr '\t\n' '  ')
-            restricted=$(jq -r '.metadata["access-restricted-item"] // .metadata.printdisabled // ""' work/meta.json)
-            pdf=$(jq -r '.files[]? | select(.name|test("\\.pdf$";"i")) | select((.private // "false") != "true") | select((.name|test("(encrypted|lcpdf)";"i"))|not) | .name' work/meta.json | head -n1)
-            printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$id" "$title" "$creator" "$year" "$volume" "$edition" "$series" "$lang" "$contributor" "$restricted" "$pdf" >> work/candidates.tsv
-          done < work/uniq.txt
-          echo "UNIQUE_IDS=$(wc -l < work/uniq.txt)"
-          echo "VERIFIED_CANDIDATES=$(wc -l < work/candidates.tsv)"
-          head -n 100 work/candidates.tsv
+          sort -u -k1,1 work/candidates.tsv -o work/candidates.tsv
+          echo "UNIQUE_CANDIDATES=$(wc -l < work/candidates.tsv)"
+          head -n 180 work/candidates.tsv
       - uses: actions/upload-artifact@v4
         with:
-          name: gtu-inventory-candidates-20260824
+          name: gtu-fast-candidates-20260824
           path: work/candidates.tsv
