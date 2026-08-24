@@ -1,0 +1,55 @@
+name: GTU inventory fast 839-858
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mine later GTU result windows
+        shell: bash
+        run: |
+          cat > /tmp/d.py <<'PY'
+          import json,urllib.parse,urllib.request,re,csv,time
+          B='https://archive.org'; C='graduatetheologicalunion'
+          qs=['Bible','Hebrew','Syriac','Greek New Testament','Old Testament','archaeology','commentary','theology']
+          seen={}; raw=0
+          def g(u):
+            for i in range(3):
+              try:
+                with urllib.request.urlopen(urllib.request.Request(u,headers={'User-Agent':'GTUInventory/1.0'}),timeout=30) as r:return json.load(r)
+              except: time.sleep(i+1)
+            return {}
+          for q0 in qs:
+            for p in (8,15):
+              q=f'collection:{C} AND mediatype:texts AND ({q0})'
+              u=B+'/advancedsearch.php?'+urllib.parse.urlencode({'q':q,'fl[]':['identifier','title','creator','date','year','volume','edition','subject'],'rows':40,'page':p,'output':'json'},doseq=True)
+              for d in g(u).get('response',{}).get('docs',[]):
+                raw+=1
+                if d.get('identifier'): seen.setdefault(d['identifier'],d)
+          rows=[]
+          for ident,d in list(seen.items())[:140]:
+            m=g(B+'/metadata/'+urllib.parse.quote(ident)); md=m.get('metadata',{}); col=md.get('collection',[])
+            if isinstance(col,str): col=[col]
+            if C not in col: continue
+            restricted=str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true'
+            pdf=''
+            if not restricted:
+              for f in m.get('files',[]):
+                n=f.get('name','')
+                if n.lower().endswith('.pdf') and not n.lower().endswith('.lcpdf') and 'encrypted' not in n.lower() and str(f.get('private','false')).lower()!='true': pdf=n; break
+            def t(x): return '; '.join(map(str,x)) if isinstance(x,list) else str(x or '')
+            title=t(md.get('title') or d.get('title')); creator=t(md.get('creator') or d.get('creator')); subj=t(md.get('subject') or d.get('subject'))
+            year=t(md.get('year') or md.get('date') or d.get('year') or d.get('date')); vol=t(md.get('volume') or d.get('volume')); ed=t(md.get('edition') or d.get('edition')); ser=t(md.get('series'))
+            pages=t(md.get('pages') or md.get('imagecount')); contrib=t(md.get('contributor')) or 'Internet Archive'
+            rows.append({'identifier':ident,'title':title,'creator':creator,'subject':subj,'year':year,'volume':vol,'edition':ed,'series':ser,'pages':pages,'contributor':contrib,'pdf_url':(B+'/download/'+urllib.parse.quote(ident)+'/'+urllib.parse.quote(pdf) if pdf else ''),'restricted':restricted,'item_url':B+'/details/'+ident})
+          with open('fast.csv','w',newline='',encoding='utf-8') as f:
+            w=csv.DictWriter(f,fieldnames=rows[0].keys());w.writeheader();w.writerows(rows)
+          print(f'raw_appearances={raw} unique={len(seen)} verified={len(rows)} public_pdf={sum(bool(r["pdf_url"]) for r in rows)}')
+          for r in rows[:100]:print('\t'.join([r['identifier'],r['title'][:150],r['creator'][:80],r['year'][:20],r['volume'][:20],r['edition'][:20],str(bool(r['pdf_url']))]))
+          PY
+          python3 /tmp/d.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-fast-839-858
+          path: fast.csv
