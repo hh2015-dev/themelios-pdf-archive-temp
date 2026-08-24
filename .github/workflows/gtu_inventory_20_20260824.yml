@@ -1,0 +1,84 @@
+name: GTU inventory 20 discovery 20260824
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mine exact GTU collection and verify public PDFs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import requests, json, re, time
+          from urllib.parse import quote
+          BASE='https://archive.org'
+          queries=[
+            ('A','Syriac Aramaic','(title:(Syriac) OR subject:(Syriac) OR title:(Aramaic) OR subject:(Aramaic))'),
+            ('A','Hebrew Masora','(title:(Masora) OR title:(Masoretic) OR subject:(Masoretic) OR title:(Hebrew grammar))'),
+            ('A','LXX textual criticism','(title:(Septuagint) OR subject:(Septuagint) OR title:(textual criticism) OR subject:(textual criticism))'),
+            ('A','Qumran Second Temple','(title:(Qumran) OR subject:(Qumran) OR title:(Dead Sea Scrolls) OR subject:(Dead Sea Scrolls))'),
+            ('A','Apocrypha Pseudepigrapha','(title:(Apocrypha) OR title:(Pseudepigrapha) OR subject:(Pseudepigrapha))'),
+            ('A','Rabbinic Mishnah Talmud','(title:(Mishnah) OR title:(Talmud) OR subject:(rabbinic) OR title:(Midrash))'),
+            ('A','ANE Assyriology','(title:(Assyri*) OR subject:(Assyriology) OR title:(Babylon*) OR title:(Ugarit*) OR subject:(cuneiform))'),
+            ('A','Biblical archaeology','(title:(Palestine) OR subject:(Biblical archaeology) OR title:(archaeology))'),
+            ('A','Patristic exegesis','(title:(Origen) OR title:(Jerome) OR title:(Chrysostom) OR title:(Ephrem) OR title:(Theodoret))'),
+            ('A','Reformation exegesis','(title:(Calvin) OR title:(Luther)) AND (title:(comment*) OR subject:(Bible))'),
+            ('A','Lexicons grammars','(title:(lexicon) OR title:(grammar) OR title:(concordance)) AND (title:(Hebrew) OR title:(Greek) OR title:(Syriac) OR title:(Aramaic))'),
+            ('A','Biblical journals','(title:(Journal) OR title:(Review) OR title:(Bulletin)) AND (subject:(Bible) OR subject:(Biblical))'),
+            ('B','Patristics church history','(title:(patristic) OR subject:(patristics) OR title:(church history) OR title:(early church))'),
+            ('B','Reformation history','(title:(Reformation) OR subject:(Reformation))'),
+            ('B','Missions','(title:(missions) OR subject:(missions) OR title:(missionary))'),
+            ('B','Judaism early Christianity','(title:(Judaism) OR subject:(Judaism) OR title:(early Christianity))')]
+          seen=set(); rows=[]; examined=0
+          for qi,(pri,subj,qfrag) in enumerate(queries):
+            for page in [1,2,4,7]:
+              q=f'collection:graduatetheologicalunion AND mediatype:texts AND {qfrag}'
+              params=[('q',q),('rows',25),('page',page),('output','json')]
+              for f in ['identifier','title','creator','year','volume','edition','series','subject','contributor']:
+                params.append(('fl[]',f))
+              r=requests.get(BASE+'/advancedsearch.php',params=params,timeout=30); r.raise_for_status()
+              docs=r.json().get('response',{}).get('docs',[]); examined += len(docs)
+              for d in docs:
+                ident=d.get('identifier')
+                if not ident or ident in seen: continue
+                seen.add(ident)
+                try:
+                  m=requests.get(BASE+'/metadata/'+quote(ident,safe=''),timeout=30).json()
+                except Exception: continue
+                md=m.get('metadata',{}) or {}
+                col=md.get('collection',[])
+                if isinstance(col,str): col=[col]
+                if 'graduatetheologicalunion' not in col: continue
+                files=m.get('files',[]) or []
+                pubs=[]
+                for f in files:
+                  n=f.get('name','')
+                  if not re.search(r'\.pdf$',n,re.I): continue
+                  if re.search(r'(encrypted|\.lcpdf$)',n,re.I): continue
+                  if str(f.get('private','false')).lower()=='true': continue
+                  pubs.append(f)
+                if not pubs: continue
+                # prefer original/source pdf, then largest normal pdf
+                pubs.sort(key=lambda f:(0 if f.get('source')=='original' else 1, -int(f.get('size') or 0)))
+                pdf=pubs[0]
+                title=md.get('title') or d.get('title') or ''
+                creator=md.get('creator') or d.get('creator') or ''
+                def txt(v):
+                  if isinstance(v,list): return '; '.join(map(str,v))
+                  return '' if v is None else str(v)
+                year=txt(md.get('date') or md.get('year') or d.get('year'))
+                vol=txt(md.get('volume') or d.get('volume'))
+                ed=txt(md.get('edition') or d.get('edition'))
+                ser=txt(md.get('series') or d.get('series'))
+                contrib=txt(md.get('contributor') or d.get('contributor') or 'Internet Archive')
+                pages=txt(md.get('page-progression'))
+                # derive page count ONLY from scandata if explicitly available in metadata files is omitted here
+                rows.append({'priority':pri,'subject':subj,'identifier':ident,'title':txt(title),'creator':txt(creator),'year':year,'volume':vol,'edition':ed,'series':ser,'contributor':contrib,'pdf':BASE+'/download/'+quote(ident,safe='')+'/'+quote(pdf.get('name',''),safe=''),'pdf_size':pdf.get('size',''),'item':BASE+'/details/'+quote(ident,safe='')})
+                if len(rows)>=100: break
+              if len(rows)>=100: break
+            if len(rows)>=100: break
+          print('EXAMINED',examined,'UNIQUE',len(seen),'VERIFIED',len(rows))
+          for i,x in enumerate(rows,1): print('CAND',i,json.dumps(x,ensure_ascii=False,separators=(',',':')))
+          PY
