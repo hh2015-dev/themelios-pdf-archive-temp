@@ -1,0 +1,68 @@
+name: GTU final verification 20260824
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify final candidates against GTU metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, urllib.request, urllib.parse, concurrent.futures
+          ids='''mainlinesofdevel0000wing
+listeninginmulti0000reid_g9l7
+sinaienparanoper0000pala
+whowrotenewtesta0000mack
+siustiniphilosop12just
+sim_american-academy-of-religion-journal_1939-11_7
+sim_american-academy-of-religion-journal_1943-08_11_3
+voicesfrommargin0000unse_t3e5
+mathemataeisagog0000makr
+sim_journal-of-biblical-literature_1930_49_1
+sim_journal-of-biblical-literature_1931_50_4
+sim_journal-of-biblical-literature_1941-06_60_2
+sim_journal-of-biblical-literature_1941-09_60_3
+sim_anglican-theological-review_1920-10_3_2
+sim_anglican-theological-review_1924-10_7_2
+christlichedogma0003piep
+introductiontolu0000neve_e1e3
+jesuschristsunof0000fide
+sim_american-baptists-in-mission_1917-06_8_6
+sim_american-baptists-in-mission_1923-04_14_4
+sim_american-baptists-in-mission_1938-03_30_3
+newtestamentofje0000unse_w0n7
+testimonyofdisti0000unse
+gospelcultureina0000fama'''.splitlines()
+          def get(u):
+            req=urllib.request.Request(u,headers={'User-Agent':'GTUInventory/1.0'})
+            with urllib.request.urlopen(req,timeout=20) as r:return json.load(r)
+          def v(ident):
+            try:m=get('https://archive.org/metadata/'+urllib.parse.quote(ident))
+            except Exception as e:return {'identifier':ident,'valid':False,'error':str(e)}
+            md=m.get('metadata',{}) or {}; c=md.get('collection',[])
+            if isinstance(c,str):c=[c]
+            valid='graduatetheologicalunion' in c
+            cr=md.get('creator') or ''; su=md.get('subject') or ''; lang=md.get('language') or ''
+            if isinstance(cr,list):cr='; '.join(map(str,cr))
+            if isinstance(su,list):su='; '.join(map(str,su[:12]))
+            if isinstance(lang,list):lang='; '.join(map(str,lang))
+            pdf=''
+            for f in m.get('files',[]) or []:
+              n=f.get('name','') or ''
+              if n.lower().endswith('.pdf') and not n.lower().endswith('.lcpdf') and 'encrypted' not in n.lower() and str(f.get('private','false')).lower()!='true':
+                pdf='https://archive.org/download/'+ident+'/'+urllib.parse.quote(n);break
+            return {'identifier':ident,'valid':valid,'title':str(md.get('title') or ''),'creator':str(cr),'year':str(md.get('year') or md.get('date') or ''),'volume':str(md.get('volume') or ''),'edition':str(md.get('edition') or ''),'series':str(md.get('series') or ''),'subject':str(su),'language':str(lang),'contributor':str(md.get('contributor') or 'Graduate Theological Union'),'type':str(md.get('mediatype') or 'texts'),'pages':str(md.get('pages') or ''),'item':'https://archive.org/details/'+ident,'pdf':pdf,'restricted':str(md.get('access-restricted-item') or md.get('printdisabled') or '')}
+          out=[]
+          with concurrent.futures.ThreadPoolExecutor(max_workers=24) as ex:
+            out=list(ex.map(v,ids))
+          with open('gtu_finalverify.jsonl','w',encoding='utf8') as f:
+            for r in out:f.write(json.dumps(r,ensure_ascii=False)+'\n')
+          print('verified',sum(bool(r.get('valid')) for r in out),'of',len(out))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-finalverify
+          path: gtu_finalverify.jsonl
