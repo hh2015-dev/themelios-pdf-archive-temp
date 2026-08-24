@@ -8,31 +8,42 @@ permissions:
   contents: read
 
 jobs:
-  verify-five-new-candidates:
+  verify-twenty-candidates:
     runs-on: ubuntu-latest
     steps:
-      - name: Verify five Archive.org PDFs
+      - name: Verify twenty Archive.org PDFs
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p out
           cat > /tmp/items.tsv <<'EOF'
-          synonymsofnewtes0001tren	https://archive.org/download/synonymsofnewtes0001tren/synonymsofnewtes0001tren.pdf
-          biblicalcommenta0003cfke	https://archive.org/download/biblicalcommenta0003cfke/biblicalcommenta0003cfke.pdf
-          biblischercommen0000fran	https://archive.org/download/biblischercommen0000fran/biblischercommen0000fran.pdf
-          biblicalcommenta0001fdel	https://archive.org/download/biblicalcommenta0001fdel/biblicalcommenta0001fdel.pdf
-          sixthbookofselec0000seve	https://archive.org/download/sixthbookofselec0000seve/sixthbookofselec0000seve.pdf
+          sim_american-journal-of-archaeology_1941_45_supplement	https://archive.org/download/sim_american-journal-of-archaeology_1941_45_supplement/sim_american-journal-of-archaeology_1941_45_supplement.pdf
+          bookofcommonpray00prot_15	https://archive.org/download/bookofcommonpray00prot_15/bookofcommonpray00prot_15.pdf
+          bookofcommonpray00prot_22	https://archive.org/download/bookofcommonpray00prot_22/bookofcommonpray00prot_22.pdf
+          american-missionary_1866-05_10_5	https://archive.org/download/american-missionary_1866-05_10_5/american-missionary_1866-05_10_5.pdf
+          american-missionary_1868-04_12_4	https://archive.org/download/american-missionary_1868-04_12_4/american-missionary_1868-04_12_4.pdf
+          american-missionary_1873-04_17_4	https://archive.org/download/american-missionary_1873-04_17_4/american-missionary_1873-04_17_4.pdf
+          american-missionary_1874-03_18_3	https://archive.org/download/american-missionary_1874-03_18_3/american-missionary_1874-03_18_3.pdf
+          abbreviationsing0000mavi	https://archive.org/download/abbreviationsing0000mavi/abbreviationsing0000mavi.pdf
+          adnotationesexeg0000maxi	https://archive.org/download/adnotationesexeg0000maxi/adnotationesexeg0000maxi.pdf
+          actsmonumentsofc00foxe_0	https://archive.org/download/actsmonumentsofc00foxe_0/actsmonumentsofc00foxe_0.pdf
+          165ecritsdeluthe0000guil	https://archive.org/download/165ecritsdeluthe0000guil/165ecritsdeluthe0000guil.pdf
+          calvinscommentar0004calv	https://archive.org/download/calvinscommentar0004calv/calvinscommentar0004calv.pdf
+          calvinscommentar0001calv	https://archive.org/download/calvinscommentar0001calv/calvinscommentar0001calv.pdf
+          calvinscommentar0002calv	https://archive.org/download/calvinscommentar0002calv/calvinscommentar0002calv.pdf
+          bibilicalcomment0002fran_n0b4	https://archive.org/download/bibilicalcomment0002fran_n0b4/bibilicalcomment0002fran_n0b4.pdf
+          thascicaecilicyp0000mary	https://archive.org/download/thascicaecilicyp0000mary/thascicaecilicyp0000mary.pdf
+          eusebiipamphilip0000euse	https://archive.org/download/eusebiipamphilip0000euse/eusebiipamphilip0000euse.pdf
+          christianitylibe0000jgre	https://archive.org/download/christianitylibe0000jgre/christianitylibe0000jgre.pdf
+          actsofapostleswi0037lumb	https://archive.org/download/actsofapostleswi0037lumb/actsofapostleswi0037lumb.pdf
+          american-bible-society-record_1863-08_8_8	https://archive.org/download/american-bible-society-record_1863-08_8_8/american-bible-society-record_1863-08_8_8.pdf
           EOF
-          while IFS=$'\t' read -r id url; do
+          export -f verify 2>/dev/null || true
+          verify() {
+            id="$1"; url="$2"
             curl -L --retry 2 --connect-timeout 20 --max-time 1200 -A 'Mozilla/5.0' -fSs -o "out/$id.pdf" "$url"
             [ "$(head -c 5 "out/$id.pdf")" = "%PDF-" ]
-            echo "$id SIZE=$(stat -c%s "out/$id.pdf") SHA256=$(sha256sum "out/$id.pdf" | cut -d' ' -f1)"
-          done < /tmp/items.tsv
-      - name: Upload verification artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: gtu-five-new-candidates
-          path: out/*.pdf
-          compression-level: 0
-          retention-days: 1
-          if-no-files-found: error
+            echo "PASS $id SIZE=$(stat -c%s "out/$id.pdf")"
+          }
+          export -f verify
+          tr '\t' ' ' < /tmp/items.tsv | xargs -n2 -P4 bash -c 'verify "$0" "$1"'
