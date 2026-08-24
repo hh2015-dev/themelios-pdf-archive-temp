@@ -8,28 +8,30 @@ permissions:
   contents: read
 
 jobs:
-  transfer-three-selected:
+  verify-five-new-candidates:
     runs-on: ubuntu-latest
     steps:
-      - name: Download selected Archive.org PDFs
+      - name: Verify five Archive.org PDFs
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p out
           cat > /tmp/items.tsv <<'EOF'
-          remnantsoflaters0000unse	https://archive.org/download/remnantsoflaters0000unse/remnantsoflaters0000unse.pdf
-          gtu_A32400002882532B	https://archive.org/download/gtu_A32400002882532B/gtu_A32400002882532B.pdf
-          sacredarchaeolog0000mack	https://archive.org/download/sacredarchaeolog0000mack/sacredarchaeolog0000mack.pdf
+          synonymsofnewtes0001tren	https://archive.org/download/synonymsofnewtes0001tren/synonymsofnewtes0001tren.pdf
+          biblicalcommenta0003cfke	https://archive.org/download/biblicalcommenta0003cfke/biblicalcommenta0003cfke.pdf
+          biblischercommen0000fran	https://archive.org/download/biblischercommen0000fran/biblischercommen0000fran.pdf
+          biblicalcommenta0001fdel	https://archive.org/download/biblicalcommenta0001fdel/biblicalcommenta0001fdel.pdf
+          sixthbookofselec0000seve	https://archive.org/download/sixthbookofselec0000seve/sixthbookofselec0000seve.pdf
           EOF
           while IFS=$'\t' read -r id url; do
             curl -L --retry 2 --connect-timeout 20 --max-time 1200 -A 'Mozilla/5.0' -fSs -o "out/$id.pdf" "$url"
             [ "$(head -c 5 "out/$id.pdf")" = "%PDF-" ]
             echo "$id SIZE=$(stat -c%s "out/$id.pdf") SHA256=$(sha256sum "out/$id.pdf" | cut -d' ' -f1)"
           done < /tmp/items.tsv
-      - name: Upload selected PDFs
+      - name: Upload verification artifact
         uses: actions/upload-artifact@v4
         with:
-          name: gtu-selected-three-pdfs
+          name: gtu-five-new-candidates
           path: out/*.pdf
           compression-level: 0
           retention-days: 1
