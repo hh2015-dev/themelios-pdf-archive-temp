@@ -1,0 +1,45 @@
+name: GTU inventory fast sweep
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Exact-collection sweep
+        shell: bash
+        run: |
+          python - <<'PY' | tee sweep.txt
+          import urllib.request,urllib.parse,json
+          queries=[
+          'title:(Hebrew OR Aramaic OR Syriac OR Semitic OR Ugaritic OR Akkadian)',
+          'title:(Septuagint OR manuscript OR papyrus OR textual OR codex)',
+          'title:(Genesis OR Exodus OR Leviticus OR Deuteronomy OR Joshua OR Judges OR Samuel OR Kings OR Isaiah OR Jeremiah OR Ezekiel OR Daniel OR Psalms OR Job OR Proverbs)',
+          'title:(Matthew OR Mark OR Luke OR John OR Acts OR Romans OR Corinthians OR Galatians OR Ephesians OR Hebrews OR Revelation)',
+          'title:(Talmud OR Mishnah OR Midrash OR Qumran OR Josephus OR Philo OR Apocrypha OR Pseudepigrapha)',
+          'title:(Archaeology OR Assyrian OR Babylonian OR Sumerian OR Palestine OR Canaanite OR Phoenician)',
+          'title:(grammar OR lexicon OR concordance OR bibliography)',
+          'title:(commentary OR commentaries OR exegesis OR interpretation)',
+          'creator:(Calvin OR Luther OR Origen OR Jerome OR Augustine OR Chrysostom OR Eusebius)',
+          'title:(biblical OR Bible) AND title:(journal OR review OR studies OR theology OR archaeology)'
+          ]
+          pages=[3,7,11,17]
+          seen={}
+          for qi,x in enumerate(queries):
+            for p in pages:
+              q='collection:graduatetheologicalunion AND mediatype:texts AND ('+x+')'
+              args=[('q',q),('fl[]','identifier'),('fl[]','title'),('fl[]','creator'),('fl[]','date'),('fl[]','year'),('fl[]','volume'),('fl[]','edition'),('fl[]','series'),('fl[]','subject'),('fl[]','contributor'),('rows','50'),('page',str(p)),('output','json'),('sort[]','identifier asc')]
+              u='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(args)
+              try:
+                d=json.load(urllib.request.urlopen(u,timeout=25))
+              except Exception as e:
+                print('ERR',qi,p,repr(e)); continue
+              for z in d.get('response',{}).get('docs',[]):
+                if z.get('identifier'): seen[z['identifier']]=z
+          print('EXAMINED_UNIQUE',len(seen))
+          for z in seen.values(): print('RAW\t'+json.dumps(z,ensure_ascii=False,separators=(',',':')))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-fast-sweep
+          path: sweep.txt
