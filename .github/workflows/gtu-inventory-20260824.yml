@@ -1,41 +1,54 @@
-name: GTU inventory 20260824 discovery
+name: GTU inventory 20260824 final verify
 on:
   pull_request:
     branches: [ main ]
 jobs:
-  discover:
+  verify:
     runs-on: ubuntu-latest
     steps:
-      - name: GTU-only advancedsearch
+      - name: Verify final GTU items
         shell: bash
         run: |
           python - <<'PY'
-          import json, urllib.parse, urllib.request, re
-          base='https://archive.org/advancedsearch.php'
-          qs=[
-          'title:(bible OR biblical OR testament OR hebrew OR aramaic OR syriac OR greek OR septuagint OR commentary OR exegesis)',
-          'title:(manuscript OR textual OR papyri OR codex OR masoretic OR targum OR talmud OR midrash)',
-          'title:(assyrian OR babylonian OR akkadian OR ugaritic OR archaeology OR palestine OR semitic OR phoenician)',
-          'title:(calvin OR luther OR augustine OR origen OR chrysostom OR jerome OR patristic OR reformation)',
-          'title:(theology OR creed OR church OR mission OR christianity OR judaism OR early christian)',
-          'title:(journal OR bulletin OR translator OR biblical)'
-          ]
-          ids={}; examined=0
-          for qi,q0 in enumerate(qs):
-            for page in (2,5,9,14,20):
-              q='collection:graduatetheologicalunion AND mediatype:texts AND ('+q0+')'
-              p={'q':q,'fl[]':['identifier','title','creator','year','volume','edition','series','subject','contributor'],'rows':70,'page':page,'output':'json','sort[]':'identifier asc' if (qi+page)%2 else 'identifier desc'}
-              try:
-                d=json.load(urllib.request.urlopen(base+'?'+urllib.parse.urlencode(p,doseq=True),timeout=20))['response']['docs']; examined+=len(d)
-                for x in d: ids.setdefault(x['identifier'],x)
-              except Exception as e: print('QUERY_ERROR',qi,page,type(e).__name__)
-          A=re.compile(r'bibl|testament|hebrew|arama|syri|greek|septuag|textual|manuscript|codex|papy|talmud|midrash|assyri|babylon|akkad|ugarit|archaeol|palestine|comment|exeg|calvin|luther|augustin|origen|chrysostom|jerome|josephus|philo|targum|masoret|scroll|qumran|apocry|pseudep',re.I)
-          out=sorted(ids.values(), key=lambda x:(-bool(A.search(' '.join(str(x.get(k,'')) for k in ('title','creator','subject')))), str(x.get('identifier',''))))
-          def s(x,k):
-            v=x.get(k,''); return '; '.join(map(str,v)) if isinstance(v,list) else str(v or '')
-          print('EXAMINED',examined,'UNIQUE',len(ids))
-          print('ID\tTITLE\tCREATOR\tYEAR\tVOLUME\tEDITION\tSERIES\tSUBJECT\tCONTRIBUTOR')
-          for x in out[:250]:
-            row=[s(x,k) for k in ('identifier','title','creator','year','volume','edition','series','subject','contributor')]
-            print('\t'.join(v.replace('\t',' ').replace('\n',' ')[:500] for v in row))
+          import json,urllib.request,urllib.parse,concurrent.futures
+          ids='''elorigendelmundo0000luis
+erasmusluther0000rdev
+eschatologischep0000jhko
+etudesurlecaract0000unse
+externalgraceins0000harr
+fastiecclesiaesc0003scot
+fromjustiniantol0000pull
+hatorahehahafaro0000unse
+hillmonasticmanu0000juli
+historiredelavie0002maud
+holyscripturesac0000vari
+howtostudyoldtes0000unse
+humourironyinnew0000jako
+illustratedbible0000cond
+indexofsubjetind0000davi
+influenceofgreek0000edwi
+internationalsta0001unse_g5f9
+interpretingnewt0000mumm
+introducingoldte0000jnsc_y2f0
+introductionalab0001unse'''.split()
+          def one(id):
+            try:
+              m=json.load(urllib.request.urlopen('https://archive.org/metadata/'+id,timeout=25)); md=m.get('metadata',{})
+              col=md.get('collection',[]); col=[col] if isinstance(col,str) else col
+              if 'graduatetheologicalunion' not in col:return [id,'INVALID_COLLECTION']
+              def s(k):
+                v=md.get(k,''); return '; '.join(map(str,v)) if isinstance(v,list) else str(v or '')
+              restricted=str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true'
+              pdf=''
+              if not restricted:
+                fs=[f for f in m.get('files',[]) if f.get('name','').lower().endswith('.pdf') and f.get('private') not in (True,'true') and 'encrypted' not in f.get('name','').lower() and not f.get('name','').lower().endswith('.lcpdf')]
+                if fs: pdf=fs[0].get('name','')
+              pc=''
+              for k in ('imagecount','pagecount','pages'):
+                if md.get(k):pc=str(md[k]);break
+              return [id,s('title'),s('creator'),s('date') or s('year'),s('volume'),s('edition'),s('series'),s('subject')[:500],s('contributor'),pdf,pc,'restricted' if restricted else 'public']
+            except Exception as e:return [id,'ERROR:'+type(e).__name__]
+          print('ID\tTITLE\tCREATOR\tYEAR\tVOLUME\tEDITION\tSERIES\tSUBJECT\tCONTRIBUTOR\tPDF\tPAGES\tACCESS')
+          with concurrent.futures.ThreadPoolExecutor(max_workers=20) as ex:
+            for r in ex.map(one,ids): print('\t'.join(x.replace('\t',' ').replace('\n',' ') for x in r))
           PY
