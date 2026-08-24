@@ -1,34 +1,65 @@
-name: GTU inventory fast candidate export
+name: GTU final 20 verification
 on:
   pull_request:
     branches: [ main ]
 jobs:
-  discover:
+  verify:
     runs-on: ubuntu-latest
     steps:
-      - name: Export deep GTU-only candidates
+      - name: Verify exact GTU metadata
         shell: bash
         run: |
           python3 - <<'PY'
-          import json,urllib.parse,urllib.request
-          base='collection:graduatetheologicalunion AND mediatype:texts'
-          pages=[4,9,14,19,24,29]
-          out=[]
-          for p in pages:
-            q={'q':base,'fl[]':['identifier','title','creator','date','year','volume','edition','series','language','subject','contributor'],'rows':250,'page':p,'output':'json','sort[]':'identifier asc'}
-            u='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(q,doseq=True)
+          import json,urllib.request,urllib.parse,re
+          from concurrent.futures import ThreadPoolExecutor,as_completed
+          ids='''dasbekenntnisima0008proc
+gottesrufimalten0000eich_y0a0
+daskerygmadesalt0036visc
+gottundmenschimd0001unse
+gottundmenschimd0002unse
+notesonpaulcorin0000bann
+churchoftangdyna0000fost
+gtu_32400001917552
+holybiblecontain0000vari_f5s2
+holybiblecontain0008vari
+holybiblecontain0009vari
+holybiblecontain0014vari
+allgemeinemissio0001unse
+allgemeinemissio0002unse
+allgemeinemissio0003unse
+allgemeinemissio0004unse
+american-bible-society-record_1952-01_97_1
+american-bible-society-record_1952-02_97_2
+american-bible-society-record_1952-03_97_3
+american-bible-society-record_1952-04_97_4'''.split()
+          def get(i):
+            u='https://archive.org/metadata/'+urllib.parse.quote(i)
             req=urllib.request.Request(u,headers={'User-Agent':'GTU inventory bot'})
-            with urllib.request.urlopen(req,timeout=30) as r:d=json.load(r)
-            out.extend(d.get('response',{}).get('docs',[]))
-          seen=set()
-          with open('gtu-candidates.jsonl','w',encoding='utf-8') as f:
-            for x in out:
-              i=x.get('identifier')
-              if not i or i in seen:continue
-              seen.add(i);f.write(json.dumps(x,ensure_ascii=False)+'\n')
-          print('FAST_EXAMINED',len(out));print('FAST_UNIQUE',len(seen))
+            with urllib.request.urlopen(req,timeout=25) as r:m=json.load(r)
+            md=m.get('metadata',{}) or {}; c=md.get('collection',[])
+            if isinstance(c,str): c=[c]
+            if 'graduatetheologicalunion' not in c:return {'id':i,'valid':False}
+            restricted=str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true'; pdf=''
+            if not restricted:
+              for f in m.get('files',[]) or []:
+                n=f.get('name','') or ''
+                if re.search(r'\.pdf$',n,re.I) and 'encrypted' not in n.lower() and not n.lower().endswith('.lcpdf') and str(f.get('private','false')).lower()!='true':pdf=n;break
+            def flat(v):
+              if isinstance(v,list):return '; '.join(map(str,v))
+              return v or ''
+            return {'id':i,'valid':True,'title':flat(md.get('title')),'creator':flat(md.get('creator')),'date':flat(md.get('date') or md.get('year')),'volume':flat(md.get('volume')),'edition':flat(md.get('edition')),'series':flat(md.get('series')),'subject':flat(md.get('subject')),'contributor':flat(md.get('contributor')),'language':flat(md.get('language')),'pages':flat(md.get('numpages')),'restricted':restricted,'pdf':pdf}
+          out=[]
+          with ThreadPoolExecutor(max_workers=12) as ex:
+            futs={ex.submit(get,i):i for i in ids}
+            for f in as_completed(futs):
+              try:out.append(f.result())
+              except Exception as e:out.append({'id':futs[f],'valid':False,'error':str(e)})
+          out.sort(key=lambda x:ids.index(x['id']))
+          with open('final20.json','w',encoding='utf-8') as f:json.dump(out,f,ensure_ascii=False,indent=2)
+          print('VALID',sum(1 for x in out if x.get('valid')),'OF',len(out))
+          for x in out:print('FINAL\t'+json.dumps(x,ensure_ascii=False,separators=(',',':')))
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: gtu-candidates
-          path: gtu-candidates.jsonl
+          name: final20
+          path: final20.json
