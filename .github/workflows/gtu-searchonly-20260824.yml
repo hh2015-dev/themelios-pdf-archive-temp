@@ -1,0 +1,40 @@
+name: GTU search-only discovery 20260824
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  search:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Search deep GTU pages only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, urllib.parse, urllib.request
+          queries=['bible','hebrew','greek','syriac','semitic','testament','commentary','archaeology','judaism','theology','patristic','reformation','missions','church history']
+          pages=[30,45,60,75,90,110]
+          def get(u):
+            req=urllib.request.Request(u,headers={'User-Agent':'GTUInventory/1.0'})
+            with urllib.request.urlopen(req,timeout=15) as r:return json.load(r)
+          seen={};hits=0
+          for q in queries:
+            for p in pages:
+              aq=f'collection:graduatetheologicalunion AND mediatype:texts AND ({q})'
+              u='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode({'q':aq,'fl[]':['identifier','title','creator','year','date','volume','subject'],'rows':25,'page':p,'output':'json'},doseq=True)
+              try: docs=get(u).get('response',{}).get('docs',[])
+              except Exception: continue
+              hits+=len(docs)
+              for d in docs:
+                if d.get('identifier'): seen[d['identifier']]=d
+          with open('gtu_searchonly.jsonl','w',encoding='utf8') as f:
+            for d in seen.values(): f.write(json.dumps(d,ensure_ascii=False)+'\n')
+          with open('gtu_searchonly_summary.txt','w') as f:f.write(f'hits={hits}\nunique={len(seen)}\n')
+          print('hits',hits,'unique',len(seen))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-searchonly
+          path: |
+            gtu_searchonly.jsonl
+            gtu_searchonly_summary.txt
