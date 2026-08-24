@@ -1,4 +1,4 @@
-name: GTU inventory 20 discovery
+name: GTU inventory 20 discovery fast
 on:
   pull_request:
     branches: [ main ]
@@ -6,74 +6,59 @@ jobs:
   discover:
     runs-on: ubuntu-latest
     steps:
-      - name: Mine GTU corpus
+      - name: Mine GTU corpus fast
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import json, urllib.parse, urllib.request, time
-          queries = [
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Syriac) OR title:(Coptic) OR title:(Ethiopic) OR title:(Samaritan) OR title:(Aramaic))',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Septuagint) OR title:(papyri) OR title:(manuscript) OR title:(codex) OR title:(textual))',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Qumran) OR title:(Targum) OR title:(Midrash) OR title:(Mishnah) OR title:(Talmud))',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Origen) OR title:(Jerome) OR title:(Ephrem) OR title:(Cyril) OR title:(Chrysostom) OR title:(Theodoret))',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Assyrian) OR title:(Babylonian) OR title:(Akkadian) OR title:(Ugaritic) OR title:(Phoenician) OR title:(Palestine))',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Hebraica) OR title:(Biblica) OR title:(Expositor) OR title:(Interpretation) OR title:(Semitic))',
-          ]
+          import json, urllib.parse, urllib.request, hashlib
+          from concurrent.futures import ThreadPoolExecutor, as_completed
+          queries=[
+          'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Syriac) OR title:(Coptic) OR title:(Ethiopic) OR title:(Samaritan) OR title:(Aramaic))',
+          'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Septuagint) OR title:(papyri) OR title:(manuscript) OR title:(codex) OR title:(textual))',
+          'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Qumran) OR title:(Targum) OR title:(Midrash) OR title:(Mishnah) OR title:(Talmud))',
+          'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Origen) OR title:(Jerome) OR title:(Ephrem) OR title:(Cyril) OR title:(Chrysostom) OR title:(Theodoret))',
+          'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Assyrian) OR title:(Babylonian) OR title:(Akkadian) OR title:(Ugaritic) OR title:(Phoenician) OR title:(Palestine))',
+          'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Hebraica) OR title:(Biblica) OR title:(Expositor) OR title:(Interpretation) OR title:(Semitic))']
           seen={}
           for qi,q in enumerate(queries):
-            for page in (1,2,3,4,5):
+            for page in range(1,5):
               params=[('q',q),('fl[]','identifier'),('fl[]','title'),('fl[]','creator'),('fl[]','year'),('fl[]','volume'),('fl[]','edition'),('fl[]','series'),('fl[]','language'),('fl[]','contributor'),('rows','100'),('page',str(page)),('output','json')]
-              url='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(params)
+              u='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(params)
               try:
-                with urllib.request.urlopen(url, timeout=30) as r: data=json.load(r)
-              except Exception as e:
-                print('ERR', qi, page, repr(e)); continue
-              docs=data.get('response',{}).get('docs',[])
+                with urllib.request.urlopen(u,timeout=20) as r: docs=json.load(r).get('response',{}).get('docs',[])
+              except Exception as e: print('SEARCHERR',qi,page,repr(e)); continue
               for d in docs: seen[d['identifier']]=d
-              print(f'QUERY {qi+1} PAGE {page} DOCS {len(docs)} UNIQUE {len(seen)}')
+              print('SEARCH',qi+1,page,len(docs),'UNIQUE',len(seen))
               if len(docs)<100: break
-              time.sleep(.2)
           print('TOTAL_UNIQUE',len(seen))
-          with open('candidates.jsonl','w',encoding='utf-8') as f:
-            for d in seen.values(): f.write(json.dumps(d,ensure_ascii=False)+'\n')
-          # verify metadata + public PDF for first 220 varied candidates sorted by identifier hash
-          import hashlib
-          pool=sorted(seen.values(), key=lambda d: hashlib.sha1(d['identifier'].encode()).hexdigest())[:260]
-          verified=[]
-          for idx,d in enumerate(pool):
+          pool=sorted(seen.values(),key=lambda d:hashlib.sha1(d['identifier'].encode()).hexdigest())[:180]
+          def verify(d):
             ident=d['identifier']
             try:
-              with urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident),timeout=25) as r: m=json.load(r)
-            except Exception: continue
-            md=m.get('metadata',{})
-            coll=md.get('collection',[]); coll=[coll] if isinstance(coll,str) else coll
-            if 'graduatetheologicalunion' not in coll: continue
-            files=m.get('files',[])
+              with urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident),timeout=15) as r:m=json.load(r)
+            except Exception:return None
+            md=m.get('metadata',{}); coll=md.get('collection',[]); coll=[coll] if isinstance(coll,str) else coll
+            if 'graduatetheologicalunion' not in coll:return None
             pdfs=[]
-            for x in files:
+            for x in m.get('files',[]):
               n=x.get('name','')
-              if not n.lower().endswith('.pdf') or n.lower().endswith('.lcpdf') or 'encrypted' in n.lower(): continue
-              if str(x.get('private','false')).lower()=='true': continue
-              pdfs.append(x)
-            pub=bool(pdfs) and str(md.get('access-restricted-item','false')).lower()!='true' and str(md.get('printdisabled','false')).lower()!='true'
-            p=pdfs[0] if pub else None
-            rec={
-              'identifier':ident,'title':md.get('title',d.get('title','')),'creator':md.get('creator',d.get('creator','')),
-              'date':md.get('date',''),'year':d.get('year',''),'volume':md.get('volume',d.get('volume','')),
-              'edition':md.get('edition',d.get('edition','')),'series':md.get('series',d.get('series','')),
-              'language':md.get('language',d.get('language','')),'contributor':md.get('contributor',d.get('contributor','')),
-              'subject':md.get('subject',''),'public_pdf':pub,'pdf_name':p.get('name','') if p else '',
-              'pages':md.get('page-progression','')
-            }
-            verified.append(rec)
-          print('VERIFIED',len(verified),'PUBLIC_PDF',sum(x['public_pdf'] for x in verified))
+              if n.lower().endswith('.pdf') and not n.lower().endswith('.lcpdf') and 'encrypted' not in n.lower() and str(x.get('private','false')).lower()!='true':pdfs.append(x)
+            restricted=str(md.get('access-restricted-item','false')).lower()=='true' or str(md.get('printdisabled','false')).lower()=='true'
+            pub=bool(pdfs) and not restricted; p=pdfs[0] if pub else None
+            return {'identifier':ident,'title':md.get('title',d.get('title','')),'creator':md.get('creator',d.get('creator','')),'date':md.get('date',''),'year':d.get('year',''),'volume':md.get('volume',d.get('volume','')),'edition':md.get('edition',d.get('edition','')),'series':md.get('series',d.get('series','')),'language':md.get('language',d.get('language','')),'contributor':md.get('contributor',d.get('contributor','')),'subject':md.get('subject',''),'public_pdf':pub,'pdf_name':p.get('name','') if p else '','restricted':restricted}
+          out=[]
+          with ThreadPoolExecutor(max_workers=18) as ex:
+            futs=[ex.submit(verify,d) for d in pool]
+            for f in as_completed(futs):
+              x=f.result()
+              if x: out.append(x)
+          out.sort(key=lambda x:x['identifier'])
+          print('VERIFIED',len(out),'PUBLIC_PDF',sum(x['public_pdf'] for x in out))
           with open('verified.jsonl','w',encoding='utf-8') as f:
-            for d in verified: f.write(json.dumps(d,ensure_ascii=False)+'\n')
+            for x in out:f.write(json.dumps(x,ensure_ascii=False)+'\n')
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: gtu-inventory-candidates
-          path: |
-            candidates.jsonl
-            verified.jsonl
+          name: gtu-inventory-verified
+          path: verified.jsonl
