@@ -1,0 +1,34 @@
+name: GTU inventory 20260824 0841
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Query Archive.org GTU only
+        shell: bash
+        run: |
+          set -euo pipefail
+          : > candidates.tsv
+          queries=(
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Hebrew OR Aramaic OR Syriac OR Ugaritic OR Akkadian OR Semitic OR Greek))'
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Bible OR Biblical OR Testament OR Gospel OR Psalms OR Isaiah OR Jeremiah OR Ezekiel OR Daniel))'
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Qumran OR Scrolls OR Targum OR Talmud OR Midrash OR Mishnah OR Apocrypha OR Pseudepigrapha))'
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Origen OR Jerome OR Chrysostom OR Augustine OR Calvin OR Luther OR patristic OR Reformation))'
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(archaeology OR Assyria OR Babylon OR Canaan OR Palestine OR Egypt OR papyri OR manuscript))'
+          )
+          for q in "${queries[@]}"; do
+            for page in 2 5 8 11; do
+              enc=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "$q")
+              curl -fsSL "https://archive.org/advancedsearch.php?q=$enc&fl[]=identifier&fl[]=title&fl[]=creator&fl[]=year&fl[]=volume&fl[]=edition&fl[]=language&fl[]=format&fl[]=contributor&rows=100&page=$page&output=json" -o r.json
+              jq -r '.response.docs[] | [(.identifier//""),(.title//""),((.creator//"")|if type=="array" then join("; ") else . end),(.year//""),(.volume//""),(.edition//""),((.language//"")|if type=="array" then join("; ") else . end),((.format//"")|if type=="array" then join("; ") else . end),((.contributor//"")|if type=="array" then join("; ") else . end)] | @tsv' r.json >> candidates.tsv
+            done
+          done
+          sort -u candidates.tsv > candidates.unique.tsv
+          echo "UNIQUE=$(wc -l < candidates.unique.tsv)"
+          head -n 700 candidates.unique.tsv
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-candidates
+          path: candidates.unique.tsv
