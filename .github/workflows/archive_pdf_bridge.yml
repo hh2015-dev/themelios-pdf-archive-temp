@@ -8,30 +8,28 @@ permissions:
   contents: read
 
 jobs:
-  verify-five-journal-candidates:
+  transfer-three-selected:
     runs-on: ubuntu-latest
     steps:
-      - name: Verify five proposed journal PDFs from Archive.org
+      - name: Download selected Archive.org PDFs
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p out
           cat > /tmp/items.tsv <<'EOF'
-          american-bible-society-record_1863-07_8_7	https://archive.org/download/american-bible-society-record_1863-07_8_7/american-bible-society-record_1863-07_8_7.pdf
-          american-missionary_1888-02_42_2	https://archive.org/download/american-missionary_1888-02_42_2/american-missionary_1888-02_42_2.pdf
-          baptist-magazine-1809_1850-01_42	https://archive.org/download/baptist-magazine-1809_1850-01_42/baptist-magazine-1809_1850-01_42.pdf
-          near-eastern-archaeology_1973-1982_36-45_index	https://archive.org/download/near-eastern-archaeology_1973-1982_36-45_index/near-eastern-archaeology_1973-1982_36-45_index.pdf
-          luther-life_1898-07_11_1	https://archive.org/download/luther-life_1898-07_11_1/luther-life_1898-07_11_1.pdf
+          remnantsoflaters0000unse	https://archive.org/download/remnantsoflaters0000unse/remnantsoflaters0000unse.pdf
+          gtu_A32400002882532B	https://archive.org/download/gtu_A32400002882532B/gtu_A32400002882532B.pdf
+          sacredarchaeolog0000mack	https://archive.org/download/sacredarchaeolog0000mack/sacredarchaeolog0000mack.pdf
           EOF
           while IFS=$'\t' read -r id url; do
-            curl -L --retry 2 --connect-timeout 20 --max-time 900 -A 'Mozilla/5.0' -fSs -o "out/$id.pdf" "$url"
+            curl -L --retry 2 --connect-timeout 20 --max-time 1200 -A 'Mozilla/5.0' -fSs -o "out/$id.pdf" "$url"
             [ "$(head -c 5 "out/$id.pdf")" = "%PDF-" ]
             echo "$id SIZE=$(stat -c%s "out/$id.pdf") SHA256=$(sha256sum "out/$id.pdf" | cut -d' ' -f1)"
           done < /tmp/items.tsv
-      - name: Upload verification artifact
+      - name: Upload selected PDFs
         uses: actions/upload-artifact@v4
         with:
-          name: gtu-next-five-journals
+          name: gtu-selected-three-pdfs
           path: out/*.pdf
           compression-level: 0
           retention-days: 1
