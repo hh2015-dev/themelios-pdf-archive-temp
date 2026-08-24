@@ -1,0 +1,59 @@
+name: GTU verify 20260824 0841
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify selected IA items belong to GTU and resolve public PDF
+        shell: bash
+        run: |
+          set -euo pipefail
+          ids=(
+            bearingofrecentl0000hflu
+            bookofisaiahsamp0000mhgo
+            canontextsofoldt0000drfr
+            catholicstudents0002hugh_x2h8
+            catholicstudents0003hugh
+            catholicstudents0005hugh_i4m7
+            catalogueofethio0005will
+            catalogueofethio0007will
+            catalogueofethio0008will
+            elementsofgreeke0000gerh
+            fromjesustochris0000fred
+            latingospelbooks0000patr
+            newtestamentincu0000unse_x1y8
+            newtestamentlite0000merr
+            numismaticillust0000aker
+            oldtestamenthist0000joha
+            journal-of-the-palestine-oriental-society_1920-1921_1
+            journal-of-the-palestine-oriental-society_1920-1948_1-21_index
+            bulletin-palestine-museum-jerusalem_1926_2
+            derromerbriefdes0000walt
+            bulletin-british-school-of-archaeology-in-jerusalem_1922
+            dictionaryofchri0011fern
+            greekenglishdict0000revj
+            classbookofnewte0000unse_c3a4
+          )
+          : > verified.tsv
+          for id in "${ids[@]}"; do
+            curl -fsSL "https://archive.org/metadata/$id" -o m.json
+            title=$(jq -r '.metadata.title // ""' m.json)
+            creator=$(jq -r '.metadata.creator // "" | if type=="array" then join("; ") else . end' m.json)
+            date=$(jq -r '.metadata.date // .metadata.year // ""' m.json)
+            vol=$(jq -r '.metadata.volume // ""' m.json)
+            ed=$(jq -r '.metadata.edition // ""' m.json)
+            lang=$(jq -r '.metadata.language // "" | if type=="array" then join("; ") else . end' m.json)
+            contributor=$(jq -r '.metadata.contributor // "" | if type=="array" then join("; ") else . end' m.json)
+            coll=$(jq -r '.metadata.collection // [] | if type=="array" then join(";") else . end' m.json)
+            pages=$(jq -r '.metadata.imagecount // ""' m.json)
+            restricted=$(jq -r '.metadata["access-restricted-item"] // .metadata.printdisabled // ""' m.json)
+            pdf=$(jq -r '[.files[] | select(.name|test("\\.pdf$";"i")) | select((.private // "false") != "true") | select((.name|test("(encrypted|lcpdf)";"i"))|not) | .name][0] // ""' m.json)
+            ingtu=NO; [[ ";$coll;" == *";graduatetheologicalunion;"* ]] && ingtu=YES
+            printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$id" "$ingtu" "$restricted" "$title" "$creator" "$date" "$vol" "$ed" "$lang" "$contributor" "$pages" "$pdf" | tee -a verified.tsv
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-verified
+          path: verified.tsv
