@@ -1,69 +1,82 @@
-name: GTU inventory 20 20260824
+name: GTU candidate verification 20260824
 on:
   pull_request:
     branches: [ main ]
 jobs:
-  discover:
+  verify:
     runs-on: ubuntu-latest
     steps:
-      - name: Mine exact GTU collection only
+      - name: Verify exact GTU membership and metadata
         shell: bash
         run: |
           set -euo pipefail
-          cat > /tmp/mine.py <<'PY'
-          import json, urllib.parse, urllib.request, re, time
-          queries = [
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:masoretic OR title:masorah OR title:massoretic)',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:samaritan OR title:samaritanus OR title:pentateuch)',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:peshitta OR title:syriac OR title:syriaca)',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:targum OR title:targumim OR title:aramaic)',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:septuagint OR title:septuaginta OR title:hexapla)',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:manuscript OR title:manuscripts OR title:codex)',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:papyri OR title:papyrus OR title:ostraca)',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:epigraph* OR title:inscription*)',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:ugarit* OR title:akkad* OR title:assyri* OR title:babylon*)',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:hebrew OR title:hebraic* OR title:semitic*)',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:greek OR title:lexicon OR title:grammar)',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:textual OR title:criticism OR title:critical)',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:canon OR title:apocrypha OR title:pseudepigrapha)',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:philo OR title:josephus OR title:qumran OR title:dead-sea)',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:rabbin* OR title:talmud OR title:mishnah OR title:midrash)',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:archaeolog* OR title:palestine OR title:israel)',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:commentary OR title:commentaries OR title:exegesis)',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:bibliograph* OR title:concordance OR title:dictionary)',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:patrist* OR title:origen OR title:jerome OR title:augustine)',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:reformation OR title:luther OR title:calvin)'
-          ]
-          fields=['identifier','title','creator','date','year','volume','edition','series','subject','language','format','contributor']
-          seen={}; examined=0
-          for qi,q in enumerate(queries):
-            params=[('q',q)]+[('fl[]',f) for f in fields]+[('rows','100'),('page','1'),('output','json')]
-            url='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(params)
-            with urllib.request.urlopen(url, timeout=40) as r: data=json.load(r)
-            docs=data.get('response',{}).get('docs',[]); examined += len(docs)
-            for d in docs:
-              ident=d.get('identifier')
-              if ident: seen[ident]=d
-            time.sleep(.1)
-          termsA=['bible','biblical','testament','hebrew','aramaic','syriac','semitic','greek','septuagint','textual','manuscript','codex','qumran','targum','talmud','mishnah','midrash','papyri','papyrus','ugarit','akkad','assyri','babylon','archaeolog','palestine','israel','commentar','exeg','lexicon','grammar','concordance','canon','apocry','philo','josephus','psalm','isaiah','jeremiah','ezekiel','genesis','exodus','deuteronomy','gospel','epistle','acts','revelation']
-          termsB=['patrist','augustine','origen','jerome','reformation','luther','calvin','church','theology','doctrine','creed','mission','judaism','christianity']
+          cat > /tmp/verify.py <<'PY'
+          import json, urllib.request, urllib.parse, re, time
+          ids = '''gtu_32400005869056
+ourbibleancientm0000sirf_a4p0
+gtu_32400004227710_8
+introductiontobi0000gern
+positionofbookso0000ptho
+ugariticstudiesb0043mitc
+babylonischassyr0001borg
+babylonischassyr0002borg
+babylonischassyr0003borg
+saintgregoryofny0000unse
+historicalcatalo0000mros
+semeiaexperiment0000jche
+semeiaexperiment0000larr
+semeiaexperiment0000char
+repertoiredepigr0001unse
+repertoiredepigr0002unse
+repertoiredepigr0003unse
+repertoiredepigr0005unse
+repertoiredepigr0006unse
+testimonyofjosep0000barn
+oldtestamentsinc0000emil
+studienzumrabbin0010stem
+semitica_1851-1952_4
+discoveriesinrui0000laya_q9u1
+gtu_32400005923598
+fifteenthcentury0000wend
+palestine-exploration-quarterly_1875-01
+palestine-exploration-quarterly_1882-04
+palestine-exploration-quarterly_1883-01
+palestine-exploration-quarterly_1888-07
+sim_journal-of-semitic-studies_1956-04_1_2
+sim_journal-of-semitic-studies_1957-04_2_2
+sim_journal-of-semitic-studies_1959-04_4_2
+sim_journal-of-semitic-studies_autumn-1961_6_2
+mythmiraclemidra0000emil'''.splitlines()
           def flat(x):
-            if isinstance(x,list): return ' '.join(map(str,x))
+            if isinstance(x,list): return '; '.join(map(str,x))
             return str(x or '')
-          def score(d):
-            s=(flat(d.get('title'))+' '+flat(d.get('subject'))).lower()
-            return 5*sum(t in s for t in termsA)+2*sum(t in s for t in termsB)
-          ranked=sorted(seen.values(), key=lambda d:(-score(d), str(d.get('year','')), d.get('identifier','')))
-          print('EXAMINED_APPEARANCES',examined)
-          print('UNIQUE',len(seen))
-          with open('gtu_candidates.tsv','w',encoding='utf-8') as f:
-            f.write('score\tidentifier\ttitle\tcreator\tyear\tvolume\tedition\tseries\tlanguage\tcontributor\n')
-            for d in ranked[:400]:
-              vals=[score(d),d.get('identifier',''),flat(d.get('title')),flat(d.get('creator')),flat(d.get('year') or d.get('date')),flat(d.get('volume')),flat(d.get('edition')),flat(d.get('series')),flat(d.get('language')),flat(d.get('contributor'))]
-              f.write('\t'.join(str(v).replace('\t',' ').replace('\n',' ') for v in vals)+'\n')
+          def year(meta):
+            y=meta.get('year') or meta.get('date') or meta.get('publicdate') or ''
+            m=re.search(r'(1[0-9]{3}|20[0-9]{2})', flat(y)); return m.group(1) if m else ''
+          with open('verified.tsv','w',encoding='utf-8') as out:
+            hdr=['identifier','in_gtu','title','creator','year','volume','edition','series','language','contributor','mediatype','restricted','public_pdf','pages','subject']
+            out.write('\t'.join(hdr)+'\n')
+            for ident in ids:
+              try:
+                with urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident), timeout=45) as r: d=json.load(r)
+                m=d.get('metadata',{})
+                coll=m.get('collection',[]); coll=[coll] if isinstance(coll,str) else coll
+                ingtu='graduatetheologicalunion' in coll
+                restricted=str(m.get('access-restricted-item') or m.get('printdisabled') or '').lower()
+                pdf=''
+                for f in d.get('files',[]):
+                  n=f.get('name',''); priv=str(f.get('private','false')).lower()
+                  if n.lower().endswith('.pdf') and priv!='true' and not n.lower().endswith('_encrypted.pdf') and not n.lower().endswith('.lcpdf'):
+                    pdf='https://archive.org/download/'+ident+'/'+urllib.parse.quote(n); break
+                pages=flat(m.get('pages') or m.get('page-count') or m.get('page_count') or '')
+                vals=[ident,'YES' if ingtu else 'NO',flat(m.get('title')),flat(m.get('creator')),year(m),flat(m.get('volume')),flat(m.get('edition')),flat(m.get('series')),flat(m.get('language')),flat(m.get('contributor')),flat(m.get('mediatype')),restricted,pdf,pages,flat(m.get('subject'))]
+                out.write('\t'.join(v.replace('\t',' ').replace('\n',' ') for v in vals)+'\n')
+              except Exception as e:
+                out.write(ident+'\tERROR\t'+str(e).replace('\t',' ').replace('\n',' ')+'\n')
+              time.sleep(.08)
           PY
-          python3 /tmp/mine.py
+          python3 /tmp/verify.py
       - uses: actions/upload-artifact@v4
         with:
-          name: gtu-candidates-20260824
-          path: gtu_candidates.tsv
+          name: gtu-verified-20260824
+          path: verified.tsv
