@@ -1,0 +1,77 @@
+name: GTU inventory fast discovery 20260824
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  discover-fast:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Broad GTU search and parallel metadata verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, urllib.parse, urllib.request, concurrent.futures, re
+          queries=['hebrew','aramaic','syriac','septuagint','textual criticism','new testament','old testament','biblical archaeology','dead sea scrolls','talmud','mishnah','ugaritic','akkadian','assyrian','papyrus','manuscript','greek grammar','hebrew lexicon','concordance','isaiah','jeremiah','psalms','job','genesis','daniel','calvin commentary','origen','journal biblical','biblical archaeologist','philo','josephus','apocrypha','pseudepigrapha','second temple','coptic','samaritan','vulgate','rabbinic','semitic inscriptions']
+          def getjson(url):
+            req=urllib.request.Request(url,headers={'User-Agent':'Mozilla/5.0 GTUInventory/1.0'})
+            with urllib.request.urlopen(req,timeout=25) as r:return json.load(r)
+          ids={}; hits=0
+          for qi,q in enumerate(queries):
+            for page in [1+(qi%4),5+(qi%3)]:
+              aq=f'collection:graduatetheologicalunion AND mediatype:texts AND ({q})'
+              url='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode({'q':aq,'fl[]':['identifier','title','creator','year','date','volume','subject'],'rows':35,'page':page,'output':'json'},doseq=True)
+              try:docs=getjson(url).get('response',{}).get('docs',[])
+              except Exception:continue
+              hits+=len(docs)
+              for d in docs:
+                if d.get('identifier'):ids.setdefault(d['identifier'],d)
+          def verify(pair):
+            ident,d=pair
+            try:m=getjson('https://archive.org/metadata/'+urllib.parse.quote(ident))
+            except Exception:return None
+            md=m.get('metadata',{}) or {}; coll=md.get('collection',[])
+            if isinstance(coll,str):coll=[coll]
+            if 'graduatetheologicalunion' not in coll:return None
+            title=md.get('title') or d.get('title') or ''; creator=md.get('creator') or d.get('creator') or ''
+            if isinstance(creator,list):creator='; '.join(map(str,creator))
+            subj=md.get('subject') or d.get('subject') or ''
+            if isinstance(subj,list):subj='; '.join(map(str,subj[:10]))
+            year=md.get('year') or md.get('date') or d.get('year') or d.get('date') or ''
+            vol=md.get('volume') or ''; ed=md.get('edition') or ''; series=md.get('series') or ''
+            contrib=md.get('contributor') or 'Internet Archive / Graduate Theological Union'
+            files=m.get('files',[]) or []; pdf=''
+            for f in files:
+              n=f.get('name','') or ''
+              if n.lower().endswith('.pdf') and not n.lower().endswith('.lcpdf') and 'encrypted' not in n.lower() and str(f.get('private','false')).lower()!='true':
+                pdf='https://archive.org/download/'+ident+'/'+urllib.parse.quote(n);break
+            restricted=str(md.get('access-restricted-item') or md.get('printdisabled') or '')
+            return {'identifier':ident,'title':str(title),'creator':str(creator),'year':str(year),'volume':str(vol),'edition':str(ed),'series':str(series),'subject':str(subj),'contributor':str(contrib),'pdf':pdf,'restricted':restricted,'item':'https://archive.org/details/'+ident}
+          pairs=list(ids.items())
+          # Verify a broad deterministic sample: all if <=700, otherwise interleaved 700.
+          if len(pairs)>700:
+            step=len(pairs)/700; pairs=[pairs[int(i*step)] for i in range(700)]
+          out=[]
+          with concurrent.futures.ThreadPoolExecutor(max_workers=24) as ex:
+            for r in ex.map(verify,pairs):
+              if r:out.append(r)
+          A=['bible','biblical','testament','hebrew','aramaic','syriac','semitic','septuagint','lxx','textual','manuscript','papyr','qumran','dead sea','talmud','mishnah','midrash','ugarit','akkad','assyri','babylon','isaiah','jeremiah','psalm','job','genesis','exodus','daniel','greek','lexicon','grammar','concordance','philo','josephus','apocry','pseudepig','calvin','luther','origen','coptic','samaritan','vulgate']
+          B=['theology','church','patrist','reformation','doctrine','mission','judaism','christianity']
+          def score(r):
+            s=(r['title']+' '+r['subject']).lower();v=sum(3 for x in A if x in s)+sum(1 for x in B if x in s)
+            if r['pdf']:v+=3
+            if r['volume']:v+=1
+            return v
+          out.sort(key=lambda r:(-score(r),r['title'].lower(),r['identifier']))
+          with open('gtu_fast.jsonl','w',encoding='utf8') as f:
+            for r in out:
+              r['score']=score(r);f.write(json.dumps(r,ensure_ascii=False)+'\n')
+          with open('gtu_fast_summary.txt','w') as f:f.write(f'query_hits={hits}\nunique_search_ids={len(ids)}\nmetadata_verified={len(out)}\n')
+          print(hits,len(ids),len(out))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-fast-candidates
+          path: |
+            gtu_fast.jsonl
+            gtu_fast_summary.txt
