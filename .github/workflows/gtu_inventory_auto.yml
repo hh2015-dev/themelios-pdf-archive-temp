@@ -1,43 +1,77 @@
-name: GTU inventory fast shortlist
+name: GTU selected metadata verification
 on:
   pull_request:
     branches: [ main ]
 jobs:
-  discover:
+  verify:
     runs-on: ubuntu-latest
     steps:
-      - name: Mine exact GTU collection broadly
+      - name: Verify selected exact GTU items
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
           import json, urllib.parse, urllib.request
-          qs=[
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(hebrew OR aramaic OR syriac OR semitic OR akkadian OR assyrian OR ugaritic))',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(septuagint OR greek OR papyri OR manuscript OR textual OR criticism))',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(old testament OR hebrew bible OR pentateuch OR genesis OR exodus OR isaiah OR jeremiah OR psalms OR job))',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(new testament OR gospel OR romans OR acts OR corinthians OR revelation))',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(qumran OR dead sea OR pseudepigrapha OR apocrypha OR rabbinic OR talmud OR mishnah OR josephus OR philo))',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(archaeology OR palestine OR babylon OR assyria OR sumer OR ancient near east))',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(calvin OR luther OR patristic OR augustine OR origen OR jerome OR chrysostom OR irenaeus))',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(lexicon OR concordance OR grammar OR bibliography OR commentary OR theology))',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (subject:(Bible OR biblical OR Hebrew OR Syriac OR Aramaic OR Assyriology OR archaeology))'
-          ]
-          docs={}; examined=0
-          for q in qs:
-            for start in (0,200,600,1200,2000):
-              params={'q':q,'fl[]':['identifier','title','creator','year','date','language','volume','contributor','subject'],'rows':'200','start':str(start),'output':'json'}
-              u='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(params,doseq=True)
-              try:
-                with urllib.request.urlopen(u,timeout=25) as r: data=json.load(r)
-              except Exception:
-                continue
-              arr=data.get('response',{}).get('docs',[]); examined+=len(arr)
-              for d in arr: docs[d['identifier']]=d
-          with open('gtu_shortlist.json','w') as f: json.dump({'examined':examined,'unique':len(docs),'items':list(docs.values())},f,ensure_ascii=False)
-          print('EXAMINED',examined,'UNIQUE',len(docs))
+          ids='''gospelaccountsof0000mart
+labibletraductio0010unse
+biblekeywordsfro0006unse
+apocryphapseudep0001rhch_e9d0
+aprocryphapseude0002unse
+evangeliasynopti0000vann
+graecitasbiblica0000zerw
+essentialsofnewt0000john
+interlinearlinea0000geor
+greekenglishlexi0002lidd
+psalmscultinoldt0000andr
+jamesbrotherofje0000eise_u9s8
+newoxfordannotat0000herb
+oldtestamentcomm0000alle
+regensburgnewtes0000alfr
+harpersbiblecomm0000unse_e2z1
+moralessurjob0032greg
+eucharisterionro0000unse
+hebraischegramma0001beer
+schopfungundfall0000bonh
+teachingoftwelve0000unse_r7s7
+sim_journal-of-biblical-literature_1941-12_60_4
+sim_journal-of-biblical-literature_1947-12_66_4
+sim_journal-of-biblical-literature_1930_49_3
+sim_journal-of-biblical-literature_1938-03_57_1
+sim_near-eastern-archaeology_1957-12_20_4
+sim_journal-of-semitic-studies_1960-10_5_4
+sim_journal-of-semitic-studies_1957-04_2_2
+sim_journal-of-semitic-studies_1958-07_3_3
+prefacetooldtest0000robe'''.splitlines()
+          out=[]
+          def flat(v):
+            if isinstance(v,list): return '; '.join(str(x) for x in v)
+            return '' if v is None else str(v)
+          for ident in ids:
+            try:
+              with urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident),timeout=30) as r: m=json.load(r)
+            except Exception as e:
+              out.append({'identifier':ident,'error':str(e)}); continue
+            md=m.get('metadata',{}); col=md.get('collection',[])
+            if isinstance(col,str): col=[col]
+            files=m.get('files',[]); pdf=''; pages=''
+            for f in files:
+              n=f.get('name','')
+              if n.lower().endswith('.pdf') and not n.lower().endswith('encrypted.pdf') and str(f.get('private','false')).lower()!='true':
+                pdf=n; break
+            for key in ('imagecount','pages','pagecount'):
+              if md.get(key): pages=flat(md.get(key)); break
+            out.append({
+              'identifier':ident,'gtu':'graduatetheologicalunion' in col,
+              'title':flat(md.get('title')),'creator':flat(md.get('creator')),'year':flat(md.get('year') or md.get('date')),
+              'volume':flat(md.get('volume')),'edition':flat(md.get('edition')),'series':flat(md.get('series')),
+              'language':flat(md.get('language')),'subject':flat(md.get('subject')),'contributor':flat(md.get('contributor')),
+              'pdf':pdf,'pages':pages,'restricted':flat(md.get('access-restricted-item') or md.get('printdisabled')),
+              'mediatype':flat(md.get('mediatype')),'description':flat(md.get('description'))
+            })
+          with open('gtu_verified.json','w') as f: json.dump(out,f,ensure_ascii=False)
+          print('VERIFIED',sum(1 for x in out if x.get('gtu')),'OF',len(out))
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: gtu-shortlist
-          path: gtu_shortlist.json
+          name: gtu-verified
+          path: gtu_verified.json
