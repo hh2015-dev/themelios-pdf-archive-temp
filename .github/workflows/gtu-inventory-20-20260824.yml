@@ -1,0 +1,112 @@
+name: GTU inventory 20 discovery
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mine GTU collection broadly and verify metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, urllib.parse, urllib.request, time, re
+          queries = [
+            'title:(Deuteronomy OR Leviticus OR Ecclesiastes OR Qoheleth OR Canticles OR "Song of Songs")',
+            'title:(Hosea OR Amos OR Micah OR Zechariah OR Malachi OR Habakkuk)',
+            'title:(Targum OR Targumic OR Midrash OR Midrashic OR Mishnah OR Talmud)',
+            'title:(Syriac OR Peshitta OR Armenian OR Ethiopic OR Coptic)',
+            'title:(papyri OR papyrus OR ostraca OR inscription OR epigraphy OR cuneiform)',
+            'title:(Phoenician OR Moabite OR Nabataean OR Aramaic OR Ugaritic)',
+            'title:(Septuagint OR Hexapla OR Origen OR Aquila OR Symmachus OR Theodotion)',
+            'title:(canon OR apocrypha OR pseudepigrapha OR apocalypse OR testament)',
+            'title:(Irenaeus OR Tertullian OR Chrysostom OR Jerome OR Augustine OR Ephraem)',
+            'title:(Luther OR Zwingli OR Melanchthon OR Bucer OR Reformation)',
+            'title:(concordance OR lexicon OR grammar OR bibliography OR catalogue)',
+            'title:(archaeology OR Palestine OR Assyria OR Babylonia OR Egypt OR Israel)',
+            'title:(rabbinic OR Jewish OR Judaism OR synagogue OR messiah OR messianic)',
+            'title:(manuscript OR codex OR palaeography OR paleography)',
+            'title:(Acts OR Romans OR Corinthians OR Hebrews OR Revelation) AND year:[1800 TO 1940]',
+            'title:(Genesis OR Exodus OR Joshua OR Judges OR Samuel OR Kings) AND year:[1800 TO 1940]',
+            'title:(Psalms OR Proverbs OR Job OR Isaiah OR Jeremiah OR Ezekiel OR Daniel) AND year:[1800 TO 1940]',
+            'title:(mission OR missionary OR missions) AND year:[1750 TO 1950]',
+            'title:(creed OR confession OR doctrine OR theology) AND year:[1500 TO 1950]',
+            'title:(church history OR ecclesiastical history OR patristic OR fathers)'
+          ]
+          ids=[]; seen=set(); examined=0
+          def get(url):
+              req=urllib.request.Request(url, headers={'User-Agent':'GTUInventory/1.0'})
+              with urllib.request.urlopen(req, timeout=30) as r:
+                  return json.load(r)
+          for q in queries:
+              full=f'collection:graduatetheologicalunion AND mediatype:texts AND ({q})'
+              url='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode({
+                  'q':full,'fl[]':['identifier','title','creator','date','year'],'rows':40,'page':1,'output':'json','sort[]':'identifier asc'
+              }, doseq=True)
+              try: data=get(url)
+              except Exception as e:
+                  print('SEARCHERR',q,repr(e)); continue
+              docs=data.get('response',{}).get('docs',[]); examined += len(docs)
+              for d in docs:
+                  i=d.get('identifier')
+                  if i and i not in seen:
+                      seen.add(i); ids.append(i)
+          # also sample dispersed raw corpus pages
+          for page in [7,19,31,43,57,71,89,107,131,157]:
+              full='collection:graduatetheologicalunion AND mediatype:texts'
+              url='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode({
+                  'q':full,'fl[]':['identifier'],'rows':50,'page':page,'output':'json','sort[]':'identifier asc'
+              }, doseq=True)
+              try: data=get(url)
+              except Exception as e:
+                  print('PAGEERR',page,repr(e)); continue
+              docs=data.get('response',{}).get('docs',[]); examined += len(docs)
+              for d in docs:
+                  i=d.get('identifier')
+                  if i and i not in seen:
+                      seen.add(i); ids.append(i)
+          print('EXAMINED_SEARCH_HITS', examined)
+          print('UNIQUE_CANDIDATES', len(ids))
+          # Rank candidate metadata by topical keywords, and verify exact collection membership + file availability.
+          keyA=['bible','biblical','testament','hebrew','aramaic','syriac','semit','greek','septuag','manuscript','codex','targum','talmud','mishnah','midrash','qumran','apocry','pseudep','palestine','archaeolog','assyri','babylon','ugarit','cuneiform','papy','inscription','genesis','exodus','levit','deuter','joshua','judges','samuel','kings','psalm','proverb','ecclesiast','isaiah','jeremiah','ezekiel','daniel','hosea','amos','micah','zechar','malachi','matthew','mark','luke','john','acts','romans','corinth','galatian','ephesian','hebrews','revelation','commentar','concordance','lexicon','grammar']
+          keyB=['theolog','patrist','augustin','chrysost','irenae','tertull','origen','reformation','luther','calvin','zwingli','church history','ecclesiastical','mission','creed','confession','apolog']
+          out=[]
+          for idx,i in enumerate(ids[:900]):
+              try: m=get('https://archive.org/metadata/'+urllib.parse.quote(i))
+              except Exception: continue
+              md=m.get('metadata',{}) or {}
+              coll=md.get('collection',[])
+              if isinstance(coll,str): coll=[coll]
+              if 'graduatetheologicalunion' not in coll: continue
+              title=md.get('title','') or ''
+              creator=md.get('creator','') or ''
+              if isinstance(creator,list): creator='; '.join(map(str,creator))
+              subject=md.get('subject','') or ''
+              if isinstance(subject,list): subject='; '.join(map(str,subject))
+              hay=(title+' '+creator+' '+subject).lower()
+              score=sum(3 for k in keyA if k in hay)+sum(1 for k in keyB if k in hay)
+              if score < 2: continue
+              restricted=str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true'
+              pdfs=[]
+              for f in m.get('files',[]) or []:
+                  n=f.get('name','') or ''
+                  if re.search(r'\.pdf$',n,re.I) and str(f.get('private','false')).lower()!='true' and not re.search(r'(encrypted|\.lcpdf$)',n,re.I):
+                      pdfs.append(n)
+              public_pdf = '' if restricted else (pdfs[0] if pdfs else '')
+              date=md.get('date') or md.get('year') or ''
+              volume=md.get('volume','') or ''
+              edition=md.get('edition','') or ''
+              series=md.get('series','') or ''
+              language=md.get('language','') or ''
+              contributor=md.get('contributor','') or ''
+              pages=md.get('pages','') or ''
+              out.append((score,i,title,creator,date,volume,edition,series,language,contributor,pages,restricted,public_pdf,subject))
+              if idx%50==0: time.sleep(.05)
+          out.sort(key=lambda x:(-x[0],x[4],x[2]))
+          print('VERIFIED_RELEVANT',len(out))
+          print('BEGIN_CANDIDATES')
+          for row in out[:140]:
+              print(json.dumps(row, ensure_ascii=False))
+          print('END_CANDIDATES')
+          PY
