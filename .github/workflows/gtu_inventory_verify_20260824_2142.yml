@@ -1,0 +1,58 @@
+name: GTU inventory final verification
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify exact GTU membership and metadata
+        shell: bash
+        run: |
+          cat > /tmp/v.py <<'PY'
+          import urllib.request,urllib.parse,json,re
+          ids='''chaldeanaccounto0000geor_s5n7
+somerelationship00unse
+psalmsshortintro0000norm
+stammessageundme0000unse
+secondbookofmose0000arsk
+samuelsitshistori0000artu
+catalogueofsamar0002edwa
+christadammanhum0000bart_k7b3
+classnoteonsacre0000jwmc
+stluketheologian0000helm
+studiesinicorint0000rupe
+sim_interpretation_1947-01_1_1
+sim_interpretation_1947-04_1_2
+sim_interpretation_1947-07_1_3
+sim_interpretation_1947-10_1_4
+sim_interpretation_1948-01_2_1
+sim_interpretation_1948-04_2_2
+sim_interpretation_1948-07_2_3
+sim_interpretation_1948-10_2_4
+sim_interpretation_1949-01_3_1'''.splitlines()
+          for ident in ids:
+            try: m=json.load(urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident),timeout=30))
+            except Exception as e: print('ERR\t'+ident+'\t'+repr(e)); continue
+            md=m.get('metadata',{}); coll=md.get('collection',[])
+            if isinstance(coll,str): coll=[coll]
+            member='graduatetheologicalunion' in coll
+            restricted=str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true'
+            pdf=''
+            if not restricted:
+              for f in m.get('files',[]):
+                n=f.get('name','')
+                if n.lower().endswith('.pdf') and str(f.get('private','false')).lower()!='true' and not re.search(r'encrypted|\.lcpdf$',n,re.I): pdf=n; break
+            def v(k):
+              x=md.get(k,'')
+              return '; '.join(map(str,x)) if isinstance(x,list) else str(x)
+            d={'id':ident,'member':member,'title':v('title'),'creator':v('creator'),'date':v('date'),'year':v('year'),'volume':v('volume'),'edition':v('edition'),'series':v('series'),'subject':v('subject'),'contributor':v('contributor'),'pages':str(md.get('imagecount','') or md.get('page_count','') or ''),'restricted':restricted,'pdf':pdf}
+            if pdf: d['pdf_url']='https://archive.org/download/'+ident+'/'+urllib.parse.quote(pdf)
+            else: d['pdf_url']=''
+            print('VER\t'+json.dumps(d,ensure_ascii=False,separators=(',',':')))
+          PY
+          python /tmp/v.py | tee verified.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-final-verified
+          path: verified.txt
