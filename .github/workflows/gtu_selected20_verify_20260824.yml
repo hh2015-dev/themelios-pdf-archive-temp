@@ -1,0 +1,59 @@
+name: GTU selected20 verify 20260824
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify exact GTU items
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import requests, json, re
+          from concurrent.futures import ThreadPoolExecutor, as_completed
+          from urllib.parse import quote
+          B='https://archive.org'
+          ids='''gtu_32400002882953
+gtu_32400005364272
+lareligionassyro0000lepp
+historyofbabylon0002roge
+gtu_32400005673540
+studienzurassyri0000unse
+dasakkadischesyl0000sode
+analyticalgreekl0000vari_f4v8
+archaeologyinbib0000walt
+newdirectionsinb0000davi
+elcristianismoyl00unse
+deadseascrollsof0002burr
+qumranunddieanfa0000wern
+lesaffinitesqumr0000copp
+mythmiraclemidra0000emil
+toldothamishpatb0001gula
+treasuresoftalmu0000unse
+catalogueofsyria0000wwri_r6z2
+gtu_32400004571927
+aramaicdocuments0000pier'''.splitlines()
+          def t(v): return '; '.join(map(str,v)) if isinstance(v,list) else ('' if v is None else str(v))
+          def chk(i):
+            try:
+              m=requests.get(B+'/metadata/'+quote(i,safe=''),timeout=12).json(); md=m.get('metadata',{}) or {}
+            except Exception as e: return {'identifier':i,'ok':False,'error':str(e)}
+            c=md.get('collection',[]); c=[c] if isinstance(c,str) else c
+            pubs=[]
+            for f in m.get('files',[]) or []:
+              n=f.get('name','')
+              if re.search(r'\.pdf$',n,re.I) and not re.search(r'(encrypted|\.lcpdf$)',n,re.I) and str(f.get('private','false')).lower()!='true': pubs.append(f)
+            p=''
+            if pubs:
+              pubs.sort(key=lambda f:(0 if f.get('source')=='original' else 1,-int(f.get('size') or 0))); fn=pubs[0]['name']; p=B+'/download/'+quote(i,safe='')+'/'+quote(fn,safe='')
+            return {'identifier':i,'ok':'graduatetheologicalunion' in c,'title':t(md.get('title')),'creator':t(md.get('creator')),'year':t(md.get('date') or md.get('year')),'volume':t(md.get('volume')),'edition':t(md.get('edition')),'series':t(md.get('series')),'contributor':t(md.get('contributor') or 'Internet Archive'),'public_pdf':bool(pubs),'pdf':p,'item':B+'/details/'+quote(i,safe='')}
+          out=[]
+          with ThreadPoolExecutor(max_workers=20) as ex:
+            fs={ex.submit(chk,i):i for i in ids}
+            for f in as_completed(fs): out.append(f.result())
+          order={x:i for i,x in enumerate(ids)}; out.sort(key=lambda x:order[x['identifier']])
+          for x in out: print('VER '+json.dumps(x,ensure_ascii=False,separators=(',',':')))
+          print('COUNT',sum(x.get('ok',False) for x in out),'PUBLICPDF',sum(x.get('public_pdf',False) for x in out))
+          PY
