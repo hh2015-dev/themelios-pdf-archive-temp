@@ -1,0 +1,65 @@
+name: GTU verify final20 839-858
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify final candidates
+        shell: bash
+        run: |
+          cat > /tmp/v.py <<'PY'
+          import json,urllib.parse,urllib.request,csv,concurrent.futures
+          B='https://archive.org'; C='graduatetheologicalunion'
+          ids='''originteachingof0000unse
+geekmanuscriptso0000will
+floweringofhebre0024fenn
+sim_near-eastern-archaeology_1963-1967_26-30_cumulative-index
+sim_near-eastern-archaeology_1957-12_20_4
+sim_new-testament-studies_1961-10_8_1
+sim_journal-of-biblical-literature_1898_17_1-2
+sim_journal-of-biblical-literature_1910_29_1
+theologicalwordb0000alan_x1w8
+concisebiblecomm0000unse_g8e4
+sim_bible-translator_1958_9_index
+sim_biblical-theology-bulletin_1986-1996_16-26_cumulative-index
+varietiesofnewte0000erne_n3y2
+gtu_32400004001354_14
+bibliographyofbi0000vari
+diegattungsgesch0000bern_n5x3
+oldtestamentissu0000samu_o5p7
+oldtestamentconc00unse
+hopeinnewtestame0000lica
+hourswithbibleor0000geik_i5m8'''.splitlines()
+          def t(v): return '; '.join(map(str,v)) if isinstance(v,list) else str(v or '')
+          def one(ident):
+            u=B+'/metadata/'+urllib.parse.quote(ident)
+            req=urllib.request.Request(u,headers={'User-Agent':'GTUInventory/1.0'})
+            with urllib.request.urlopen(req,timeout=45) as r:m=json.load(r)
+            md=m.get('metadata',{}); col=md.get('collection',[])
+            if isinstance(col,str):col=[col]
+            restricted=str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true'
+            pdf=''
+            if not restricted:
+              for f in m.get('files',[]):
+                n=f.get('name','')
+                if n.lower().endswith('.pdf') and not n.lower().endswith('.lcpdf') and 'encrypted' not in n.lower() and str(f.get('private','false')).lower()!='true': pdf=n;break
+            return {'identifier':ident,'gtu':C in col,'title':t(md.get('title')),'creator':t(md.get('creator')),'date':t(md.get('date')),'year':t(md.get('year')),'volume':t(md.get('volume')),'edition':t(md.get('edition')),'series':t(md.get('series')),'subject':t(md.get('subject')),'pages':t(md.get('pages') or md.get('imagecount')),'contributor':t(md.get('contributor')) or 'Internet Archive','restricted':restricted,'pdf_url':B+'/download/'+urllib.parse.quote(ident)+'/'+urllib.parse.quote(pdf) if pdf else '','item_url':B+'/details/'+ident}
+          rows=[]
+          with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
+            futs={ex.submit(one,i):i for i in ids}
+            for f in concurrent.futures.as_completed(futs):
+              try:rows.append(f.result())
+              except Exception as e: print('ERR',futs[f],repr(e))
+          order={x:i for i,x in enumerate(ids)};rows.sort(key=lambda r:order[r['identifier']])
+          with open('final20.csv','w',newline='',encoding='utf-8') as f:
+            w=csv.DictWriter(f,fieldnames=rows[0].keys());w.writeheader();w.writerows(rows)
+          print('verified',len(rows),'gtu',sum(r['gtu'] for r in rows),'public_pdf',sum(bool(r['pdf_url']) for r in rows))
+          for r in rows: print('\t'.join(str(r[k])[:300] for k in ['identifier','gtu','title','creator','date','year','volume','edition','series','pages','restricted','pdf_url','contributor']))
+          PY
+          python3 /tmp/v.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-final20-839-858
+          path: final20.csv
