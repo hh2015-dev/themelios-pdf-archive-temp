@@ -1,0 +1,65 @@
+name: GTU inventory verify candidates 20260825
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify candidate metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/verify.py <<'PY'
+          import json, urllib.request, urllib.parse, time
+          ids='''grieksepapyri0000drjd
+talmud0007vari
+copticstudiesinh0000vari
+keytosiddurgramm0000slot
+studiesinbiblica0000gern
+studiesinbiblica0000osca
+studies-biblical-theology_1958_24
+biblical-archaeology-review_1975-1989_index
+supplementaulexi0000unse
+gtu_32400003385139
+recipientauthoro0000unse
+expositionepistl0000unse
+diebuchersamueli0003klos_y9g6
+statusofwomeninm0000sapo
+urexcavationskas0008sirl
+josuevi1625vii6x0021unse
+diejudischeliter0001unse
+diejudischeliter0002unse
+diejudischeliter0003unse
+annuariodistudie0007unse
+annuariodistudie0009unse
+hosea0000john
+bookofpsalmshebr0000vari
+comparisonofegyp0000port
+concordanceofpro0000thom_d6n9'''.split()
+          out=[]
+          for ident in ids:
+            try:
+              with urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident),timeout=50) as r: m=json.load(r)
+              md=m.get('metadata',{}); coll=md.get('collection',[])
+              if isinstance(coll,str): coll=[coll]
+              pdfs=[]
+              for f in m.get('files',[]):
+                name=f.get('name','')
+                if not name.lower().endswith('.pdf'): continue
+                if str(f.get('private','')).lower()=='true': continue
+                if name.lower().endswith('.lcpdf') or 'encrypted' in name.lower(): continue
+                pdfs.append({'name':name,'size':f.get('size'),'source':f.get('source'),'format':f.get('format')})
+              out.append({'identifier':ident,'gtu_member':'graduatetheologicalunion' in coll,'collection':coll,'title':md.get('title'),'creator':md.get('creator'),'date':md.get('date'),'year':md.get('year'),'volume':md.get('volume'),'edition':md.get('edition'),'series':md.get('series'),'subject':md.get('subject'),'language':md.get('language'),'contributor':md.get('contributor'),'description':md.get('description'),'imagecount':md.get('imagecount'),'access_restricted':md.get('access-restricted-item'),'printdisabled':md.get('printdisabled'),'mediatype':md.get('mediatype'),'pdfs':pdfs[:5]})
+            except Exception as e: out.append({'identifier':ident,'error':repr(e)})
+            time.sleep(.08)
+          with open('gtu_verified.jsonl','w',encoding='utf8') as f:
+            for x in out: f.write(json.dumps(x,ensure_ascii=False)+'\n')
+          print('CHECKED',len(out),'GTU',sum(1 for x in out if x.get('gtu_member')))
+          PY
+          python /tmp/verify.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-inventory-verification-20260825
+          path: gtu_verified.jsonl
+          compression-level: 6
