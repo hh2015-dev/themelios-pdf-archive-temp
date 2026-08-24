@@ -8,44 +8,64 @@ permissions:
   contents: read
 
 jobs:
-  transfer-eighteen-approved:
+  verify-gtu-inventory:
     runs-on: ubuntu-latest
     steps:
-      - name: Download eighteen approved Archive.org PDFs
+      - name: Verify GTU candidate metadata
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p out
-          cat > /tmp/items.tsv <<'EOF'
-          bookofcommonpray00prot_22	https://archive.org/download/bookofcommonpray00prot_22/bookofcommonpray00prot_22.pdf
-          american-missionary_1866-05_10_5	https://archive.org/download/american-missionary_1866-05_10_5/american-missionary_1866-05_10_5.pdf
-          american-missionary_1868-04_12_4	https://archive.org/download/american-missionary_1868-04_12_4/american-missionary_1868-04_12_4.pdf
-          american-missionary_1873-04_17_4	https://archive.org/download/american-missionary_1873-04_17_4/american-missionary_1873-04_17_4.pdf
-          american-missionary_1874-03_18_3	https://archive.org/download/american-missionary_1874-03_18_3/american-missionary_1874-03_18_3.pdf
-          actsmonumentsofc00foxe_0	https://archive.org/download/actsmonumentsofc00foxe_0/actsmonumentsofc00foxe_0.pdf
-          165ecritsdeluthe0000guil	https://archive.org/download/165ecritsdeluthe0000guil/165ecritsdeluthe0000guil.pdf
-          calvinscommentar0004calv	https://archive.org/download/calvinscommentar0004calv/calvinscommentar0004calv.pdf
-          calvinscommentar0001calv	https://archive.org/download/calvinscommentar0001calv/calvinscommentar0001calv.pdf
-          calvinscommentar0002calv	https://archive.org/download/calvinscommentar0002calv/calvinscommentar0002calv.pdf
-          bibilicalcomment0002fran_n0b4	https://archive.org/download/bibilicalcomment0002fran_n0b4/bibilicalcomment0002fran_n0b4.pdf
-          eusebiipamphilip0000euse	https://archive.org/download/eusebiipamphilip0000euse/eusebiipamphilip0000euse.pdf
-          christianitylibe0000jgre	https://archive.org/download/christianitylibe0000jgre/christianitylibe0000jgre.pdf
-          actsofapostleswi0037lumb	https://archive.org/download/actsofapostleswi0037lumb/actsofapostleswi0037lumb.pdf
-          american-bible-society-record_1863-08_8_8	https://archive.org/download/american-bible-society-record_1863-08_8_8/american-bible-society-record_1863-08_8_8.pdf
-          abridgedprayerbo00jews	https://archive.org/download/abridgedprayerbo00jews/abridgedprayerbo00jews.pdf
-          actsofearlymarty0000jamf	https://archive.org/download/actsofearlymarty0000jamf/actsofearlymarty0000jamf.pdf
-          calvinscommentar0000calv_f0b6	https://archive.org/download/calvinscommentar0000calv_f0b6/calvinscommentar0000calv_f0b6.pdf
-          EOF
-          while IFS=$'\t' read -r id url; do
-            curl -L --retry 2 --connect-timeout 20 --max-time 1200 -A 'Mozilla/5.0' -fSs -o "out/$id.pdf" "$url"
-            [ "$(head -c 5 "out/$id.pdf")" = "%PDF-" ]
-            echo "$id SIZE=$(stat -c%s "out/$id.pdf") SHA256=$(sha256sum "out/$id.pdf" | cut -d' ' -f1)"
-          done < /tmp/items.tsv
-      - name: Upload approved PDFs artifact
-        uses: actions/upload-artifact@v4
+          cat > /tmp/verify.py <<'PY'
+          import json, urllib.request, urllib.parse, time
+          ids='''grieksepapyri0000drjd
+keytosiddurgramm0000slot
+studiesinbiblica0000gern
+studiesinbiblica0000osca
+studies-biblical-theology_1958_24
+biblical-archaeology-review_1975-1989_index
+supplementaulexi0000unse
+gtu_32400003385139
+recipientauthoro0000unse
+expositionepistl0000unse
+diebuchersamueli0003klos_y9g6
+statusofwomeninm0000sapo
+urexcavationskas0008sirl
+josuevi1625vii6x0021unse
+diejudischeliter0001unse
+diejudischeliter0002unse
+diejudischeliter0003unse
+annuariodistudie0007unse
+annuariodistudie0009unse
+hosea0000john
+bookofpsalmshebr0000vari
+comparisonofegyp0000port
+concordanceofpro0000thom_d6n9
+talmud0007vari
+copticstudiesinh0000vari'''.split()
+          out=[]
+          for ident in ids:
+            try:
+              with urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident),timeout=50) as r: m=json.load(r)
+              md=m.get('metadata',{}); coll=md.get('collection',[])
+              if isinstance(coll,str): coll=[coll]
+              pdfs=[]
+              for f in m.get('files',[]):
+                name=f.get('name','')
+                if not name.lower().endswith('.pdf'): continue
+                if str(f.get('private','')).lower()=='true': continue
+                if name.lower().endswith('.lcpdf') or 'encrypted' in name.lower(): continue
+                pdfs.append({'name':name,'size':f.get('size'),'source':f.get('source'),'format':f.get('format')})
+              out.append({'identifier':ident,'gtu_member':'graduatetheologicalunion' in coll,'collection':coll,'title':md.get('title'),'creator':md.get('creator'),'date':md.get('date'),'year':md.get('year'),'volume':md.get('volume'),'edition':md.get('edition'),'series':md.get('series'),'subject':md.get('subject'),'language':md.get('language'),'contributor':md.get('contributor'),'description':md.get('description'),'imagecount':md.get('imagecount'),'access_restricted':md.get('access-restricted-item'),'printdisabled':md.get('printdisabled'),'mediatype':md.get('mediatype'),'pdfs':pdfs[:5]})
+            except Exception as e: out.append({'identifier':ident,'error':repr(e)})
+            time.sleep(.08)
+          with open('gtu_verified.jsonl','w',encoding='utf8') as f:
+            for x in out: f.write(json.dumps(x,ensure_ascii=False)+'\n')
+          print('CHECKED',len(out),'GTU',sum(1 for x in out if x.get('gtu_member')))
+          PY
+          python /tmp/verify.py
+      - uses: actions/upload-artifact@v4
         with:
-          name: gtu-eighteen-approved
-          path: out/*.pdf
-          compression-level: 0
+          name: gtu-inventory-verification-20260825
+          path: gtu_verified.jsonl
+          compression-level: 6
           retention-days: 1
-          if-no-files-found: error
