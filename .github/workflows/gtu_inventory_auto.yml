@@ -1,4 +1,4 @@
-name: GTU inventory auto discovery
+name: GTU inventory fast shortlist
 on:
   pull_request:
     branches: [ main ]
@@ -6,12 +6,12 @@ jobs:
   discover:
     runs-on: ubuntu-latest
     steps:
-      - name: Mine exact GTU collection
+      - name: Mine exact GTU collection broadly
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import json, urllib.parse, urllib.request, csv, time
+          import json, urllib.parse, urllib.request
           qs=[
             'collection:graduatetheologicalunion AND mediatype:texts AND (title:(hebrew OR aramaic OR syriac OR semitic OR akkadian OR assyrian OR ugaritic))',
             'collection:graduatetheologicalunion AND mediatype:texts AND (title:(septuagint OR greek OR papyri OR manuscript OR textual OR criticism))',
@@ -20,54 +20,24 @@ jobs:
             'collection:graduatetheologicalunion AND mediatype:texts AND (title:(qumran OR dead sea OR pseudepigrapha OR apocrypha OR rabbinic OR talmud OR mishnah OR josephus OR philo))',
             'collection:graduatetheologicalunion AND mediatype:texts AND (title:(archaeology OR palestine OR babylon OR assyria OR sumer OR ancient near east))',
             'collection:graduatetheologicalunion AND mediatype:texts AND (title:(calvin OR luther OR patristic OR augustine OR origen OR jerome OR chrysostom OR irenaeus))',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(lexicon OR concordance OR grammar OR bibliography OR commentary OR theology))'
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(lexicon OR concordance OR grammar OR bibliography OR commentary OR theology))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (subject:(Bible OR biblical OR Hebrew OR Syriac OR Aramaic OR Assyriology OR archaeology))'
           ]
-          docs={}
-          examined=0
-          for qi,q in enumerate(qs):
-            for start in (0,150,450,900,1500):
-              params={'q':q,'fl[]':['identifier','title','creator','year','date','language','volume','contributor','subject'],'rows':'150','start':str(start),'output':'json'}
+          docs={}; examined=0
+          for q in qs:
+            for start in (0,200,600,1200,2000):
+              params={'q':q,'fl[]':['identifier','title','creator','year','date','language','volume','contributor','subject'],'rows':'200','start':str(start),'output':'json'}
               u='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(params,doseq=True)
               try:
-                with urllib.request.urlopen(u,timeout=30) as r: data=json.load(r)
+                with urllib.request.urlopen(u,timeout=25) as r: data=json.load(r)
               except Exception:
                 continue
               arr=data.get('response',{}).get('docs',[]); examined+=len(arr)
               for d in arr: docs[d['identifier']]=d
-          out=[]
-          for i,(ident,d) in enumerate(docs.items()):
-            if len(out)>=500: break
-            try:
-              with urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident),timeout=30) as r: m=json.load(r)
-            except Exception:
-              continue
-            md=m.get('metadata',{})
-            col=md.get('collection',[])
-            if isinstance(col,str): col=[col]
-            if 'graduatetheologicalunion' not in col: continue
-            files=m.get('files',[])
-            pdf=''; pages=''
-            for f in files:
-              n=f.get('name','')
-              if n.lower().endswith('.pdf') and not n.lower().endswith('encrypted.pdf') and str(f.get('private','false')).lower()!='true':
-                pdf=n; break
-            if md.get('page-progression'): pass
-            for key in ('imagecount','pages','pagecount'):
-              if md.get(key): pages=str(md.get(key)); break
-            def flat(v):
-              if isinstance(v,list): return '; '.join(map(str,v))
-              return '' if v is None else str(v)
-            out.append({
-              'identifier':ident,'title':flat(md.get('title') or d.get('title')),'creator':flat(md.get('creator') or d.get('creator')),
-              'year':flat(md.get('year') or d.get('year') or md.get('date') or d.get('date')),'language':flat(md.get('language') or d.get('language')),
-              'volume':flat(md.get('volume') or d.get('volume')),'contributor':flat(md.get('contributor') or d.get('contributor')),
-              'subject':flat(md.get('subject') or d.get('subject')),'pdf':pdf,'pages':pages,
-              'restricted':flat(md.get('access-restricted-item') or md.get('printdisabled'))
-            })
-          with open('gtu_candidates.json','w') as f: json.dump({'examined':examined,'unique':len(docs),'items':out},f,ensure_ascii=False)
-          print('EXAMINED',examined,'UNIQUE',len(docs),'VERIFIED',len(out))
+          with open('gtu_shortlist.json','w') as f: json.dump({'examined':examined,'unique':len(docs),'items':list(docs.values())},f,ensure_ascii=False)
+          print('EXAMINED',examined,'UNIQUE',len(docs))
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: gtu-candidates
-          path: gtu_candidates.json
+          name: gtu-shortlist
+          path: gtu_shortlist.json
