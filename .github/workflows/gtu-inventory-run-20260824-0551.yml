@@ -10,80 +10,43 @@ jobs:
         shell: bash
         run: |
           cat > /tmp/mine.py <<'PY'
-          import requests, urllib.parse, json, re, time, csv
+          import requests, urllib.parse, csv
           from collections import OrderedDict
-          terms = [
-            'Hebrew grammar','Hebrew lexicon','Aramaic','Syriac','Semitic','Akkadian','Assyrian','Babylonian','Ugaritic','Phoenician',
-            'Septuagint','LXX','textual criticism','manuscript','papyri','Qumran','Dead Sea','apocrypha','pseudepigrapha','Mishnah','Talmud','midrash',
-            'Second Temple','biblical archaeology','Palestine archaeology','ancient Near East','concordance','bibliography Bible','exegesis','hermeneutics',
-            'Genesis commentary','Exodus commentary','Leviticus commentary','Numbers commentary','Deuteronomy commentary','Joshua commentary','Judges commentary',
-            'Samuel commentary','Kings commentary','Chronicles commentary','Ezra commentary','Nehemiah commentary','Psalms commentary','Proverbs commentary','Job commentary',
-            'Ecclesiastes commentary','Song of Songs commentary','Isaiah commentary','Jeremiah commentary','Ezekiel commentary','Daniel commentary','minor prophets commentary',
-            'Matthew commentary','Mark commentary','Luke commentary','John commentary','Acts commentary','Romans commentary','Corinthians commentary','Galatians commentary',
-            'Ephesians commentary','Hebrews commentary','Revelation commentary','New Testament Greek','Koine Greek','patristic exegesis','Origen','Chrysostom','Calvin commentary','Luther commentary',
-            'Journal Biblical Literature','Biblical Archaeologist','Bible Translator','Expository Times','Semeia','New Testament Studies','Vetus Testamentum'
-          ]
-          session=requests.Session(); session.headers['User-Agent']='GTU-inventory-research/1.0'
+          terms=['Hebrew Bible','Aramaic','Syriac','Semitic','Akkadian','Ugaritic','Septuagint','textual criticism','manuscript','papyri','Qumran','apocrypha','pseudepigrapha','Mishnah','Talmud','biblical archaeology','ancient Near East','concordance Bible','lexicon Bible','grammar Bible','Job Bible','Psalms Bible','Isaiah Bible','Jeremiah Bible','Daniel Bible','minor prophets','New Testament Greek','Matthew Bible','John Bible','Romans Bible','Hebrews Bible','Revelation Bible','Origen Bible','Calvin Bible','Luther Bible','biblical journal']
+          s=requests.Session(); s.headers['User-Agent']='GTU-inventory-research/1.0'
           found=OrderedDict(); appearances=0
-          for ti,t in enumerate(terms):
-            for page in (1,2,4):
+          for t in terms:
+            for page in (3,8):
               q=f'collection:graduatetheologicalunion AND mediatype:texts AND ({t})'
-              params={'q':q,'fl[]':['identifier','title','creator','date','year','volume','language'],'rows':40,'page':page,'output':'json'}
               try:
-                r=session.get('https://archive.org/advancedsearch.php',params=params,timeout=25); r.raise_for_status(); docs=r.json()['response']['docs']
-              except Exception:
-                continue
-              appearances += len(docs)
+                r=s.get('https://archive.org/advancedsearch.php',params={'q':q,'fl[]':['identifier','title','creator','date','year','volume'],'rows':60,'page':page,'output':'json'},timeout=10); r.raise_for_status(); docs=r.json()['response']['docs']
+              except Exception: continue
+              appearances+=len(docs)
               for d in docs:
-                ident=d.get('identifier')
-                if ident and ident not in found: found[ident]=d
+                i=d.get('identifier')
+                if i and i not in found: found[i]=d
           verified=[]; checked=0
-          # deterministic diversity: walk insertion order and metadata-verify up to 500
-          for ident,d in list(found.items())[:500]:
-            checked += 1
-            try:
-              m=session.get('https://archive.org/metadata/'+urllib.parse.quote(ident,safe=''),timeout=25).json()
-            except Exception:
-              continue
+          for ident,d in list(found.items())[:240]:
+            checked+=1
+            try: m=s.get('https://archive.org/metadata/'+urllib.parse.quote(ident,safe=''),timeout=10).json()
+            except Exception: continue
             md=m.get('metadata') or {}; cols=md.get('collection',[])
             if isinstance(cols,str): cols=[cols]
             if 'graduatetheologicalunion' not in cols: continue
             if str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true': continue
-            pdf=None
+            pdf=''
             for f in m.get('files',[]):
-              n=f.get('name',''); low=n.lower()
-              if low.endswith('.pdf') and not low.endswith('.lcpdf') and 'encrypted' not in low and str(f.get('private','false')).lower()!='true':
-                pdf=n; break
+              n=f.get('name',''); lo=n.lower()
+              if lo.endswith('.pdf') and not lo.endswith('.lcpdf') and 'encrypted' not in lo and str(f.get('private','false')).lower()!='true': pdf=n; break
             if not pdf: continue
-            title=md.get('title',''); creator=md.get('creator','');
-            if isinstance(creator,list): creator='; '.join(map(str,creator))
-            year=md.get('year') or md.get('date') or ''
-            if isinstance(year,list): year='; '.join(map(str,year))
-            vol=md.get('volume','');
-            if isinstance(vol,list): vol='; '.join(map(str,vol))
-            edition=md.get('edition','');
-            if isinstance(edition,list): edition='; '.join(map(str,edition))
-            series=md.get('series','');
-            if isinstance(series,list): series='; '.join(map(str,series))
-            contrib=md.get('contributor','');
-            if isinstance(contrib,list): contrib='; '.join(map(str,contrib))
-            lang=md.get('language','');
-            if isinstance(lang,list): lang='; '.join(map(str,lang))
-            subjects=md.get('subject','');
-            if isinstance(subjects,list): subjects='; '.join(map(str,subjects[:8]))
-            pages=md.get('imagecount','') or ''
-            verified.append({
-              'identifier':ident,'title':title,'creator':creator,'year':year,'volume':vol,'edition':edition,'series':series,
-              'language':lang,'subjects':subjects,'pages':pages,'contributor':contrib,
-              'item_link':'https://archive.org/details/'+ident,
-              'pdf_link':'https://archive.org/download/'+ident+'/'+urllib.parse.quote(pdf,safe='')
-            })
-            if len(verified)>=160: break
+            def flat(v): return '; '.join(map(str,v)) if isinstance(v,list) else ('' if v is None else str(v))
+            verified.append({'identifier':ident,'title':flat(md.get('title')),'creator':flat(md.get('creator')),'year':flat(md.get('year') or md.get('date')),'volume':flat(md.get('volume')),'edition':flat(md.get('edition')),'series':flat(md.get('series')),'language':flat(md.get('language')),'subjects':flat(md.get('subject')),'pages':flat(md.get('imagecount')),'contributor':flat(md.get('contributor')),'item_link':'https://archive.org/details/'+ident,'pdf_link':'https://archive.org/download/'+ident+'/'+urllib.parse.quote(pdf,safe='')})
+            if len(verified)>=120: break
           fields=['identifier','title','creator','year','volume','edition','series','language','subjects','pages','contributor','item_link','pdf_link']
           with open('gtu_candidates.tsv','w',encoding='utf-8',newline='') as f:
             w=csv.DictWriter(f,fieldnames=fields,delimiter='\t'); w.writeheader(); w.writerows(verified)
           print(f'APPEARANCES={appearances} UNIQUE={len(found)} METADATA_CHECKED={checked} VERIFIED_PUBLIC_PDF={len(verified)}')
-          for x in verified[:40]: print('CAND\t'+x['identifier']+'\t'+x['title'][:140]+'\t'+x['creator'][:80]+'\t'+str(x['year'])[:30]+'\tVOL='+str(x['volume'])[:30])
+          for x in verified[:60]: print('CAND\t'+x['identifier']+'\t'+x['title'][:150]+'\t'+x['creator'][:90]+'\t'+x['year'][:24]+'\tVOL='+x['volume'][:24])
           PY
           python /tmp/mine.py
       - uses: actions/upload-artifact@v4
