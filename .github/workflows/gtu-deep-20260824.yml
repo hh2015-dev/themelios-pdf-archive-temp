@@ -1,0 +1,63 @@
+name: GTU deep corpus discovery 20260824
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  deep:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deep-page GTU-only mining
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, urllib.parse, urllib.request, concurrent.futures
+          Q=['bible','theology','hebrew','greek','syriac','church','history','commentary','archaeology','judaism','testament','semitic']
+          pages=[23,37,51,68,84]
+          def get(u):
+            req=urllib.request.Request(u,headers={'User-Agent':'GTUInventory/1.0'})
+            with urllib.request.urlopen(req,timeout=18) as r:return json.load(r)
+          ids={};hits=0
+          for q in Q:
+            for p in pages:
+              a=f'collection:graduatetheologicalunion AND mediatype:texts AND ({q})'
+              u='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode({'q':a,'fl[]':['identifier','title','creator','year','volume','subject'],'rows':20,'page':p,'output':'json'},doseq=True)
+              try:ds=get(u).get('response',{}).get('docs',[])
+              except Exception:continue
+              hits+=len(ds)
+              for d in ds:
+                if d.get('identifier'):ids[d['identifier']]=d
+          pairs=list(ids.items())
+          if len(pairs)>420:pairs=pairs[:420]
+          def v(p):
+            ident,d=p
+            try:m=get('https://archive.org/metadata/'+urllib.parse.quote(ident))
+            except Exception:return None
+            md=m.get('metadata',{}) or {}; c=md.get('collection',[])
+            if isinstance(c,str):c=[c]
+            if 'graduatetheologicalunion' not in c:return None
+            cr=md.get('creator') or d.get('creator') or ''
+            if isinstance(cr,list):cr='; '.join(map(str,cr))
+            su=md.get('subject') or d.get('subject') or ''
+            if isinstance(su,list):su='; '.join(map(str,su[:10]))
+            pdf=''
+            for f in m.get('files',[]) or []:
+              n=f.get('name','') or ''
+              if n.lower().endswith('.pdf') and not n.lower().endswith('.lcpdf') and 'encrypted' not in n.lower() and str(f.get('private','false')).lower()!='true':
+                pdf='https://archive.org/download/'+ident+'/'+urllib.parse.quote(n);break
+            return {'identifier':ident,'title':str(md.get('title') or d.get('title') or ''),'creator':str(cr),'year':str(md.get('year') or md.get('date') or d.get('year') or ''),'volume':str(md.get('volume') or ''),'edition':str(md.get('edition') or ''),'series':str(md.get('series') or ''),'subject':str(su),'contributor':str(md.get('contributor') or 'Graduate Theological Union'),'item':'https://archive.org/details/'+ident,'pdf':pdf,'restricted':str(md.get('access-restricted-item') or md.get('printdisabled') or '')}
+          out=[]
+          with concurrent.futures.ThreadPoolExecutor(max_workers=48) as ex:
+            for r in ex.map(v,pairs):
+              if r:out.append(r)
+          with open('gtu_deep.jsonl','w',encoding='utf8') as f:
+            for r in out:f.write(json.dumps(r,ensure_ascii=False)+'\n')
+          with open('gtu_deep_summary.txt','w') as f:f.write(f'hits={hits}\nunique_ids={len(ids)}\nverified={len(out)}\n')
+          print(hits,len(ids),len(out))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-deep
+          path: |
+            gtu_deep.jsonl
+            gtu_deep_summary.txt
