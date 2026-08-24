@@ -13,14 +13,12 @@ jobs:
           mkdir -p out
           : > ids.txt
           terms=(
-            'syriac' 'aramaic' 'samaritan' 'coptic' 'septuagint' 'papyrus' 'papyri'
-            'targum' 'midrash' 'mishnah' 'akkadian' 'assyrian' 'ugaritic' 'semitic'
-            'hebrew grammar' 'greek grammar' 'lexicon' 'concordance' 'manuscript'
-            'textual criticism' 'dead sea scrolls' 'apocrypha' 'pseudepigrapha'
-            'biblical archaeology' 'patristic exegesis' 'calvin commentary' 'luther commentary'
+            'syriac' 'aramaic' 'samaritan' 'coptic' 'septuagint' 'targum' 'midrash'
+            'akkadian' 'assyrian' 'ugaritic' 'hebrew grammar' 'greek grammar' 'lexicon'
+            'textual criticism' 'dead sea scrolls' 'apocrypha' 'biblical archaeology'
           )
           for term in "${terms[@]}"; do
-            for page in 1 2 3; do
+            for page in 2 4 6; do
               q="collection:graduatetheologicalunion AND mediatype:texts AND (title:(\"$term\") OR subject:(\"$term\"))"
               enc=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "$q")
               curl -fsSL --retry 3 "https://archive.org/advancedsearch.php?q=$enc&fl[]=identifier&rows=50&page=$page&output=json" -o s.json || continue
@@ -34,7 +32,7 @@ jobs:
           n=0
           while IFS= read -r id; do
             n=$((n+1))
-            [ "$n" -le 320 ] || break
+            [ "$n" -le 110 ] || break
             curl -fsSL --retry 3 "https://archive.org/metadata/$id" -o m.json || continue
             belongs=$(jq -r '[.metadata.collection[]? // .metadata.collection] | flatten | map(select(.=="graduatetheologicalunion")) | length' m.json 2>/dev/null || echo 0)
             [ "$belongs" -gt 0 ] || continue
@@ -52,11 +50,11 @@ jobs:
             pdf=$(printf '%s' "$pdf" | tr '\t\n\r' '   ')
             printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$id" "$title" "$creator" "$year" "$volume" "$edition" "$series" "$subject" "$contributor" "$restricted" "$pdf" "$imagecount" >> out/candidates.tsv
           done < ids.txt
-          echo "METADATA_CHECKED=$(( n<320 ? n : 320 ))" | tee -a out/summary.txt
+          echo "METADATA_CHECKED=$(( n<110 ? n : 110 ))" | tee -a out/summary.txt
           echo "VERIFIED_ROWS=$(wc -l < out/candidates.tsv | tr -d ' ')" | tee -a out/summary.txt
-          head -n 120 out/candidates.tsv
+          cat out/candidates.tsv
       - uses: actions/upload-artifact@v4
         with:
-          name: gtu-inventory-candidates-20260824
+          name: gtu-inventory-candidates-20260824-fast
           path: out/
           compression-level: 6
