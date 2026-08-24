@@ -1,57 +1,77 @@
-name: GTU inventory discovery 20260825
+name: GTU inventory verification 20260825
 on:
   pull_request:
     branches: [ main ]
 jobs:
-  discover:
+  verify:
     runs-on: ubuntu-latest
     steps:
-      - name: Mine GTU collection broadly
+      - name: Verify GTU candidates
         shell: bash
         run: |
           set -euo pipefail
-          cat > /tmp/mine.py <<'PY'
-          import json, urllib.parse, urllib.request, time
-          terms = [
-            'Hebrew','Aramaic','Syriac','Semitic','Septuagint','textual criticism','manuscript','papyri','Qumran','Dead Sea Scrolls',
-            'Ugaritic','Akkadian','Assyrian','Babylonian','Coptic','rabbinic','Talmud','Midrash','Apocrypha','Pseudepigrapha',
-            'Genesis','Exodus','Leviticus','Numbers','Deuteronomy','Joshua','Judges','Samuel','Kings','Chronicles',
-            'Isaiah','Jeremiah','Ezekiel','Daniel','Hosea','Amos','Micah','Zechariah','Psalms','Job',
-            'Matthew','Mark','Luke','John','Acts','Romans','Corinthians','Hebrews','Revelation','New Testament Greek',
-            'biblical archaeology','biblical theology','history of interpretation','Origen','Jerome','Augustine','Calvin','Luther','patristic','Reformation',
-            'concordance','lexicon','grammar','bibliography','Journal of Biblical Literature','Bible Translator','Biblical Archaeologist','Palestine Exploration'
-          ]
-          seen={}
-          examined=0
-          for term in terms:
-            q=f'collection:graduatetheologicalunion AND mediatype:texts AND (title:"{term}" OR subject:"{term}")'
-            params={
-              'q':q,'fl[]':['identifier','title','creator','year','date','volume','subject','language','contributor','description'],
-              'rows':'100','page':'1','output':'json'
-            }
-            url='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(params,doseq=True)
+          cat > /tmp/verify.py <<'PY'
+          import json, urllib.request, urllib.parse, time
+          ids='''grieksepapyri0000drjd
+talmud0007vari
+copticstudiesinh0000vari
+keytosiddurgramm0000slot
+studiesinbiblica0000gern
+studiesinbiblica0000osca
+studies-biblical-theology_1958_24
+biblical-archaeology-review_1975-1989_index
+supplementaulexi0000unse
+gtu_32400003385139
+recipientauthoro0000unse
+expositionepistl0000unse
+diebuchersamueli0003klos_y9g6
+statusofwomeninm0000sapo
+urexcavationskas0008sirl
+josuevi1625vii6x0021unse
+diejudischeliter0001unse
+diejudischeliter0002unse
+diejudischeliter0003unse
+annuariodistudie0007unse
+annuariodistudie0009unse
+hosea0000john
+bookofpsalmshebr0000vari
+comparisonofegyp0000port
+concordanceofpro0000thom_d6n9'''.split()
+          out=[]
+          for ident in ids:
+            url='https://archive.org/metadata/'+urllib.parse.quote(ident)
             try:
-              with urllib.request.urlopen(url, timeout=40) as r:
-                docs=json.load(r)['response']['docs']
+              with urllib.request.urlopen(url,timeout=50) as r: m=json.load(r)
+              md=m.get('metadata',{})
+              coll=md.get('collection',[])
+              if isinstance(coll,str): coll=[coll]
+              files=m.get('files',[])
+              pdfs=[]
+              for f in files:
+                name=f.get('name','')
+                if not name.lower().endswith('.pdf'): continue
+                if f.get('private') is True or str(f.get('private','')).lower()=='true': continue
+                if name.lower().endswith('.lcpdf') or 'encrypted' in name.lower(): continue
+                pdfs.append({'name':name,'size':f.get('size'),'source':f.get('source'),'format':f.get('format')})
+              rec={
+                'identifier':ident,'gtu_member':'graduatetheologicalunion' in coll,'collection':coll,
+                'title':md.get('title'),'creator':md.get('creator'),'date':md.get('date'),'year':md.get('year'),
+                'volume':md.get('volume'),'edition':md.get('edition'),'series':md.get('series'),'subject':md.get('subject'),
+                'language':md.get('language'),'contributor':md.get('contributor'),'description':md.get('description'),
+                'imagecount':md.get('imagecount'),'access_restricted':md.get('access-restricted-item'),'printdisabled':md.get('printdisabled'),
+                'mediatype':md.get('mediatype'),'pdfs':pdfs[:5]
+              }
+              out.append(rec)
             except Exception as e:
-              print('ERR',term,repr(e)); continue
-            examined += len(docs)
-            for d in docs:
-              ident=d.get('identifier')
-              if ident and ident not in seen:
-                d['_term']=term; seen[ident]=d
-            time.sleep(0.05)
-          with open('gtu_candidates.jsonl','w',encoding='utf-8') as f:
-            for d in seen.values(): f.write(json.dumps(d,ensure_ascii=False)+'\n')
-          with open('gtu_counts.txt','w') as f:
-            f.write(f'appearances={examined}\nunique={len(seen)}\n')
-          print('APPEARANCES',examined,'UNIQUE',len(seen))
+              out.append({'identifier':ident,'error':repr(e)})
+            time.sleep(.08)
+          with open('gtu_verified.jsonl','w',encoding='utf8') as f:
+            for r in out: f.write(json.dumps(r,ensure_ascii=False)+'\n')
+          print('VERIFIED',len(out),'GTU',sum(1 for r in out if r.get('gtu_member')))
           PY
-          python /tmp/mine.py
+          python /tmp/verify.py
       - uses: actions/upload-artifact@v4
         with:
-          name: gtu-inventory-discovery-20260825
-          path: |
-            gtu_candidates.jsonl
-            gtu_counts.txt
+          name: gtu-inventory-verification-20260825
+          path: gtu_verified.jsonl
           compression-level: 6
