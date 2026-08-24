@@ -1,0 +1,54 @@
+name: GTU final verify 20
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify exact GTU candidates
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, urllib.parse, urllib.request, re
+          ids='''canaanitephoenic0000mitc
+ecclesiasteswisd0000rich
+onsongofsongsser0000bern
+considerationofd00unse
+gtu_32400005376565
+oseejoelamosabdi0000edmo
+mishnahrabieliez0000elie
+balaizahcopticte0001kahl
+balaizahcopticte0002kahl
+catalogueofcopti0000anto
+gtu_32400006555878
+introductiontosy0000wmth
+tencopticlegalte0000schi
+grieksepapyriten0000ejbr
+gtu_32400008235677_2
+sabaeaminscripti0003jamm
+tensesofugaritic0058albr
+apocalypseofabra0000ghbo
+ancientneareaste0000revj
+boreickejewishda0000unse'''.splitlines()
+          def get(url):
+            req=urllib.request.Request(url,headers={'User-Agent':'GTUInventory/1.0'})
+            with urllib.request.urlopen(req,timeout=20) as r: return json.load(r)
+          for i in ids:
+            try: m=get('https://archive.org/metadata/'+urllib.parse.quote(i))
+            except Exception as e:
+              print(json.dumps({'identifier':i,'error':repr(e)},ensure_ascii=False)); continue
+            md=m.get('metadata',{}) or {}; coll=md.get('collection',[])
+            if isinstance(coll,str): coll=[coll]
+            restricted=str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true'
+            pdf=''
+            if not restricted:
+              for f in m.get('files',[]) or []:
+                n=f.get('name','') or ''
+                if re.search(r'\.pdf$',n,re.I) and str(f.get('private','false')).lower()!='true' and not re.search(r'(encrypted|\.lcpdf$)',n,re.I): pdf=n; break
+            def flat(v): return '; '.join(map(str,v)) if isinstance(v,list) else (v or '')
+            out={'identifier':i,'gtu_member':'graduatetheologicalunion' in coll,'title':flat(md.get('title')),'creator':flat(md.get('creator')),'year':flat(md.get('year') or md.get('date')),'volume':flat(md.get('volume')),'edition':flat(md.get('edition')),'series':flat(md.get('series')),'language':flat(md.get('language')),'contributor':flat(md.get('contributor')),'pages':flat(md.get('pages')),'restricted':restricted,'pdf':pdf,'subject':flat(md.get('subject'))}
+            if pdf: out['direct_pdf']='https://archive.org/download/'+urllib.parse.quote(i)+'/'+urllib.parse.quote(pdf)
+            print(json.dumps(out,ensure_ascii=False,separators=(',',':')))
+          PY
