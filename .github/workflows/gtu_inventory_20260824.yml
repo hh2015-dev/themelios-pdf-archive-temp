@@ -1,0 +1,97 @@
+name: GTU inventory 20260824
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mine GTU corpus and verify candidates
+        shell: bash
+        run: |
+          cat > /tmp/mine.py <<'PY'
+          import requests, json, re, time, urllib.parse
+          BASE='https://archive.org'
+          q='collection:graduatetheologicalunion AND mediatype:texts'
+          pages=[3,8,13,18,23,28,33,38,43,48]
+          docs={}
+          fields=['identifier','title','creator','year','date','volume','subject','language','contributor','publisher','edition','series']
+          for p in pages:
+              params=[('q',q),('rows','200'),('page',str(p)),('output','json'),('sort[]','identifier asc')]
+              for f in fields: params.append(('fl[]',f))
+              r=requests.get(BASE+'/advancedsearch.php',params=params,timeout=60); r.raise_for_status()
+              for d in r.json()['response']['docs']:
+                  if d.get('identifier'): docs[d['identifier']]=d
+          kwA=['bible','biblical','testament','hebrew','aramaic','syriac','semitic','greek','septuagint','lxx','textual','manuscript','qumran','dead sea','apocry','pseudep','rabbin','talmud','mishna','midrash','assyri','babylon','akkad','ugarit','cuneiform','archaeolog','genesis','exodus','leviticus','numbers','deuteronomy','joshua','judges','samuel','kings','chronicles','ezra','nehemiah','esther','job','psalm','proverb','ecclesiast','song of songs','isaiah','jeremiah','lament','ezekiel','daniel','hosea','joel','amos','obadiah','jonah','micah','nahum','habakkuk','zephaniah','haggai','zechariah','malachi','matthew','mark','luke','john','acts','romans','corinth','galatian','ephesian','philipp','coloss','thessalon','timothy','titus','philemon','hebrews','james','peter','jude','revelation','concordance','lexicon','grammar','philology','patristic','exegesis','commentar']
+          kwB=['theology','church history','reformation','calvin','luther','augustine','origen','jerome','tertullian','chrysostom','creed','confession','apologetic','mission','judaism','early christian','religion']
+          def txt(d):
+              vals=[]
+              for k in ['title','creator','subject','series']:
+                  v=d.get(k,'')
+                  if isinstance(v,list): vals += [str(x) for x in v]
+                  else: vals.append(str(v))
+              return ' '.join(vals).lower()
+          def score(d):
+              s=txt(d); sc=0
+              sc += sum(5 for k in kwA if k in s)
+              sc += sum(2 for k in kwB if k in s)
+              if 'journal' in s or 'bulletin' in s: sc += 1
+              return sc
+          ranked=sorted(docs.values(), key=lambda d:(score(d),str(d.get('year',''))), reverse=True)
+          examined=len(docs)
+          out=[]
+          for d in ranked[:180]:
+              ident=d['identifier']
+              try:
+                  m=requests.get(BASE+'/metadata/'+urllib.parse.quote(ident,safe=''),timeout=60).json()
+              except Exception:
+                  continue
+              md=m.get('metadata') or {}
+              coll=md.get('collection',[])
+              if isinstance(coll,str): coll=[coll]
+              if 'graduatetheologicalunion' not in coll: continue
+              files=m.get('files') or []
+              pdfs=[]
+              for f in files:
+                  n=str(f.get('name',''))
+                  if not n.lower().endswith('.pdf'): continue
+                  if str(f.get('private','false')).lower()=='true': continue
+                  low=n.lower()
+                  if low.endswith('.lcpdf') or 'encrypted' in low: continue
+                  pdfs.append(f)
+              # Prefer original/plain PDF over derived OCR PDFs where possible
+              def pscore(f):
+                  n=f.get('name','').lower(); fmt=str(f.get('format','')).lower()
+                  return (('text pdf' in fmt or fmt=='pdf')*4 + ('_text.pdf' not in n)*2 + ('searchtext' not in n))
+              pdf=sorted(pdfs,key=pscore,reverse=True)[0] if pdfs else None
+              restricted=str(md.get('access-restricted-item',md.get('printdisabled',''))).lower()=='true'
+              title=md.get('title',d.get('title',''))
+              creator=md.get('creator',d.get('creator',''))
+              if isinstance(creator,list): creator='; '.join(map(str,creator))
+              subj=md.get('subject',d.get('subject',''))
+              if isinstance(subj,list): subj='; '.join(map(str,subj[:12]))
+              lang=md.get('language',d.get('language',''))
+              if isinstance(lang,list): lang='; '.join(map(str,lang))
+              year=md.get('year') or md.get('date') or d.get('year','') or d.get('date','')
+              vol=md.get('volume',d.get('volume','')) or ''
+              edition=md.get('edition',d.get('edition','')) or ''
+              series=md.get('series',d.get('series','')) or ''
+              contributor=md.get('contributor',d.get('contributor','')) or ''
+              if isinstance(contributor,list): contributor='; '.join(map(str,contributor))
+              pages=md.get('imagecount','') or ''
+              direct=''
+              if pdf and not restricted:
+                  direct=BASE+'/download/'+ident+'/'+urllib.parse.quote(pdf['name'])
+              rec=dict(identifier=ident,title=title,creator=creator,year=year,volume=vol,edition=edition,series=series,subject=subj,language=lang,contributor=contributor,pages=pages,direct_pdf=direct,restricted=restricted,score=score(d),item_link=BASE+'/details/'+ident)
+              out.append(rec)
+              if len(out)>=120: break
+          with open('gtu_candidates.json','w') as f: json.dump({'examined':examined,'verified':len(out),'records':out},f,ensure_ascii=False,indent=2)
+          print('EXAMINED',examined,'VERIFIED',len(out))
+          for r in out[:20]: print(r['identifier'], r['title'][:90])
+          PY
+          python3 /tmp/mine.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-inventory-candidates-20260824
+          path: gtu_candidates.json
+          compression-level: 6
