@@ -6,47 +6,35 @@ jobs:
   discover:
     runs-on: ubuntu-latest
     steps:
-      - name: Mine and verify GTU candidates
+      - name: Fast closed-corpus GTU discovery
         shell: bash
         run: |
           cat > /tmp/mine.py <<'PY'
-          import requests, urllib.parse, csv
+          import requests,csv
           from collections import OrderedDict
-          terms=['Hebrew Bible','Aramaic','Syriac','Semitic','Akkadian','Ugaritic','Septuagint','textual criticism','manuscript','papyri','Qumran','apocrypha','pseudepigrapha','Mishnah','Talmud','biblical archaeology','ancient Near East','concordance Bible','lexicon Bible','grammar Bible','Job Bible','Psalms Bible','Isaiah Bible','Jeremiah Bible','Daniel Bible','minor prophets','New Testament Greek','Matthew Bible','John Bible','Romans Bible','Hebrews Bible','Revelation Bible','Origen Bible','Calvin Bible','Luther Bible','biblical journal']
+          terms=['Hebrew','Aramaic','Syriac','Semitic','Akkadian','Ugaritic','Septuagint','textual criticism','manuscript','papyri','Qumran','apocrypha','pseudepigrapha','Mishnah','Talmud','archaeology','concordance','lexicon','grammar','Job','Psalms','Isaiah','Jeremiah','Daniel','Matthew','John','Romans','Hebrews','Revelation','Origen','Calvin','Luther','Bible']
           s=requests.Session(); s.headers['User-Agent']='GTU-inventory-research/1.0'
           found=OrderedDict(); appearances=0
           for t in terms:
-            for page in (3,8):
-              q=f'collection:graduatetheologicalunion AND mediatype:texts AND ({t})'
+            for page in (4,9):
+              q=f'collection:graduatetheologicalunion AND mediatype:texts AND format:"Text PDF" AND ({t})'
               try:
-                r=s.get('https://archive.org/advancedsearch.php',params={'q':q,'fl[]':['identifier','title','creator','date','year','volume'],'rows':60,'page':page,'output':'json'},timeout=10); r.raise_for_status(); docs=r.json()['response']['docs']
+                r=s.get('https://archive.org/advancedsearch.php',params={'q':q,'fl[]':['identifier','title','creator','date','year','volume','language','contributor'],'rows':80,'page':page,'output':'json'},timeout=12); r.raise_for_status(); docs=r.json()['response']['docs']
               except Exception: continue
               appearances+=len(docs)
               for d in docs:
                 i=d.get('identifier')
                 if i and i not in found: found[i]=d
-          verified=[]; checked=0
-          for ident,d in list(found.items())[:240]:
-            checked+=1
-            try: m=s.get('https://archive.org/metadata/'+urllib.parse.quote(ident,safe=''),timeout=10).json()
-            except Exception: continue
-            md=m.get('metadata') or {}; cols=md.get('collection',[])
-            if isinstance(cols,str): cols=[cols]
-            if 'graduatetheologicalunion' not in cols: continue
-            if str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true': continue
-            pdf=''
-            for f in m.get('files',[]):
-              n=f.get('name',''); lo=n.lower()
-              if lo.endswith('.pdf') and not lo.endswith('.lcpdf') and 'encrypted' not in lo and str(f.get('private','false')).lower()!='true': pdf=n; break
-            if not pdf: continue
-            def flat(v): return '; '.join(map(str,v)) if isinstance(v,list) else ('' if v is None else str(v))
-            verified.append({'identifier':ident,'title':flat(md.get('title')),'creator':flat(md.get('creator')),'year':flat(md.get('year') or md.get('date')),'volume':flat(md.get('volume')),'edition':flat(md.get('edition')),'series':flat(md.get('series')),'language':flat(md.get('language')),'subjects':flat(md.get('subject')),'pages':flat(md.get('imagecount')),'contributor':flat(md.get('contributor')),'item_link':'https://archive.org/details/'+ident,'pdf_link':'https://archive.org/download/'+ident+'/'+urllib.parse.quote(pdf,safe='')})
-            if len(verified)>=120: break
-          fields=['identifier','title','creator','year','volume','edition','series','language','subjects','pages','contributor','item_link','pdf_link']
+          fields=['identifier','title','creator','year','volume','language','contributor','item_link']
           with open('gtu_candidates.tsv','w',encoding='utf-8',newline='') as f:
-            w=csv.DictWriter(f,fieldnames=fields,delimiter='\t'); w.writeheader(); w.writerows(verified)
-          print(f'APPEARANCES={appearances} UNIQUE={len(found)} METADATA_CHECKED={checked} VERIFIED_PUBLIC_PDF={len(verified)}')
-          for x in verified[:60]: print('CAND\t'+x['identifier']+'\t'+x['title'][:150]+'\t'+x['creator'][:90]+'\t'+x['year'][:24]+'\tVOL='+x['volume'][:24])
+            w=csv.DictWriter(f,fieldnames=fields,delimiter='\t'); w.writeheader()
+            for i,d in found.items():
+              def flat(v): return '; '.join(map(str,v)) if isinstance(v,list) else ('' if v is None else str(v))
+              w.writerow({'identifier':i,'title':flat(d.get('title')),'creator':flat(d.get('creator')),'year':flat(d.get('year') or d.get('date')),'volume':flat(d.get('volume')),'language':flat(d.get('language')),'contributor':flat(d.get('contributor')),'item_link':'https://archive.org/details/'+i})
+          print(f'APPEARANCES={appearances} UNIQUE_TEXT_PDF={len(found)}')
+          for i,d in list(found.items())[:100]:
+            def flat(v): return '; '.join(map(str,v)) if isinstance(v,list) else ('' if v is None else str(v))
+            print('CAND\t'+i+'\t'+flat(d.get('title'))[:150]+'\t'+flat(d.get('creator'))[:90]+'\t'+flat(d.get('year') or d.get('date'))[:24]+'\tVOL='+flat(d.get('volume'))[:24])
           PY
           python /tmp/mine.py
       - uses: actions/upload-artifact@v4
