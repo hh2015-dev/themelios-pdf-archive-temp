@@ -1,40 +1,74 @@
-name: GTU inventory discovery 20260824
+name: GTU inventory verify 20260824
 on:
   pull_request:
     branches: [ main ]
 jobs:
-  discover:
+  verify:
     runs-on: ubuntu-latest
     steps:
-      - name: Mine GTU collection broadly
+      - name: Verify exact GTU items from Archive metadata
         shell: bash
         run: |
           set -euo pipefail
-          : > candidates.tsv
-          queries=(
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(hebrew OR aramaic OR syriac OR semitic OR ugaritic OR akkadian))'
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(septuagint OR lxx OR greek OR papyri OR manuscript OR codex))'
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(targum OR talmud OR mishnah OR midrash OR qumran OR "dead sea" OR judaica))'
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(genesis OR exodus OR leviticus OR numbers OR deuteronomy OR job OR psalms OR isaiah OR jeremiah OR ezekiel OR daniel))'
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(matthew OR mark OR luke OR john OR acts OR romans OR corinthians OR hebrews OR revelation))'
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(commentary OR concordance OR lexicon OR grammar OR bibliography OR archaeology))'
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(patristic OR origen OR jerome OR augustine OR chrysostom OR irenaeus OR tertullian OR eusebius))'
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(calvin OR luther OR reformation OR theology OR creed OR confession OR missions OR missionary))'
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:("Journal of Biblical Literature" OR "Biblical Archaeologist" OR "Bible Translator" OR "Semitic Studies" OR "Palestine"))'
-            'collection:graduatetheologicalunion AND mediatype:texts AND (subject:(Bible OR Biblical OR Hebrew OR Greek OR Syriac OR Semitic OR Judaism OR archaeology OR theology))'
+          ids=(
+            synopticharmonyo0000jame
+            biblical-archaeology-review_1990-1992_index
+            coordinatingpart0056revj
+            archaeologybible0000john
+            catalogueofsamar0000edwa
+            mythologyamonghe0000igna
+            wordpicturesinne0005arch
+            gospelofmark0000john_d5w5
+            studiesonluthers0036eric
+            structureoflukea0000aqmo
+            journalofbiblica0103dani
+            bookofrevelation0000revj
+            notesongenesisfo0000albe
+            israelsconceptof0000renc_o2u1
+            jamesbrotherofje0000eise_u9s8
+            priscillaauthoro0000ruth
+            expositionepistl0000unse
+            biblestudentteac0008unse
+            biblestudentteac0011unse
+            hebrewgermanprep0000drth
+            origen0000jean_e5i1
+            livesofjohnwicli0000gilp
+            styleoflettersof0000john
+            pagandivinitiest0000sist
+            johncalvinselect0000calv
+            historyoflifewor0000audi
+            theologyofgreekp0000wern
+            akkadiansyllabar0000vari
+            jeremiah0000rich
+            servantsongsinde00unse
           )
-          for q in "${queries[@]}"; do
-            enc=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "$q")
-            for page in 1 2 4 7; do
-              url="https://archive.org/advancedsearch.php?q=$enc&fl[]=identifier,title,creator,year,date,language,volume,edition,collection&rows=75&page=$page&output=json"
-              curl -fsSL --retry 3 "$url" -o result.json
-              jq -r '.response.docs[] | [(.identifier//""),(.title//""),((.creator//"")|if type=="array" then join("; ") else . end),((.year//.date//"")|tostring),((.language//"")|if type=="array" then join("; ") else . end),((.volume//"")|tostring),((.edition//"")|tostring)] | @tsv' result.json >> candidates.tsv
-            done
+          : > verified.tsv
+          for id in "${ids[@]}"; do
+            curl -fsSL --retry 3 "https://archive.org/metadata/$id" -o m.json
+            jq -r --arg id "$id" '
+              . as $root |
+              ($root.metadata.collection // []) as $coll |
+              ($root.files // []) as $files |
+              ($files | map(select((.name|test("\\.pdf$";"i")) and ((.private//"false") != "true") and ((.name|test("encrypted|lcpdf";"i"))|not))) | .[0].name // "") as $pdf |
+              [
+                $id,
+                ($root.metadata.title // ""),
+                (($root.metadata.creator // "")|if type=="array" then join("; ") else . end),
+                (($root.metadata.date // $root.metadata.year // "")|tostring),
+                (($root.metadata.language // "")|if type=="array" then join("; ") else . end),
+                (($root.metadata.volume // "")|tostring),
+                (($root.metadata.edition // "")|tostring),
+                (($root.metadata.series // "")|if type=="array" then join("; ") else tostring end),
+                (($root.metadata.contributor // "")|if type=="array" then join("; ") else tostring end),
+                (($root.metadata.mediatype // "")|tostring),
+                (($root.metadata["access-restricted-item"] // $root.metadata.printdisabled // "")|tostring),
+                (($root.metadata.imagecount // $root.metadata.pages // "")|tostring),
+                (($coll|if type=="array" then join(";") else tostring end)),
+                $pdf
+              ] | @tsv' m.json >> verified.tsv
           done
-          awk '!seen[$1]++' candidates.tsv > candidates_unique.tsv
-          echo "UNIQUE=$(wc -l < candidates_unique.tsv)"
       - uses: actions/upload-artifact@v4
         with:
-          name: gtu-candidates-20260824
-          path: candidates_unique.tsv
+          name: gtu-verified-20260824
+          path: verified.tsv
           compression-level: 6
