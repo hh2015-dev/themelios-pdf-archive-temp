@@ -1,90 +1,55 @@
-name: GTU inventory deep discovery
+name: GTU inventory selected verification
 on:
   pull_request:
     branches: [ main ]
 jobs:
-  discover:
+  verify:
     runs-on: ubuntu-latest
     steps:
-      - name: Mine exact GTU collection
+      - name: Verify exact GTU membership and metadata
         shell: bash
         run: |
-          cat > /tmp/mine.py <<'PY'
-          import json, urllib.parse, urllib.request, re, time
-          BASE='https://archive.org/advancedsearch.php'
-          qs=[
-            '(title:(hebrew OR aramaic OR syriac OR semitic OR ugaritic OR akkadian))',
-            '(title:(septuagint OR textual OR manuscript OR papyrus OR codex))',
-            '(title:(genesis OR exodus OR leviticus OR deuteronomy OR joshua OR judges OR samuel OR kings OR isaiah OR jeremiah OR ezekiel OR daniel OR psalms OR job OR proverbs))',
-            '(title:(matthew OR mark OR luke OR john OR acts OR romans OR corinthians OR galatians OR ephesians OR hebrews OR revelation))',
-            '(title:(talmud OR mishnah OR midrash OR qumran OR josephus OR philo OR apocrypha OR pseudepigrapha))',
-            '(title:(archaeology OR assyrian OR babylonian OR sumerian OR palestine OR canaanite OR phoenician))',
-            '(title:(grammar OR lexicon OR concordance OR bibliography) AND (hebrew OR greek OR syriac OR aramaic OR biblical OR testament))',
-            '(title:(commentary OR commentaries OR exegesis OR interpretation) AND (bible OR biblical OR testament OR gospel OR psalm OR prophet))',
-            '(creator:(calvin OR luther OR origen OR jerome OR augustine OR chrysostom OR eusebius))',
-            '(title:(biblical) AND (title:(journal OR review OR studies OR archaeology OR theology)))',
-            '(title:(reformation OR patristic OR fathers OR church history OR missions OR missiology))',
-            '(subject:(Bible OR "Old Testament" OR "New Testament") AND title:(studies OR introduction OR theology OR history))'
-          ]
-          seen={}
-          # deliberately sample different deep pages and sort orders
-          pages=[2,5,9,13,18]
-          for qi,qextra in enumerate(qs):
-            for page in pages[:3] if qi<8 else pages[:2]:
-              q='collection:graduatetheologicalunion AND mediatype:texts AND '+qextra
-              params=[('q',q),('fl[]','identifier'),('fl[]','title'),('fl[]','creator'),('fl[]','date'),('fl[]','year'),('fl[]','volume'),('fl[]','edition'),('fl[]','series'),('fl[]','subject'),('fl[]','contributor'),('rows','50'),('page',str(page)),('output','json'),('sort[]','identifier asc')]
-              url=BASE+'?'+urllib.parse.urlencode(params)
-              try:
-                with urllib.request.urlopen(url, timeout=30) as r: data=json.load(r)
-              except Exception as e:
-                print('SEARCHERR',qi,page,repr(e)); continue
-              docs=data.get('response',{}).get('docs',[])
-              for d in docs:
-                ident=d.get('identifier')
-                if ident: seen.setdefault(ident,d)
-          print('EXAMINED_UNIQUE',len(seen))
-          # score academic usefulness to put A-rich candidates first
-          high=re.compile(r'hebrew|aramaic|syriac|semit|ugarit|akkad|septuag|textual|manuscript|papyr|codex|genesis|exodus|levit|deuter|joshua|judges|samuel|kings|isaiah|jerem|ezek|daniel|psalm|\bjob\b|proverb|matthew|mark|luke|john|acts|romans|corinth|galat|ephes|hebrews|revelation|talmud|mishnah|midrash|qumran|josephus|philo|apocryph|pseudepig|archaeolog|assyri|babylon|sumer|palestin|canaan|phoenician|grammar|lexicon|concordance|biblical|testament|gospel|prophet',re.I)
-          scored=[]
-          for ident,d in seen.items():
-            txt=' '.join(str(d.get(k,'')) for k in ('title','creator','subject'))
-            s=len(high.findall(txt))
-            if s>=1: scored.append((s,ident,d))
-          scored.sort(key=lambda x:(-x[0],x[1]))
-          # verify metadata for first 180, retain exact GTU members
-          out=[]
-          for s,ident,d in scored[:180]:
-            try:
-              with urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident),timeout=30) as r: m=json.load(r)
-            except Exception: continue
-            md=m.get('metadata',{})
-            coll=md.get('collection',[])
+          python - <<'PY' | tee selected.txt
+          import urllib.request,urllib.parse,json,re
+          ids='''chaldeanaccounto0000geor_s5n7
+somerelationship00unse
+psalmsshortintro0000norm
+stammessageundme0000unse
+secondbookofmose0000arsk
+samuelsitshistori0000artu
+catalogueofsamar0002edwa
+christadammanhum0000bart_k7b3
+classnoteonsacre0000jwmc
+stluketheologian0000helm
+studiesinicorint0000rupe
+sim_interpretation_1947-01_1_1
+sim_interpretation_1947-04_1_2
+sim_interpretation_1947-07_1_3
+sim_interpretation_1947-10_1_4
+sim_interpretation_1948-01_2_1
+sim_interpretation_1948-04_2_2
+sim_interpretation_1948-07_2_3
+sim_interpretation_1948-10_2_4
+sim_interpretation_1949-01_3_1'''.splitlines()
+          for ident in ids:
+            try: m=json.load(urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident),timeout=30))
+            except Exception as e: print('ERR\t'+ident+'\t'+repr(e)); continue
+            md=m.get('metadata',{}); coll=md.get('collection',[])
             if isinstance(coll,str): coll=[coll]
-            if 'graduatetheologicalunion' not in coll: continue
-            files=m.get('files',[])
-            pdf=''
-            for f in files:
-              n=f.get('name',''); priv=str(f.get('private','false')).lower()
-              if n.lower().endswith('.pdf') and priv!='true' and not re.search(r'(encrypted|\.lcpdf$)',n,re.I):
-                pdf=n; break
+            member='graduatetheologicalunion' in coll
             restricted=str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true'
-            if restricted: pdf=''
-            pages=md.get('imagecount','') or md.get('page_count','') or ''
-            def val(k):
-              v=md.get(k,'')
-              if isinstance(v,list): return '; '.join(map(str,v))
-              return str(v)
-            row={
-              'id':ident,'title':val('title'),'creator':val('creator'),'date':val('date'),'year':val('year'),'volume':val('volume'),'edition':val('edition'),'series':val('series'),'subject':val('subject'),'contributor':val('contributor'),'pages':str(pages),'pdf':pdf,'restricted':restricted,'score':s
-            }
-            out.append(row)
-            if len(out)>=120: break
-          print('VERIFIED_CANDIDATES',len(out))
-          for x in out:
-            print('CAND\t'+json.dumps(x,ensure_ascii=False,separators=(',',':')))
+            pdf=''
+            if not restricted:
+              for f in m.get('files',[]):
+                n=f.get('name','')
+                if n.lower().endswith('.pdf') and str(f.get('private','false')).lower()!='true' and not re.search(r'encrypted|\.lcpdf$',n,re.I): pdf=n; break
+            def v(k):
+              x=md.get(k,'')
+              return '; '.join(map(str,x)) if isinstance(x,list) else str(x)
+            d={'id':ident,'member':member,'title':v('title'),'creator':v('creator'),'date':v('date'),'year':v('year'),'volume':v('volume'),'edition':v('edition'),'series':v('series'),'subject':v('subject'),'contributor':v('contributor'),'pages':str(md.get('imagecount','') or md.get('page_count','') or ''),'restricted':restricted,'pdf_url':('https://archive.org/download/'+ident+'/'+urllib.parse.quote(pdf)) if pdf else ''}
+            print('VER\t'+json.dumps(d,ensure_ascii=False,separators=(',',':')))
           PY
-          python /tmp/mine.py | tee gtu_candidates.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: gtu-candidates
-          path: gtu_candidates.txt
+          name: gtu-selected
+          path: selected.txt
