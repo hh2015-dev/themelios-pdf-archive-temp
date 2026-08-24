@@ -6,94 +6,67 @@ jobs:
   discover:
     runs-on: ubuntu-latest
     steps:
-      - name: Mine exact GTU collection and verify metadata
+      - name: Diverse exact-GTU discovery
         shell: bash
         run: |
           cat > /tmp/mine.py <<'PY'
-          import requests, json, re, urllib.parse, time
+          import requests,json,re,urllib.parse
           from collections import OrderedDict
           base='https://archive.org/advancedsearch.php'
-          queries=[
-            'title:(Hebrew OR Aramaic OR Syriac OR Semitic OR Chaldee)',
-            'title:(Greek OR Septuagint OR LXX OR papyri OR manuscript)',
-            'title:(Bible OR Biblical OR Testament OR Gospel OR Psalms)',
-            'title:(Isaiah OR Jeremiah OR Ezekiel OR Daniel OR Job OR Genesis)',
-            'title:(Matthew OR Mark OR Luke OR John OR Romans OR Corinthians)',
-            'title:(Qumran OR Dead Sea OR Talmud OR Mishnah OR rabbinic)',
-            'title:(Assyrian OR Akkadian OR Babylonian OR Ugaritic OR Canaanite)',
-            'title:(archaeology OR Palestine OR Jerusalem OR Israel)',
-            'title:(Origen OR Jerome OR Augustine OR Chrysostom OR patristic)',
-            'title:(Calvin OR Luther OR Reformation OR commentary)',
-            'title:(concordance OR lexicon OR grammar OR bibliography)',
-            'title:(Apocrypha OR Pseudepigrapha OR Enoch OR Maccabees OR Josephus)',
-            'subject:(Bible OR Biblical OR Hebrew OR Syriac OR Aramaic)',
-            'subject:(textual criticism OR manuscripts OR archaeology)',
-            'subject:(Judaism OR early Christianity OR patristics)',
+          terms=[
+           'Hebrew grammar','Hebrew lexicon','Aramaic grammar','Syriac grammar','Syriac Bible','Semitic philology',
+           'Septuagint','Greek New Testament','New Testament textual criticism','papyri New Testament','biblical manuscripts',
+           'Qumran','Dead Sea Scrolls','Second Temple Judaism','Apocrypha','Pseudepigrapha','Josephus','Philo',
+           'Talmud','Mishnah','rabbinic','Ugaritic','Akkadian','Assyrian','Babylonian','Canaanite','Phoenician',
+           'biblical archaeology','Palestine archaeology','ancient Israel','Isaiah commentary','Jeremiah commentary','Job commentary',
+           'Psalms commentary','Genesis commentary','Daniel commentary','Matthew commentary','John commentary','Romans commentary',
+           'Origen exegesis','Jerome exegesis','Augustine scripture','Chrysostom scripture','Calvin commentary','Luther Bible',
+           'biblical theology','history interpretation Bible','biblical bibliography','biblical concordance'
           ]
-          # vary deep pages deliberately
-          pages=[2,4,6,8,10,12,14,16,18,20,22,24,26,28,30]
           cand=OrderedDict(); examined=0
-          for q,p in zip(queries,pages):
-            params={'q':f'collection:graduatetheologicalunion AND mediatype:texts AND ({q})','fl[]':['identifier','title','creator','year','subject','language'],'rows':80,'page':p,'output':'json','sort[]':'identifier asc'}
+          for idx,term in enumerate(terms):
+            # alternate title and subject searches and deep pages
+            fld='title' if idx%2==0 else 'subject'
+            q=f'collection:graduatetheologicalunion AND mediatype:texts AND {fld}:("{term}")'
+            page=1+(idx%7)
+            params={'q':q,'fl[]':['identifier','title','creator','year','subject','language'],'rows':25,'page':page,'output':'json','sort[]':'identifier asc'}
             try:
-              r=requests.get(base,params=params,timeout=30); r.raise_for_status(); docs=r.json()['response']['docs']; examined+=len(docs)
-            except Exception as e:
-              print('SEARCHERR',q,p,e); continue
-            for d in docs:
-              i=d.get('identifier'); t=d.get('title','')
-              if i and t: cand.setdefault(i,d)
-          # broad windows by year to avoid only keyword hits
-          for y0,y1,p in [(1800,1849,2),(1850,1899,5),(1900,1924,8),(1925,1949,11),(1950,1969,14),(1970,1989,17),(1990,2026,3)]:
-            params={'q':f'collection:graduatetheologicalunion AND mediatype:texts AND year:[{y0} TO {y1}]','fl[]':['identifier','title','creator','year','subject','language'],'rows':100,'page':p,'output':'json','sort[]':'identifier asc'}
-            try:
-              docs=requests.get(base,params=params,timeout=30).json()['response']['docs']; examined+=len(docs)
+              docs=requests.get(base,params=params,timeout=25).json()['response']['docs']; examined+=len(docs)
             except Exception: continue
             for d in docs:
-              i=d.get('identifier'); t=d.get('title','')
-              if i and t: cand.setdefault(i,d)
-          A=re.compile(r'\b(bible|biblical|testament|hebrew|aramaic|syriac|semitic|greek|septuagint|lxx|textual|manuscript|qumran|dead sea|apocryph|pseudepigraph|talmud|mishnah|rabbin|assyri|akkadian|babylon|ugarit|canaan|archaeolog|palestine|jerusalem|israel|gospel|psalm|isaiah|jeremiah|ezekiel|daniel|job|genesis|exodus|leviticus|numbers|deuteronomy|matthew|mark|luke|john|romans|corinth|concordance|lexicon|grammar|papyr|philo|josephus|enoch|maccabee|commentar)\b',re.I)
-          B=re.compile(r'\b(theology|patrist|church history|reformation|calvin|luther|augustine|origen|jerome|chrysostom|mission|judaism|early christian|creed|apologetic|religion)\b',re.I)
-          scored=[]
-          for i,d in cand.items():
-            blob=' '.join(str(x) for x in [d.get('title',''),d.get('subject',''),d.get('creator','')])
-            s=6*len(A.findall(blob))+2*len(B.findall(blob))
-            if re.search(r'video|audio|minutes|catalog of courses|yearbook|directory|newsletter',blob,re.I): s-=20
-            scored.append((s,i,d))
-          scored.sort(reverse=True,key=lambda x:x[0])
+              i=d.get('identifier'); t=str(d.get('title',''))
+              if not i or not t: continue
+              if re.search(r'(table of contents|index$|bible society record|journal of semitic studies)',t,re.I): continue
+              cand.setdefault(i,d)
           out=[]
-          for s,i,d in scored[:180]:
-            try:
-              m=requests.get('https://archive.org/metadata/'+urllib.parse.quote(i,safe=''),timeout=30).json(); md=m.get('metadata',{})
+          for i,d in list(cand.items())[:220]:
+            try: m=requests.get('https://archive.org/metadata/'+urllib.parse.quote(i,safe=''),timeout=25).json(); md=m.get('metadata',{})
             except Exception: continue
             coll=md.get('collection',[]); coll=[coll] if isinstance(coll,str) else coll
             if 'graduatetheologicalunion' not in coll: continue
-            files=m.get('files',[])
-            pdf=''
+            title=md.get('title') or d.get('title') or ''
+            if isinstance(title,list): title='; '.join(map(str,title))
+            if re.search(r'(video|audio|minutes|catalog of courses|yearbook|directory|newsletter)',str(title),re.I): continue
+            files=m.get('files',[]); pdf=''
             for f in files:
               n=f.get('name',''); priv=str(f.get('private','false')).lower()=='true'
-              if n.lower().endswith('.pdf') and not priv and not re.search(r'(encrypted|\.lcpdf$|acs)',n,re.I):
-                pdf=n; break
+              if n.lower().endswith('.pdf') and not priv and not re.search(r'(encrypted|\.lcpdf$|acs)',n,re.I): pdf=n; break
             def one(v):
               if isinstance(v,list): return '; '.join(map(str,v))
               return '' if v is None else str(v)
-            rec={
-              'score':s,'identifier':i,'title':one(md.get('title') or d.get('title')),'creator':one(md.get('creator') or d.get('creator')),
-              'year':one(md.get('year') or md.get('date') or d.get('year')),'volume':one(md.get('volume')),'edition':one(md.get('edition')),
-              'series':one(md.get('series')),'subject':one(md.get('subject') or d.get('subject')),'language':one(md.get('language') or d.get('language')),
-              'contributor':one(md.get('contributor')),'numpages':one(md.get('numpages') or md.get('pages')),
-              'restricted':one(md.get('access-restricted-item') or md.get('printdisabled')),
-              'pdf':pdf,
-            }
-            rec['item_link']='https://archive.org/details/'+i
-            rec['pdf_link']='https://archive.org/download/'+i+'/'+urllib.parse.quote(pdf) if pdf else ''
-            out.append(rec)
+            r={'identifier':i,'title':one(title),'creator':one(md.get('creator') or d.get('creator')),'year':one(md.get('year') or md.get('date') or d.get('year')),
+               'volume':one(md.get('volume')),'edition':one(md.get('edition')),'series':one(md.get('series')),'subject':one(md.get('subject') or d.get('subject')),
+               'language':one(md.get('language') or d.get('language')),'contributor':one(md.get('contributor')),'numpages':one(md.get('numpages') or md.get('pages')),
+               'restricted':one(md.get('access-restricted-item') or md.get('printdisabled')),'pdf':pdf,'item_link':'https://archive.org/details/'+i,
+               'pdf_link':('https://archive.org/download/'+i+'/'+urllib.parse.quote(pdf)) if pdf else ''}
+            out.append(r)
             if len(out)>=120: break
-          with open('gtu_candidates.json','w',encoding='utf8') as f: json.dump({'examined':examined,'unique':len(cand),'records':out},f,ensure_ascii=False,indent=2)
+          with open('gtu_diverse.json','w',encoding='utf8') as f: json.dump({'examined':examined,'unique':len(cand),'records':out},f,ensure_ascii=False,indent=2)
           print('EXAMINED',examined,'UNIQUE',len(cand),'VERIFIED',len(out))
-          for r in out[:40]: print(json.dumps(r,ensure_ascii=False))
+          for r in out[:60]: print(json.dumps(r,ensure_ascii=False))
           PY
           python /tmp/mine.py
       - uses: actions/upload-artifact@v4
         with:
-          name: gtu-candidates-1545
-          path: gtu_candidates.json
+          name: gtu-diverse-1545
+          path: gtu_diverse.json
