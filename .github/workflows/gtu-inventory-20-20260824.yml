@@ -1,0 +1,60 @@
+name: GTU inventory 20 20260824
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mine GTU collection only
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/mine.py <<'PY'
+          import json, urllib.parse, urllib.request, time
+          base='https://archive.org/advancedsearch.php'
+          scope='collection:graduatetheologicalunion AND mediatype:texts'
+          topics=[
+            '(title:Hebrew OR subject:Hebrew OR title:Aramaic OR subject:Aramaic)',
+            '(title:Syriac OR subject:Syriac OR title:Semitic OR subject:Semitic)',
+            '(title:Septuagint OR subject:Septuagint OR title:LXX OR subject:LXX)',
+            '(title:"New Testament" OR subject:"New Testament" OR title:"Old Testament" OR subject:"Old Testament")',
+            '(title:"textual criticism" OR subject:"textual criticism" OR title:manuscript OR subject:manuscript)',
+            '(title:Qumran OR subject:Qumran OR title:"Dead Sea" OR subject:"Dead Sea")',
+            '(title:Assyria OR subject:Assyria OR title:Babylon OR subject:Babylon OR title:Ugarit OR subject:Ugarit OR title:Canaan OR subject:Canaan)',
+            '(title:Talmud OR subject:Talmud OR title:Mishnah OR subject:Mishnah OR title:Midrash OR subject:Midrash OR subject:rabbinic)',
+            '(title:Apocrypha OR subject:Apocrypha OR title:Pseudepigrapha OR subject:Pseudepigrapha)',
+            '(creator:Calvin OR creator:Luther OR title:Calvin OR title:Luther OR subject:patristic OR title:Origen OR title:Augustine OR title:Chrysostom)',
+            '(subject:"Biblical archaeology" OR title:"Biblical archaeology" OR subject:"Biblical theology" OR title:"Biblical theology")',
+            '(title:concordance OR title:lexicon OR title:grammar OR subject:concordance OR subject:lexicon OR subject:grammar)',
+            '(title:"Journal of Biblical Literature" OR title:"Biblical Archaeologist" OR title:"Journal of Semitic Studies" OR title:"Bible Translator")',
+            '(subject:Judaism OR subject:"Second Temple" OR title:Josephus OR title:Philo)',
+            '(subject:"church history" OR subject:Reformation OR subject:missions OR subject:theology)'
+          ]
+          seen={}
+          requests=0
+          for topic in topics:
+            for page in (1,3,5):
+              q=f'{scope} AND {topic}'
+              params=[('q',q),('rows','100'),('page',str(page)),('output','json')]
+              for f in ('identifier','title','creator','year','date','volume','language','subject','contributor','description'):
+                params.append(('fl[]',f))
+              url=base+'?'+urllib.parse.urlencode(params)
+              with urllib.request.urlopen(url,timeout=45) as r:
+                data=json.load(r)
+              requests += 1
+              for d in data.get('response',{}).get('docs',[]):
+                ident=d.get('identifier')
+                if ident and ident not in seen:
+                  seen[ident]=d
+              time.sleep(0.1)
+          with open('gtu_candidates.json','w',encoding='utf-8') as f:
+            json.dump({'requests':requests,'unique':len(seen),'docs':list(seen.values())},f,ensure_ascii=False)
+          print('REQUESTS',requests,'UNIQUE',len(seen))
+          PY
+          python /tmp/mine.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-candidates-20260824
+          path: gtu_candidates.json
+          compression-level: 6
