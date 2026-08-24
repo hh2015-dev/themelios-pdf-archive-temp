@@ -6,35 +6,65 @@ jobs:
   discover:
     runs-on: ubuntu-latest
     steps:
-      - name: Fast GTU-only candidate mining
+      - name: Verify selected GTU candidates
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p work
-          queries=(
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Septuagint OR LXX OR Hexapla OR Aquila OR Symmachus OR Theodotion))'
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Peshitta OR Syriac OR Aramaic OR Targum OR Chaldee))'
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Hebrew OR Masoretic OR Samaritan OR Ugaritic OR Phoenician))'
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Qumran OR Essene OR Pseudepigrapha OR Apocrypha))'
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(papyrus OR papyri OR palaeography OR manuscript OR codex))'
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Akkadian OR Assyrian OR Babylonian OR Sumerian OR cuneiform))'
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Genesis OR Exodus OR Leviticus OR Numbers OR Deuteronomy OR Isaiah OR Jeremiah OR Ezekiel OR Psalms OR Job))'
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Matthew OR Mark OR Luke OR John OR Romans OR Corinthians OR Galatians OR Hebrews OR Revelation))'
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(grammar OR lexicon OR concordance OR syntax) AND (Hebrew OR Greek OR Syriac OR Aramaic))'
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Irenaeus OR Origen OR Chrysostom OR Augustine OR Jerome OR Ephraem OR Theodore))'
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Calvin OR Luther OR Reformation) AND (commentary OR commentaries OR exposition OR exegesis))'
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(archaeology OR archaeological OR Palestine OR Israel OR Jordan OR Jerusalem))'
+          ids=(
+            gtu_32400006616068
+            bookofezekieltwe0000dcvi
+            gtu_A32400006259224B
+            karaitehalakahit0000bern
+            studiesinhebrewh0000judi
+            bookofjeremiah0000unse_c1v9
+            deuteronomy0004unse
+            diesundedersohne0000clos
+            firstepistleofpa0000char_y6b8
+            genesisoctapla0000luth
+            parallelisminisa0001will
+            gtu_A32400005362383B
+            gtu_A32400003995093B_3
+            gtu_32400005861996
+            studyonimmanuels0000johl
+            gtu_A32400001856784B
+            ideasofmediation0000lhbr
+            elementaryhebrew0000eles
+            apocrypha0004eric
+            geographicoflexi0000draf
+            gospelaccordingt0000john_p8j7
+            gospelaccordingt0000step
+            sim_journal-of-cuneiform-studies_1951_3
+            sim_journal-of-cuneiform-studies_1948_2_3
+            palestine-exploration-quarterly_1915
+            bulletin-british-school-of-archaeology-in-jerusalem_1923_3
           )
-          : > work/candidates.tsv
-          for q in "${queries[@]}"; do
-            enc=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "$q")
-            curl -fsSL "https://archive.org/advancedsearch.php?q=$enc&fl[]=identifier&fl[]=title&fl[]=creator&fl[]=year&fl[]=date&fl[]=language&fl[]=volume&fl[]=description&rows=80&page=1&output=json" -o work/search.json
-            jq -r '.response.docs[] | [(.identifier//""),(.title//""),((.creator//"")|if type=="array" then join("; ") else . end),((.year//.date//"")|tostring),((.volume//"")|tostring),((.language//"")|if type=="array" then join("; ") else . end)] | @tsv' work/search.json >> work/candidates.tsv
+          : > work/verified.tsv
+          for id in "${ids[@]}"; do
+            curl -fsSL "https://archive.org/metadata/$id" -o work/meta.json || continue
+            ingtu=$(jq -r '(.metadata.collection // []) | if type=="array" then any(. == "graduatetheologicalunion") else . == "graduatetheologicalunion" end' work/meta.json)
+            [ "$ingtu" = "true" ] || continue
+            title=$(jq -r '.metadata.title // "" | if type=="array" then join("; ") else . end' work/meta.json | tr '\t\n' '  ')
+            creator=$(jq -r '.metadata.creator // "" | if type=="array" then join("; ") else . end' work/meta.json | tr '\t\n' '  ')
+            year=$(jq -r '.metadata.year // .metadata.date // "" | if type=="array" then join("; ") else . end' work/meta.json | tr '\t\n' '  ')
+            volume=$(jq -r '.metadata.volume // "" | if type=="array" then join("; ") else . end' work/meta.json | tr '\t\n' '  ')
+            edition=$(jq -r '.metadata.edition // "" | if type=="array" then join("; ") else . end' work/meta.json | tr '\t\n' '  ')
+            series=$(jq -r '.metadata.series // "" | if type=="array" then join("; ") else . end' work/meta.json | tr '\t\n' '  ')
+            lang=$(jq -r '.metadata.language // "" | if type=="array" then join("; ") else . end' work/meta.json | tr '\t\n' '  ')
+            contributor=$(jq -r '.metadata.contributor // .metadata.scanningcenter // "" | if type=="array" then join("; ") else . end' work/meta.json | tr '\t\n' '  ')
+            pages=$(jq -r '.metadata.pages // "" | if type=="array" then join("; ") else . end' work/meta.json | tr '\t\n' '  ')
+            restricted=$(jq -r '.metadata["access-restricted-item"] // .metadata.printdisabled // ""' work/meta.json)
+            pdf=$(jq -r '.files[]? | select(.name|test("\\.pdf$";"i")) | select((.private // "false") != "true") | select((.name|test("(encrypted|lcpdf)";"i"))|not) | .name' work/meta.json | head -n1)
+            direct=""
+            if [[ "$restricted" != "true" && -n "$pdf" ]]; then
+              encpdf=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "$pdf")
+              direct="https://archive.org/download/$id/$encpdf"
+            fi
+            printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$id" "$title" "$creator" "$year" "$volume" "$edition" "$series" "$lang" "$contributor" "$pages" "$restricted" "$direct" >> work/verified.tsv
           done
-          sort -u -k1,1 work/candidates.tsv -o work/candidates.tsv
-          echo "UNIQUE_CANDIDATES=$(wc -l < work/candidates.tsv)"
-          head -n 180 work/candidates.tsv
+          echo "VERIFIED=$(wc -l < work/verified.tsv)"
+          cat work/verified.tsv
       - uses: actions/upload-artifact@v4
         with:
-          name: gtu-fast-candidates-20260824
-          path: work/candidates.tsv
+          name: gtu-verified-20260824
+          path: work/verified.tsv
