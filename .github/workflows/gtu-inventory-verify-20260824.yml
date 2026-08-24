@@ -1,0 +1,81 @@
+name: GTU inventory verify 20260824
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify GTU membership and item metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, urllib.request, urllib.parse, time, re
+          ids='''
+          grundzugeundchre0001unse_a6n1
+          grundzugeundchre0003unse
+          grundzugeundchre0004unse
+          biblicalcommenta0001deli
+          ideaofconscience0013cent
+          spiritparacletei0020wind
+          archivesfromerec0002doug
+          evangiledematthi0019unse
+          deuteronomeix7en0018unse
+          seferyirmiyahrom0000unse
+          dasbuchisaias0000fisc
+          repertoiredepigr0003unse
+          repertoiredepigr0005unse
+          repertoiredepigr0006unse
+          repertoiredepigr0007unse
+          repertoiredepigr0008unse
+          dieinfinitiveind0000ilma
+          edahveedutmegilo0000unse
+          beginnersmanualo0000ahai
+          textlanguageofne00unse
+          berkeleyversiono0000gerr
+          aprocryphapseude0002unse
+          hebrewgermanprep0000drth
+          biblicalcommenta0001deli
+          sim_journal-of-biblical-literature_1904_23_1-2
+          sim_journal-of-biblical-literature_1916_35
+          sim_near-eastern-archaeology_1951-12_14_4
+          sim_near-eastern-archaeology_1958-09_21_3
+          sim_bible-translator_1959-07_10_3
+          sim_new-testament-studies_1989_35_index
+          '''.split()
+          out=[]
+          for ident in dict.fromkeys(ids):
+            try:
+              with urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident),timeout=40) as r: data=json.load(r)
+            except Exception as e:
+              out.append({'identifier':ident,'error':str(e)}); continue
+            m=data.get('metadata',{})
+            coll=m.get('collection',[])
+            if isinstance(coll,str): coll=[coll]
+            files=data.get('files',[])
+            pdfs=[]
+            for f in files:
+              name=f.get('name','')
+              if name.lower().endswith('.pdf') and not name.lower().endswith(('_encrypted.pdf','.lcpdf')) and str(f.get('private','false')).lower()!='true':
+                pdfs.append({'name':name,'size':f.get('size'),'format':f.get('format')})
+            public_pdf=pdfs[0]['name'] if pdfs else ''
+            rec={
+              'identifier':ident,'belongs_gtu':'graduatetheologicalunion' in coll,
+              'title':m.get('title',''),'creator':m.get('creator',''),'date':m.get('date',''),'year':m.get('year',''),
+              'volume':m.get('volume',''),'edition':m.get('edition',''),'series':m.get('series',''),
+              'subject':m.get('subject',''),'language':m.get('language',''),'contributor':m.get('contributor',''),
+              'description':m.get('description',''),'imagecount':m.get('imagecount',''),'pages':m.get('pages',''),
+              'access_restricted':m.get('access-restricted-item',''),'printdisabled':m.get('printdisabled',''),
+              'public_pdf':public_pdf,
+              'direct_pdf':('https://archive.org/download/'+ident+'/'+urllib.parse.quote(public_pdf)) if public_pdf else ''
+            }
+            out.append(rec); time.sleep(.1)
+          with open('verified.json','w',encoding='utf-8') as f: json.dump(out,f,ensure_ascii=False,indent=2)
+          print('VERIFIED',len(out),'GTU',sum(bool(x.get('belongs_gtu')) for x in out),'PUBLIC_PDF',sum(bool(x.get('public_pdf')) for x in out))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-verified-metadata
+          path: verified.json
+          compression-level: 6
