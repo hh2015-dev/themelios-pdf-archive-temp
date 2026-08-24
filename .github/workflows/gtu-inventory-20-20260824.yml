@@ -6,99 +6,46 @@ jobs:
   discover:
     runs-on: ubuntu-latest
     steps:
-      - name: Mine and verify GTU collection only
+      - name: Deep-mine GTU collection only
         shell: bash
         run: |
-          cat > /tmp/discover.py <<'PY'
-          import json, time, urllib.parse, urllib.request
+          cat > /tmp/deep.py <<'PY'
+          import json, urllib.parse, urllib.request
           from collections import OrderedDict
-          from concurrent.futures import ThreadPoolExecutor, as_completed
-
-          BASE='https://archive.org'; collection='graduatetheologicalunion'
-          queries=[
-            f'collection:{collection} AND mediatype:texts',
-            f'collection:{collection} AND mediatype:texts AND (title:(Bible OR Biblical OR Testament OR Gospel OR Psalms OR Isaiah OR Genesis OR Exodus OR Job OR Daniel OR Prophets))',
-            f'collection:{collection} AND mediatype:texts AND (title:(Hebrew OR Aramaic OR Syriac OR Semitic OR Ugaritic OR Akkadian OR Assyrian OR Babylonian))',
-            f'collection:{collection} AND mediatype:texts AND (title:(Greek OR Septuagint OR papyri OR manuscript OR textual OR criticism OR lexicon OR grammar OR concordance))',
-            f'collection:{collection} AND mediatype:texts AND (title:(Qumran OR "Dead Sea" OR Targum OR Talmud OR Mishnah OR Midrash OR Philo OR Josephus))',
-            f'collection:{collection} AND mediatype:texts AND (title:(archaeology OR Palestine OR Canaan OR Mesopotamia OR Egypt OR inscriptions OR epigraphy))',
-            f'collection:{collection} AND mediatype:texts AND (title:(Augustine OR Origen OR Jerome OR Chrysostom OR Irenaeus OR patristic OR Calvin OR Luther OR Reformation))',
-            f'collection:{collection} AND mediatype:texts AND (title:(theology OR church OR doctrine OR creed OR mission OR missions OR Judaism OR Christianity))',
-          ]
-          pages_for_base=[1,4,8,12,16,20]
-          docs=OrderedDict(); appearances=0
-          def get_json(url, timeout=12):
+          BASE='https://archive.org'; coll='graduatetheologicalunion'
+          def get(url, timeout=15):
             req=urllib.request.Request(url,headers={'User-Agent':'Mozilla/5.0 GTU-inventory-research/1.0'})
-            with urllib.request.urlopen(req,timeout=timeout) as r: return json.load(r)
-          for qi,q in enumerate(queries):
-            for page in (pages_for_base if qi==0 else [1,2]):
+            with urllib.request.urlopen(req,timeout=timeout) as r:return json.load(r)
+          specs=[
+            (f'collection:{coll} AND mediatype:texts',[21,26,31,36,41,46,51,56,61,66]),
+            (f'collection:{coll} AND mediatype:texts AND (Bible OR Biblical OR Testament OR Gospel OR Psalms OR Isaiah OR Genesis OR Exodus OR Job OR Daniel OR Prophets)',[3,4,5,6,7]),
+            (f'collection:{coll} AND mediatype:texts AND (Hebrew OR Aramaic OR Syriac OR Semitic OR Ugaritic OR Akkadian OR Assyrian OR Babylonian)',[3,4,5,6,7]),
+            (f'collection:{coll} AND mediatype:texts AND (Greek OR Septuagint OR papyri OR manuscript OR textual OR criticism OR lexicon OR grammar OR concordance)',[3,4,5,6,7]),
+            (f'collection:{coll} AND mediatype:texts AND (Qumran OR "Dead Sea" OR Targum OR Talmud OR Mishnah OR Midrash OR Philo OR Josephus)',[2,3,4,5]),
+            (f'collection:{coll} AND mediatype:texts AND (archaeology OR Palestine OR Canaan OR Mesopotamia OR Egypt OR inscriptions OR epigraphy)',[3,4,5,6]),
+            (f'collection:{coll} AND mediatype:texts AND (Augustine OR Origen OR Jerome OR Chrysostom OR Irenaeus OR Calvin OR Luther OR Reformation)',[3,4,5,6]),
+            (f'collection:{coll} AND mediatype:texts AND (theology OR church OR doctrine OR creed OR mission OR missions OR Judaism OR Christianity)',[4,6,8,10]),
+          ]
+          docs=OrderedDict(); appearances=0; calls=0
+          for q,pages in specs:
+            for page in pages:
               params=[('q',q),('rows','200'),('page',str(page)),('output','json'),('sort[]','identifier asc')]
-              for f in ['identifier','title','creator','year','date','volume','edition','series','language','subject','format','collection','contributor']: params.append(('fl[]',f))
-              try: got=get_json(BASE+'/advancedsearch.php?'+urllib.parse.urlencode(params)).get('response',{}).get('docs',[])
-              except Exception as e: print('SEARCH_ERROR',qi,page,repr(e)); continue
-              appearances+=len(got)
+              for f in ['identifier','title','creator','year','date','volume','edition','series','language','subject','format','collection','contributor']:params.append(('fl[]',f))
+              try: got=get(BASE+'/advancedsearch.php?'+urllib.parse.urlencode(params)).get('response',{}).get('docs',[])
+              except Exception as e: print('ERR',page,repr(e));continue
+              calls+=1; appearances+=len(got)
               for d in got:
                 if d.get('identifier'): docs.setdefault(d['identifier'],d)
-          kwA=['bible','biblical','testament','gospel','hebrew','aramaic','syriac','semitic','greek','septuagint','lxx','textual','manuscript','papyr','qumran','dead sea','targum','talmud','mishnah','midrash','philo','josephus','ugarit','akkad','assyri','babylon','archaeolog','palestine','canaan','lexicon','grammar','concordance','psalm','isaiah','jeremiah','genesis','exodus','job','daniel','prophet','commentar','exeg','hermeneut','apocry','pseudepigraph','rabbin','inscription','epigraph','codex']
-          kwB=['theology','patrist','augustine','origen','jerome','chrysostom','irenaeus','calvin','luther','reformation','church','doctrine','creed','confession','apolog','mission','judaism','christianity','religion']
-          bad=['yearbook of','annual report','minutes','catalogue of courses','bulletin of the graduate theological union','commencement','directory']
-          def flat(d):
-            a=[]
-            for k in ['title','creator','subject']:
-              v=d.get(k,''); a.extend(map(str,v)) if isinstance(v,list) else a.append(str(v))
-            return ' '.join(a).lower()
-          def score(d):
-            t=flat(d); s=sum(5 for k in kwA if k in t)+sum(2 for k in kwB if k in t)
-            if any(k in t for k in bad): s-=30
-            return s
-          ranked=sorted(docs.values(),key=lambda d:(score(d),str(d.get('year','')),d.get('identifier','')),reverse=True)
-          # deliberately sample several ranking bands
-          pool=[]; seen=set()
-          for band in [ranked[:300],ranked[300:700],ranked[700:1200],ranked[1200:]]:
-            for d in band[:55]:
-              if d['identifier'] not in seen: pool.append(d); seen.add(d['identifier'])
-          for d in ranked:
-            if len(pool)>=180: break
-            if d['identifier'] not in seen: pool.append(d); seen.add(d['identifier'])
-          pool=pool[:180]
-          def verify(d):
-            ident=d['identifier']
-            try: meta=get_json(BASE+'/metadata/'+urllib.parse.quote(ident),timeout=12)
-            except: return None
-            md=meta.get('metadata',{}) or {}; coll=md.get('collection',[])
-            if isinstance(coll,str): coll=[coll]
-            if collection not in coll: return None
-            if md.get('mediatype') not in (None,'texts'): return None
-            def sv(k,fallback=''):
-              v=md.get(k,fallback)
-              if isinstance(v,list): return '; '.join(map(str,v))
-              return str(v or '')
-            restricted=str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true'
-            pdf=''
-            if not restricted:
-              for f in meta.get('files',[]):
-                name=str(f.get('name','')); low=name.lower(); fmt=str(f.get('format','')).lower()
-                if not low.endswith('.pdf') or str(f.get('private','false')).lower()=='true' or 'encrypted' in low or low.endswith('.lcpdf'): continue
-                if not pdf or fmt=='text pdf': pdf=name
-                if fmt=='text pdf': break
-            year=md.get('year') or md.get('date') or d.get('year') or d.get('date') or ''
-            return {'priority_score':score(d),'identifier':ident,'title':sv('title',d.get('title','')),'creator':sv('creator',d.get('creator','')),'year':str(year),'volume':sv('volume'),'edition':sv('edition'),'series':sv('series'),'language':sv('language',d.get('language','')),'subject':sv('subject',d.get('subject','')),'contributor':sv('contributor',d.get('contributor','')),'pages':sv('imagecount'),'public_pdf':bool(pdf),'pdf_name':pdf,'item_link':BASE+'/details/'+ident,'pdf_link':BASE+'/download/'+ident+'/'+urllib.parse.quote(pdf) if pdf else '','restricted':restricted}
-          verified=[]
-          with ThreadPoolExecutor(max_workers=18) as ex:
-            futs=[ex.submit(verify,d) for d in pool]
-            for fut in as_completed(futs):
-              x=fut.result()
-              if x: verified.append(x)
-          verified.sort(key=lambda x:(x['priority_score'],x['year']),reverse=True)
-          json.dump(verified,open('candidates.json','w',encoding='utf-8'),ensure_ascii=False,indent=2)
-          summary={'appearances':appearances,'unique_discovered':len(docs),'metadata_examined':len(pool),'verified_gtu':len(verified)}
-          json.dump(summary,open('summary.json','w')); print(json.dumps(summary))
+          out=list(docs.values())
+          json.dump(out,open('deep_candidates.json','w',encoding='utf-8'),ensure_ascii=False)
+          summary={'calls':calls,'appearances':appearances,'unique_discovered':len(out)}
+          json.dump(summary,open('summary.json','w'));print(json.dumps(summary))
           PY
-          python3 /tmp/discover.py
+          python3 /tmp/deep.py
       - uses: actions/upload-artifact@v4
         with:
-          name: gtu-inventory-candidates
+          name: gtu-deep-candidates
           path: |
-            candidates.json
+            deep_candidates.json
             summary.json
           compression-level: 6
