@@ -1,0 +1,76 @@
+name: GTU inventory discovery 20260824
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mine exact GTU collection broadly and verify metadata
+        shell: bash
+        run: |
+          cat > /tmp/discover.py <<'PY'
+          import requests, json, time, re, urllib.parse
+          base='https://archive.org/advancedsearch.php'
+          queries=[
+            ('hebrew', 'collection:graduatetheologicalunion AND mediatype:texts AND (title:Hebrew OR title:Hebraic OR title:Masoretic)', 11),
+            ('aramaic_syriac', 'collection:graduatetheologicalunion AND mediatype:texts AND (title:Aramaic OR title:Syriac OR title:Targum)', 8),
+            ('greek_nt', 'collection:graduatetheologicalunion AND mediatype:texts AND (title:Greek OR title:Graec* OR title:New Testament)', 13),
+            ('ot_books', 'collection:graduatetheologicalunion AND mediatype:texts AND (title:Genesis OR title:Exodus OR title:Isaiah OR title:Jeremiah OR title:Psalms OR title:Job)', 10),
+            ('nt_books', 'collection:graduatetheologicalunion AND mediatype:texts AND (title:Matthew OR title:Mark OR title:Luke OR title:John OR title:Romans OR title:Corinthians)', 10),
+            ('ane', 'collection:graduatetheologicalunion AND mediatype:texts AND (title:Assyrian OR title:Babylonian OR title:Akkadian OR title:Ugarit* OR title:Cuneiform)', 6),
+            ('manuscripts', 'collection:graduatetheologicalunion AND mediatype:texts AND (title:manuscript* OR title:codex OR title:papyri OR title:papyrus)', 7),
+            ('patristic', 'collection:graduatetheologicalunion AND mediatype:texts AND (title:Origen OR title:Augustine OR title:Chrysostom OR title:Jerome OR title:Irenaeus)', 6),
+            ('reformation', 'collection:graduatetheologicalunion AND mediatype:texts AND (title:Calvin OR title:Luther OR title:Reformation)', 8),
+            ('journals', 'collection:graduatetheologicalunion AND mediatype:texts AND (title:"Journal of Biblical Literature" OR title:"Bible Translator" OR title:"Interpretation")', 15),
+          ]
+          docs=[]; seen=set(); examined=0
+          for label,q,page in queries:
+            params={'q':q,'fl[]':['identifier','title','creator','date','year','volume','language'],'rows':75,'page':page,'output':'json'}
+            try:
+              r=requests.get(base,params=params,timeout=30); r.raise_for_status(); js=r.json(); arr=js.get('response',{}).get('docs',[]); examined+=len(arr)
+            except Exception as e:
+              print('QUERYERR',label,e); continue
+            for d in arr:
+              i=d.get('identifier');
+              if i and i not in seen:
+                seen.add(i); d['_query']=label; docs.append(d)
+          # Verify up to 180 diverse candidates, round-robin-like by query order already mixed.
+          out=[]
+          academic=re.compile(r'(bibl|hebr|arama|syri|greek|testament|gospel|psalm|isaiah|jerem|genesis|exodus|job|roman|corinth|assyri|babylon|akkad|ugarit|cuneiform|manuscript|codex|papyr|origen|augustin|chrysost|jerome|irenae|calvin|luther|interpretation|theolog|archaeolog|targum|masoret)',re.I)
+          for d in docs[:240]:
+            title=str(d.get('title',''))
+            if not academic.search(title): continue
+            i=d['identifier']
+            try:
+              m=requests.get(f'https://archive.org/metadata/{i}',timeout=25).json()
+              md=m.get('metadata',{}); coll=md.get('collection',[])
+              if isinstance(coll,str): coll=[coll]
+              if 'graduatetheologicalunion' not in coll: continue
+              files=m.get('files',[])
+              pdfs=[]
+              for f in files:
+                n=f.get('name',''); private=str(f.get('private','false')).lower()=='true'
+                if re.search(r'\.pdf$',n,re.I) and not private and not re.search(r'(encrypted|\.lcpdf$)',n,re.I): pdfs.append(n)
+              restricted=str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true'
+              public_pdf = None if restricted else (pdfs[0] if pdfs else None)
+              pages=md.get('page-progression') or md.get('imagecount') or ''
+              out.append({
+                'query':d['_query'],'identifier':i,'title':md.get('title') or d.get('title',''),'creator':md.get('creator') or d.get('creator',''),
+                'date':md.get('date') or md.get('year') or d.get('date') or d.get('year',''),'volume':md.get('volume') or d.get('volume',''),
+                'language':md.get('language') or d.get('language',''),'restricted':restricted,'pdf':public_pdf,'imagecount':md.get('imagecount',''),
+                'contributor':md.get('contributor','')
+              })
+              if len(out)>=100: break
+            except Exception as e: pass
+          print('EXAMINED_SEARCH_DOCS',examined)
+          print('UNIQUE_DISCOVERED',len(docs))
+          print('VERIFIED_OUTPUT',len(out))
+          for x in out:
+            print('CANDIDATE\t'+json.dumps(x,ensure_ascii=False))
+          PY
+          python /tmp/discover.py | tee candidates.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-candidates-20260824
+          path: candidates.txt
