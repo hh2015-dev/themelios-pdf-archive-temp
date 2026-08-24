@@ -1,0 +1,76 @@
+name: GTU Inventory 20 discovery
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mine and verify GTU candidates
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import requests, urllib.parse, json, re, time
+          base='https://archive.org/advancedsearch.php'
+          queries=[
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:hebrew OR title:aramaic OR title:syriac OR title:semitic)',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:septuagint OR title:greek OR title:papyr* OR title:manuscript*)',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:testament OR title:gospel OR title:epistle OR title:bible)',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:archaeolog* OR title:palestine OR title:assyri* OR title:babylon* OR title:ugarit*)',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:rabbin* OR title:talmud OR title:midrash OR title:apocrypha OR title:pseudepigrapha)',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:commentar* OR title:exegesis OR title:interpretation OR title:lexicon OR title:grammar)'
+          ]
+          pages=[3,9,17,29]
+          seen={}
+          examined=0
+          for q in queries:
+            for page in pages:
+              params={'q':q,'fl[]':['identifier','title','creator','year','date','language','volume','edition','contributor'],'rows':50,'page':page,'output':'json'}
+              r=requests.get(base,params=params,timeout=30); r.raise_for_status()
+              docs=r.json()['response']['docs']; examined += len(docs)
+              for d in docs:
+                seen.setdefault(d.get('identifier'),d)
+          # crude academic relevance scoring
+          priA=['hebrew','aramaic','syriac','semitic','septuagint','greek','papyr','manuscript','old testament','new testament','gospel','epistle','bible','archaeolog','palestine','assyri','babylon','ugarit','talmud','midrash','apocrypha','pseudepigrapha','commentar','exegesis','lexicon','grammar','isaiah','jeremiah','genesis','exodus','job','psalm','romans','corinth','acts','revelation']
+          def score(d):
+            s=(d.get('title') or '').lower()+' '+str(d.get('creator') or '').lower()
+            return sum(3 for k in priA if k in s)
+          cand=sorted(seen.values(), key=score, reverse=True)
+          out=[]
+          for d in cand:
+            if len(out)>=120: break
+            ident=d.get('identifier')
+            try:
+              m=requests.get(f'https://archive.org/metadata/{ident}',timeout=30).json()
+            except Exception:
+              continue
+            md=m.get('metadata',{})
+            coll=md.get('collection',[])
+            if isinstance(coll,str): coll=[coll]
+            if 'graduatetheologicalunion' not in coll: continue
+            files=m.get('files',[])
+            pdfs=[]
+            for f in files:
+              n=f.get('name','')
+              if not n.lower().endswith('.pdf'): continue
+              if f.get('private') is True or str(f.get('private','')).lower()=='true': continue
+              if n.lower().endswith('.lcpdf') or 'encrypted' in n.lower(): continue
+              pdfs.append(n)
+            restricted=str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true'
+            # page count: prefer scandata leaf count/page_numbers only when explicit metadata absent
+            pagesv=md.get('pages') or md.get('page-progression') or ''
+            out.append({
+              'identifier':ident,'title':md.get('title') or d.get('title') or '',
+              'creator':md.get('creator') or d.get('creator') or '',
+              'year':md.get('year') or md.get('date') or d.get('year') or '',
+              'language':md.get('language') or d.get('language') or '',
+              'volume':md.get('volume') or '', 'edition':md.get('edition') or '',
+              'series':md.get('series') or '', 'contributor':md.get('contributor') or '',
+              'restricted':restricted,'pdf':pdfs[0] if pdfs and not restricted else '',
+              'pdf_count':len(pdfs)
+            })
+          print('EXAMINED',examined,'UNIQUE',len(seen),'VERIFIED',len(out))
+          for x in out:
+            print(json.dumps(x,ensure_ascii=False))
+          PY
