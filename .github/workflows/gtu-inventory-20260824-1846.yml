@@ -1,0 +1,110 @@
+name: GTU inventory 20 discovery 20260824
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mine GTU broadly and verify metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, urllib.parse, urllib.request, time, re
+          queries = [
+            'hebrew', 'aramaic', 'syriac', 'semitic', 'septuagint', 'textual criticism',
+            'new testament', 'old testament', 'biblical archaeology', 'dead sea scrolls',
+            'talmud', 'mishnah', 'midrash', 'ugaritic', 'akkadian', 'assyrian',
+            'papyrus', 'manuscript', 'greek grammar', 'hebrew lexicon', 'concordance',
+            'isaiah', 'jeremiah', 'psalms', 'job', 'genesis', 'exodus', 'daniel',
+            'calvin commentary', 'luther commentary', 'origen', 'jerome', 'chrysostom',
+            'journal biblical', 'bible translator', 'biblical archaeologist', 'semeia',
+            'philo', 'josephus', 'apocrypha', 'pseudepigrapha', 'second temple'
+          ]
+          seen=set(); rows=[]; examined=0
+          def get(url):
+            req=urllib.request.Request(url, headers={'User-Agent':'Mozilla/5.0 GTUInventory/1.0'})
+            with urllib.request.urlopen(req, timeout=30) as r:
+              return json.load(r)
+          for qi,q in enumerate(queries):
+            # vary page to avoid only top results
+            page = 1 + (qi % 5)
+            aq = f'collection:graduatetheologicalunion AND mediatype:texts AND ({q})'
+            url='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode({
+              'q':aq,'fl[]':['identifier','title','creator','year','date','volume','language','subject'],
+              'rows':50,'page':page,'output':'json'
+            }, doseq=True)
+            try: docs=get(url).get('response',{}).get('docs',[])
+            except Exception: continue
+            examined += len(docs)
+            for d in docs:
+              ident=d.get('identifier')
+              if not ident or ident in seen: continue
+              seen.add(ident)
+              try: m=get('https://archive.org/metadata/'+urllib.parse.quote(ident))
+              except Exception: continue
+              md=m.get('metadata',{}) or {}
+              coll=md.get('collection',[])
+              if isinstance(coll,str): coll=[coll]
+              if 'graduatetheologicalunion' not in coll: continue
+              if str(md.get('mediatype','')).lower() not in ('texts','text'): continue
+              files=m.get('files',[]) or []
+              pdfs=[]
+              for f in files:
+                n=f.get('name','') or ''
+                if not n.lower().endswith('.pdf'): continue
+                if n.lower().endswith('.lcpdf') or 'encrypted' in n.lower(): continue
+                if str(f.get('private','false')).lower()=='true': continue
+                pdfs.append(f)
+              public_pdf = pdfs[0] if pdfs else None
+              title=md.get('title') or d.get('title') or ''
+              creator=md.get('creator') or d.get('creator') or ''
+              if isinstance(creator,list): creator='; '.join(map(str,creator))
+              subj=md.get('subject') or d.get('subject') or ''
+              if isinstance(subj,list): subj='; '.join(map(str,subj[:8]))
+              lang=md.get('language') or d.get('language') or ''
+              if isinstance(lang,list): lang=' | '.join(map(str,lang))
+              year=md.get('year') or md.get('date') or d.get('year') or d.get('date') or ''
+              volume=md.get('volume') or ''
+              edition=md.get('edition') or ''
+              series=md.get('series') or ''
+              contributor=md.get('contributor') or md.get('scanner') or 'Internet Archive'
+              pages=md.get('pages') or md.get('page-progression') or ''
+              # Prefer explicit scandata leaf count when available only if numeric metadata field exists.
+              pdfname=public_pdf.get('name','') if public_pdf else ''
+              pdfurl=('https://archive.org/download/'+ident+'/'+urllib.parse.quote(pdfname)) if pdfname else ''
+              row={
+                'identifier':ident,'title':str(title),'creator':str(creator),'year':str(year),
+                'volume':str(volume),'edition':str(edition),'series':str(series),'subject':str(subj),
+                'language':str(lang),'contributor':str(contributor),'pdf':pdfurl,'pdfname':pdfname,
+                'restricted':str(md.get('access-restricted-item') or md.get('printdisabled') or ''),
+                'item':'https://archive.org/details/'+ident,'query':q
+              }
+              rows.append(row)
+              if len(rows)>=320: break
+            if len(rows)>=320: break
+          # score academic relevance, but retain diversity
+          Aterms=['bible','biblical','testament','hebrew','aramaic','syriac','semitic','septuagint','lxx','textual','manuscript','papyr','qumran','dead sea','talmud','mishnah','midrash','ugarit','akkad','assyri','babylon','isaiah','jeremiah','psalm','job','genesis','exodus','daniel','greek','lexicon','grammar','concordance','philo','josephus','apocry','pseudepig','calvin','luther','origen','jerome','chrysostom']
+          Bterms=['theology','church','patrist','reformation','doctrine','mission','judaism','christianity']
+          def score(r):
+            s=(r['title']+' '+r['subject']).lower()
+            v=sum(3 for t in Aterms if t in s)+sum(1 for t in Bterms if t in s)
+            if r['pdf']: v+=2
+            if r['volume']: v+=1
+            return v
+          rows.sort(key=lambda r:(-score(r), r['title'].lower(), r['identifier']))
+          with open('gtu_candidates.jsonl','w',encoding='utf-8') as f:
+            for r in rows:
+              r['score']=score(r); f.write(json.dumps(r,ensure_ascii=False)+'\n')
+          with open('gtu_summary.txt','w',encoding='utf-8') as f:
+            f.write(f'query_hits_examined={examined}\nunique_verified_candidates={len(rows)}\n')
+          print('query_hits_examined',examined,'unique_verified_candidates',len(rows))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-inventory-candidates
+          path: |
+            gtu_candidates.jsonl
+            gtu_summary.txt
+          compression-level: 6
