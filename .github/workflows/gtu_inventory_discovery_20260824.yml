@@ -11,12 +11,11 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p work
-          : > work/raw.tsv
           queries=(
             'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Septuagint OR LXX OR Hexapla OR Aquila OR Symmachus OR Theodotion))'
             'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Peshitta OR Syriac OR Aramaic OR Targum OR Chaldee))'
             'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Hebrew OR Masoretic OR Samaritan OR Ugaritic OR Phoenician))'
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Qumran OR Essene OR Dead Sea OR Pseudepigrapha OR Apocrypha))'
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Qumran OR Essene OR Pseudepigrapha OR Apocrypha))'
             'collection:graduatetheologicalunion AND mediatype:texts AND (title:(papyrus OR papyri OR palaeography OR manuscript OR codex))'
             'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Akkadian OR Assyrian OR Babylonian OR Sumerian OR cuneiform))'
             'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Genesis OR Exodus OR Leviticus OR Numbers OR Deuteronomy OR Isaiah OR Jeremiah OR Ezekiel OR Psalms OR Job))'
@@ -26,6 +25,7 @@ jobs:
             'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Calvin OR Luther OR Reformation) AND (commentary OR commentaries OR exposition OR exegesis))'
             'collection:graduatetheologicalunion AND mediatype:texts AND (title:(archaeology OR archaeological OR Palestine OR Israel OR Jordan OR Jerusalem))'
           )
+          : > work/ids.txt
           for q in "${queries[@]}"; do
             enc=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "$q")
             curl -fsSL "https://archive.org/advancedsearch.php?q=$enc&fl[]=identifier&rows=60&page=1&output=json" -o work/search.json
@@ -35,7 +35,7 @@ jobs:
           : > work/candidates.tsv
           count=0
           while IFS= read -r id; do
-            count=$((count+1)); [ "$count" -gt 220 ] && break
+            count=$((count+1)); [ "$count" -gt 90 ] && break
             curl -fsSL "https://archive.org/metadata/$id" -o work/meta.json || continue
             ingtu=$(jq -r '(.metadata.collection // []) | if type=="array" then any(. == "graduatetheologicalunion") else . == "graduatetheologicalunion" end' work/meta.json)
             [ "$ingtu" = "true" ] || continue
@@ -53,7 +53,7 @@ jobs:
           done < work/uniq.txt
           echo "UNIQUE_IDS=$(wc -l < work/uniq.txt)"
           echo "VERIFIED_CANDIDATES=$(wc -l < work/candidates.tsv)"
-          head -n 120 work/candidates.tsv
+          head -n 100 work/candidates.tsv
       - uses: actions/upload-artifact@v4
         with:
           name: gtu-inventory-candidates-20260824
