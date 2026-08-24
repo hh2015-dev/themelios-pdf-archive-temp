@@ -1,0 +1,139 @@
+name: GTU inventory discovery 839-858
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mine and verify GTU candidates
+        shell: bash
+        run: |
+          cat > /tmp/discover.py <<'PY'
+          import json, urllib.parse, urllib.request, time, re, csv, os
+          from collections import OrderedDict
+
+          BASE='https://archive.org'
+          COLL='graduatetheologicalunion'
+          queries=[
+            'subject:(Bible OR Biblical OR Scripture)',
+            'title:(Hebrew OR Aramaic OR Syriac OR Semitic)',
+            'title:(Septuagint OR LXX OR Hexapla)',
+            'title:(Greek AND (Testament OR grammar OR lexicon OR papyri))',
+            'title:(textual criticism OR manuscript OR manuscripts)',
+            'title:(Qumran OR Dead Sea OR pseudepigrapha OR apocrypha)',
+            'title:(Talmud OR Mishnah OR Midrash OR rabbinic)',
+            'title:(Ugaritic OR Akkadian OR Assyrian OR Babylonian OR Cuneiform)',
+            'title:(archaeology OR Palestine OR Canaan OR Israel)',
+            'title:(Genesis OR Exodus OR Leviticus OR Numbers OR Deuteronomy)',
+            'title:(Joshua OR Judges OR Samuel OR Kings OR Chronicles)',
+            'title:(Psalms OR Proverbs OR Job OR Ecclesiastes OR Isaiah)',
+            'title:(Jeremiah OR Ezekiel OR Daniel OR Hosea OR Amos OR prophets)',
+            'title:(Matthew OR Mark OR Luke OR John OR Acts)',
+            'title:(Romans OR Corinthians OR Galatians OR Ephesians OR Hebrews)',
+            'title:(Revelation OR Apocalypse OR Catholic Epistles)',
+            'title:(commentary OR commentaries OR exegesis OR hermeneutics)',
+            'creator:(Calvin OR Luther OR Delitzsch OR Lightfoot OR Westcott OR Hort)',
+            'title:(concordance OR lexicon OR dictionary OR grammar OR bibliography)',
+            'title:(Journal of Biblical Literature OR Biblical Archaeologist OR Bible Translator)',
+            'title:(patristic OR fathers OR Origen OR Eusebius OR Jerome OR Augustine)',
+            'title:(Reformation OR theology OR doctrine OR creed OR confession)',
+            'title:(missions OR missionary OR missiology)',
+            'title:(Judaism OR Jewish OR Christianity)',
+            'language:(heb OR syc OR grc OR ara OR lat)'
+          ]
+          pages=[1,3,6]
+          docs=OrderedDict()
+          examined=0
+          def getjson(url, tries=4):
+            for k in range(tries):
+              try:
+                req=urllib.request.Request(url,headers={'User-Agent':'GTU-inventory-research/1.0'})
+                with urllib.request.urlopen(req,timeout=45) as r:
+                  return json.load(r)
+              except Exception as e:
+                if k==tries-1: raise
+                time.sleep(1.5*(k+1))
+          for q0 in queries:
+            q=f'collection:{COLL} AND mediatype:texts AND ({q0})'
+            for p in pages:
+              params=urllib.parse.urlencode({'q':q,'fl[]':['identifier','title','creator','date','year','volume','edition','language','subject'],'rows':50,'page':p,'output':'json'},doseq=True)
+              try: data=getjson(BASE+'/advancedsearch.php?'+params)
+              except Exception: continue
+              for d in data.get('response',{}).get('docs',[]):
+                examined+=1
+                ident=d.get('identifier')
+                if ident and ident not in docs: docs[ident]=d
+
+          A_terms=re.compile(r'\b(bible|biblical|scripture|hebrew|aramaic|syriac|semitic|septuagint|lxx|hexapla|greek|testament|textual|manuscript|qumran|dead sea|pseudepigrapha|apocrypha|talmud|mishnah|midrash|rabbin|ugarit|akkad|assyri|babylon|cuneiform|archaeolog|palestine|canaan|israel|genesis|exodus|leviticus|numbers|deuteronomy|joshua|judges|samuel|kings|chronicles|psalms|proverbs|job|ecclesiastes|isaiah|jeremiah|ezekiel|daniel|hosea|amos|prophet|matthew|mark|luke|john|acts|romans|corinth|galatian|ephesian|hebrews|revelation|apocalypse|commentar|exegesis|hermeneut|concordance|lexicon|grammar|papyr|josephus|philo)\b',re.I)
+          B_terms=re.compile(r'\b(patrist|father|origen|eusebius|jerome|augustine|reformation|theology|doctrine|creed|confession|mission|judaism|jewish|christianity|church history|apologetic|religion)\b',re.I)
+          def txt(v):
+            if isinstance(v,list): return ' '.join(map(str,v))
+            return str(v or '')
+          ranked=[]
+          for ident,d in docs.items():
+            s=' '.join(txt(d.get(k)) for k in ('title','creator','subject'))
+            score=len(A_terms.findall(s))*5 + len(B_terms.findall(s))*2
+            title=txt(d.get('title'))
+            if re.search(r'catalog|minutes|bulletin of the graduate theological|commencement|directory|yearbook',title,re.I): score-=30
+            ranked.append((score,ident,d))
+          ranked.sort(reverse=True,key=lambda x:x[0])
+          verified=[]
+          for score,ident,d in ranked[:320]:
+            try: meta=getjson(BASE+'/metadata/'+urllib.parse.quote(ident))
+            except Exception: continue
+            md=meta.get('metadata',{})
+            col=md.get('collection',[])
+            if isinstance(col,str): col=[col]
+            if COLL not in col: continue
+            if md.get('mediatype') not in (None,'texts'): continue
+            restricted=str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true'
+            pdfs=[]
+            for f in meta.get('files',[]):
+              name=f.get('name','')
+              if not name.lower().endswith('.pdf'): continue
+              if str(f.get('private','false')).lower()=='true': continue
+              if name.lower().endswith('.lcpdf') or 'encrypted' in name.lower(): continue
+              pdfs.append(f)
+            public_pdf=None if restricted else (pdfs[0] if pdfs else None)
+            # include academically useful restricted items too, but note restriction; preference later will favor public PDF
+            title=txt(md.get('title') or d.get('title'))
+            creator=txt(md.get('creator') or d.get('creator'))
+            subject=txt(md.get('subject') or d.get('subject'))
+            year=txt(md.get('year') or md.get('date') or d.get('year') or d.get('date'))
+            volume=txt(md.get('volume') or '')
+            edition=txt(md.get('edition') or '')
+            series=txt(md.get('series') or '')
+            language=txt(md.get('language') or d.get('language'))
+            contributor=txt(md.get('contributor') or md.get('scanner') or '')
+            pages=txt(md.get('pages') or md.get('imagecount') or '')
+            pdfname=public_pdf.get('name','') if public_pdf else ''
+            pdfurl=(BASE+'/download/'+urllib.parse.quote(ident)+'/'+urllib.parse.quote(pdfname)) if pdfname else ''
+            alltext=' '.join([title,creator,subject])
+            pri='A' if A_terms.search(alltext) else ('B' if B_terms.search(alltext) else 'C')
+            verified.append({
+              'priority':pri,'score':score,'identifier':ident,'title':title,'creator':creator,'year':year,
+              'volume':volume,'edition':edition,'series':series,'language':language,'subject':subject,
+              'contributor':contributor,'pages':pages,'pdf_name':pdfname,'pdf_url':pdfurl,
+              'restricted':restricted,'item_url':BASE+'/details/'+ident,
+              'notes':'GTU collection membership verified in Archive metadata; '+('item is access-restricted/printdisabled.' if restricted else ('public unencrypted PDF present.' if public_pdf else 'no public PDF filename verified.'))
+            })
+            if len(verified)>=220: break
+          fields=list(verified[0].keys()) if verified else []
+          with open('gtu_verified.csv','w',newline='',encoding='utf-8') as f:
+            w=csv.DictWriter(f,fieldnames=fields); w.writeheader(); w.writerows(verified)
+          with open('summary.txt','w',encoding='utf-8') as f:
+            f.write(f'raw_appearances={examined}\nunique_candidates={len(docs)}\nmetadata_verified={len(verified)}\n')
+          print(open('summary.txt').read())
+          print('TOP VERIFIED:')
+          for r in verified[:80]:
+            print('\t'.join([r['priority'],str(r['score']),r['identifier'],r['title'][:140],r['creator'][:80],r['year'][:20],r['volume'][:20],r['edition'][:30],str(bool(r['pdf_url']))]))
+          PY
+          python3 /tmp/discover.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-inventory-verified-839-858
+          path: |
+            gtu_verified.csv
+            summary.txt
+          compression-level: 6
