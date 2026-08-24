@@ -1,0 +1,40 @@
+name: GTU candidate sampler 839-858
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  sample:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sample GTU corpus
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json,urllib.parse,urllib.request,csv
+          B='https://archive.org'; C='graduatetheologicalunion'
+          qs=['title:(Bible OR Biblical OR Hebrew OR Aramaic OR Syriac OR Greek OR Testament)','title:(Septuagint OR manuscript OR Qumran OR Talmud OR Ugaritic OR archaeology)','title:(commentary OR exegesis OR lexicon OR grammar OR concordance)','title:(theology OR patristic OR Reformation OR Judaism OR Christianity)']
+          seen={}; raw=0
+          for q0 in qs:
+            for p in (10,20,30,40):
+              q=f'collection:{C} AND mediatype:texts AND ({q0})'
+              u=B+'/advancedsearch.php?'+urllib.parse.urlencode({'q':q,'fl[]':['identifier','title','creator','date','year','volume','edition','series','subject'],'rows':50,'page':p,'output':'json'},doseq=True)
+              req=urllib.request.Request(u,headers={'User-Agent':'GTUInventory/1.0'})
+              try:
+                with urllib.request.urlopen(req,timeout=30) as r: ds=json.load(r).get('response',{}).get('docs',[])
+              except Exception: ds=[]
+              for d in ds:
+                raw+=1
+                if d.get('identifier'):seen.setdefault(d['identifier'],d)
+          def t(v):return '; '.join(map(str,v)) if isinstance(v,list) else str(v or '')
+          rows=[]
+          for d in seen.values():
+            rows.append({k:t(d.get(k)) for k in ['identifier','title','creator','year','date','volume','edition','series','subject']})
+          with open('candidates.csv','w',newline='',encoding='utf-8') as f:
+            w=csv.DictWriter(f,fieldnames=rows[0].keys());w.writeheader();w.writerows(rows)
+          print(f'raw={raw} unique={len(rows)}')
+          for r in rows[:120]: print('\t'.join([r['identifier'],r['title'][:160],r['creator'][:80],r['year'][:20],r['volume'][:20],r['edition'][:20]]))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-candidates-839-858
+          path: candidates.csv
