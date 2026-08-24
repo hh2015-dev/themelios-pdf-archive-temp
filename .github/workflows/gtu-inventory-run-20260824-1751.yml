@@ -6,51 +6,23 @@ jobs:
   discover:
     runs-on: ubuntu-latest
     steps:
-      - name: Mine exact GTU collection broadly and verify metadata
+      - name: Sample diverse exact GTU collection pages
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p out
-          : > ids.txt
+          : > out/sample.tsv
           q='collection:graduatetheologicalunion AND mediatype:texts'
           enc=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "$q")
-          for page in 3 11 19 27 35 43; do
-            curl -fsSL --retry 3 "https://archive.org/advancedsearch.php?q=$enc&fl[]=identifier&rows=100&page=$page&sort[]=identifier+asc&output=json" -o s.json || continue
-            jq -r '.response.docs[].identifier' s.json >> ids.txt
+          for page in 7 17 29 41 53 67 83; do
+            curl -fsSL --retry 3 "https://archive.org/advancedsearch.php?q=$enc&fl[]=identifier&fl[]=title&fl[]=creator&fl[]=year&fl[]=date&fl[]=volume&fl[]=edition&fl[]=series&fl[]=subject&rows=100&page=$page&sort[]=identifier+asc&output=json" -o s.json || continue
+            jq -r '.response.docs[] | [(.identifier//""),(.title//""|if type=="array" then join("; ") else . end),(.creator//""|if type=="array" then join("; ") else . end),(.year//.date//""|tostring),(.volume//""|tostring),(.edition//""|if type=="array" then join("; ") else . end),(.series//""|if type=="array" then join("; ") else . end),(.subject//""|if type=="array" then join("; ") else . end)] | @tsv' s.json >> out/sample.tsv
           done
-          sort -u ids.txt -o ids.txt
-          total=$(wc -l < ids.txt | tr -d ' ')
-          echo "UNIQUE_DISCOVERED=$total" | tee out/summary.txt
-          : > out/candidates.tsv
-          n=0
-          while IFS= read -r id; do
-            n=$((n+1))
-            [ "$n" -le 260 ] || break
-            curl -fsSL --retry 3 "https://archive.org/metadata/$id" -o m.json || continue
-            belongs=$(jq -r '[.metadata.collection[]? // .metadata.collection] | flatten | map(select(.=="graduatetheologicalunion")) | length' m.json 2>/dev/null || echo 0)
-            [ "$belongs" -gt 0 ] || continue
-            title=$(jq -r '.metadata.title // "" | if type=="array" then join("; ") else . end' m.json | tr '\t\n\r' '   ')
-            creator=$(jq -r '.metadata.creator // "" | if type=="array" then join("; ") else . end' m.json | tr '\t\n\r' '   ')
-            year=$(jq -r '.metadata.year // .metadata.date // "" | if type=="array" then join("; ") else . end' m.json | tr '\t\n\r' '   ')
-            volume=$(jq -r '.metadata.volume // "" | if type=="array" then join("; ") else . end' m.json | tr '\t\n\r' '   ')
-            edition=$(jq -r '.metadata.edition // "" | if type=="array" then join("; ") else . end' m.json | tr '\t\n\r' '   ')
-            series=$(jq -r '.metadata.series // "" | if type=="array" then join("; ") else . end' m.json | tr '\t\n\r' '   ')
-            subject=$(jq -r '.metadata.subject // "" | if type=="array" then join("; ") else . end' m.json | tr '\t\n\r' '   ')
-            contributor=$(jq -r '.metadata.contributor // "" | if type=="array" then join("; ") else . end' m.json | tr '\t\n\r' '   ')
-            imagecount=$(jq -r '.metadata.imagecount // ""' m.json | tr '\t\n\r' '   ')
-            restricted=$(jq -r '.metadata["access-restricted-item"] // .metadata.printdisabled // ""' m.json | tr '\t\n\r' '   ')
-            pdf=$(jq -r '.files[]? | select(.name|test("\\.pdf$";"i")) | select((.private // "false") != "true") | select((.name|test("encrypted\\.pdf$|\\.lcpdf$";"i"))|not) | .name' m.json | head -n1 || true)
-            pdf=$(printf '%s' "$pdf" | tr '\t\n\r' '   ')
-            hay=$(printf '%s %s' "$title" "$subject" | tr '[:upper:]' '[:lower:]')
-            if printf '%s' "$hay" | grep -Eiq 'bible|biblical|testament|hebrew|aramaic|syriac|semitic|greek|septuagint|manuscript|textual|scroll|qumran|apocryph|pseudepigraph|rabbin|talmud|midrash|mishnah|targum|assyri|akkad|babylon|ugarit|coptic|papyr|archaeolog|palestine|israel|juda|gospel|genesis|exodus|leviticus|numbers|deuteronomy|joshua|judges|samuel|kings|chronicles|ezra|nehemiah|esther|job|psalm|proverb|ecclesiast|isaiah|jeremiah|ezekiel|daniel|hosea|joel|amos|obadiah|jonah|micah|nahum|habakkuk|zephaniah|haggai|zechariah|malachi|matthew|mark|luke|john|acts|romans|corinth|galatian|ephesian|philippian|colossian|thessalon|timothy|titus|philemon|hebrews|james|peter|jude|revelation|patrist|church father|augustine|origen|jerome|chrysostom|calvin|luther|reformation|theology|creed|confession|mission|christianity|judaism'; then
-              printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$id" "$title" "$creator" "$year" "$volume" "$edition" "$series" "$subject" "$contributor" "$restricted" "$pdf" "$imagecount" >> out/candidates.tsv
-            fi
-          done < ids.txt
-          echo "METADATA_CHECKED=$(( n<260 ? n : 260 ))" | tee -a out/summary.txt
-          echo "ACADEMIC_MATCHES=$(wc -l < out/candidates.tsv | tr -d ' ')" | tee -a out/summary.txt
-          head -n 180 out/candidates.tsv
+          sort -u out/sample.tsv -o out/sample.tsv
+          echo "SAMPLED=$(wc -l < out/sample.tsv | tr -d ' ')" > out/summary.txt
+          grep -Ei 'bible|biblical|testament|hebrew|aramaic|syriac|semitic|greek|septuagint|manuscript|textual|scroll|qumran|apocryph|pseudepigraph|rabbin|talmud|midrash|mishnah|targum|assyri|akkad|babylon|ugarit|coptic|papyr|archaeolog|palestine|israel|juda|gospel|genesis|exodus|leviticus|numbers|deuteronomy|joshua|judges|samuel|kings|chronicles|ezra|nehemiah|esther|job|psalm|proverb|ecclesiast|isaiah|jeremiah|ezekiel|daniel|hosea|joel|amos|obadiah|jonah|micah|nahum|habakkuk|zephaniah|haggai|zechariah|malachi|matthew|mark|luke|john|acts|romans|corinth|galatian|ephesian|philippian|colossian|thessalon|timothy|titus|philemon|hebrews|james|peter|jude|revelation|patrist|augustine|origen|jerome|chrysostom|calvin|luther|reformation|theology|creed|confession|mission|christianity|judaism' out/sample.tsv | head -n 220 | tee out/academic.tsv
       - uses: actions/upload-artifact@v4
         with:
-          name: gtu-inventory-candidates-20260824-broad
+          name: gtu-diverse-sample-20260824
           path: out/
           compression-level: 6
