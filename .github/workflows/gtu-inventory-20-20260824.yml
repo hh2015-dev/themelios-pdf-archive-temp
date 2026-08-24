@@ -10,11 +10,11 @@ jobs:
         shell: bash
         run: |
           cat > /tmp/discover.py <<'PY'
-          import json, re, time, urllib.parse, urllib.request
+          import json, time, urllib.parse, urllib.request
           from collections import OrderedDict
+          from concurrent.futures import ThreadPoolExecutor, as_completed
 
-          BASE='https://archive.org'
-          collection='graduatetheologicalunion'
+          BASE='https://archive.org'; collection='graduatetheologicalunion'
           queries=[
             f'collection:{collection} AND mediatype:texts',
             f'collection:{collection} AND mediatype:texts AND (title:(Bible OR Biblical OR Testament OR Gospel OR Psalms OR Isaiah OR Genesis OR Exodus OR Job OR Daniel OR Prophets))',
@@ -24,125 +24,75 @@ jobs:
             f'collection:{collection} AND mediatype:texts AND (title:(archaeology OR Palestine OR Canaan OR Mesopotamia OR Egypt OR inscriptions OR epigraphy))',
             f'collection:{collection} AND mediatype:texts AND (title:(Augustine OR Origen OR Jerome OR Chrysostom OR Irenaeus OR patristic OR Calvin OR Luther OR Reformation))',
             f'collection:{collection} AND mediatype:texts AND (title:(theology OR church OR doctrine OR creed OR mission OR missions OR Judaism OR Christianity))',
-            f'collection:{collection} AND mediatype:texts AND language:(ger OR fre OR lat OR grc OR heb OR ara OR syr)',
           ]
           pages_for_base=[1,4,8,12,16,20]
-          docs=OrderedDict()
-          appearances=0
-          def get_json(url, timeout=35):
-            req=urllib.request.Request(url, headers={'User-Agent':'Mozilla/5.0 GTU-inventory-research/1.0'})
-            with urllib.request.urlopen(req, timeout=timeout) as r:
-              return json.load(r)
+          docs=OrderedDict(); appearances=0
+          def get_json(url, timeout=12):
+            req=urllib.request.Request(url,headers={'User-Agent':'Mozilla/5.0 GTU-inventory-research/1.0'})
+            with urllib.request.urlopen(req,timeout=timeout) as r: return json.load(r)
           for qi,q in enumerate(queries):
-            pages=pages_for_base if qi==0 else [1,2]
-            for page in pages:
+            for page in (pages_for_base if qi==0 else [1,2]):
               params=[('q',q),('rows','200'),('page',str(page)),('output','json'),('sort[]','identifier asc')]
-              for f in ['identifier','title','creator','year','date','volume','edition','series','language','subject','format','collection','contributor']:
-                params.append(('fl[]',f))
-              url=BASE+'/advancedsearch.php?'+urllib.parse.urlencode(params)
-              try:
-                data=get_json(url)
-              except Exception as e:
-                print('SEARCH_ERROR', qi, page, repr(e))
-                continue
-              got=data.get('response',{}).get('docs',[])
-              appearances += len(got)
+              for f in ['identifier','title','creator','year','date','volume','edition','series','language','subject','format','collection','contributor']: params.append(('fl[]',f))
+              try: got=get_json(BASE+'/advancedsearch.php?'+urllib.parse.urlencode(params)).get('response',{}).get('docs',[])
+              except Exception as e: print('SEARCH_ERROR',qi,page,repr(e)); continue
+              appearances+=len(got)
               for d in got:
-                ident=d.get('identifier')
-                if ident and ident not in docs: docs[ident]=d
-              time.sleep(0.08)
-
+                if d.get('identifier'): docs.setdefault(d['identifier'],d)
           kwA=['bible','biblical','testament','gospel','hebrew','aramaic','syriac','semitic','greek','septuagint','lxx','textual','manuscript','papyr','qumran','dead sea','targum','talmud','mishnah','midrash','philo','josephus','ugarit','akkad','assyri','babylon','archaeolog','palestine','canaan','lexicon','grammar','concordance','psalm','isaiah','jeremiah','genesis','exodus','job','daniel','prophet','commentar','exeg','hermeneut','apocry','pseudepigraph','rabbin','inscription','epigraph','codex']
           kwB=['theology','patrist','augustine','origen','jerome','chrysostom','irenaeus','calvin','luther','reformation','church','doctrine','creed','confession','apolog','mission','judaism','christianity','religion']
           bad=['yearbook of','annual report','minutes','catalogue of courses','bulletin of the graduate theological union','commencement','directory']
-          def text(d):
-            vals=[]
+          def flat(d):
+            a=[]
             for k in ['title','creator','subject']:
-              v=d.get(k,'')
-              if isinstance(v,list): vals.extend(map(str,v))
-              else: vals.append(str(v))
-            return ' '.join(vals).lower()
+              v=d.get(k,''); a.extend(map(str,v)) if isinstance(v,list) else a.append(str(v))
+            return ' '.join(a).lower()
           def score(d):
-            t=text(d)
-            s=sum(5 for k in kwA if k in t)+sum(2 for k in kwB if k in t)
+            t=flat(d); s=sum(5 for k in kwA if k in t)+sum(2 for k in kwB if k in t)
             if any(k in t for k in bad): s-=30
-            y=d.get('year')
-            try:
-              yy=int(str(y)[:4]);
-              if yy<1900: s+=1
-            except: pass
             return s
-          ranked=sorted(docs.values(), key=lambda d:(score(d), str(d.get('year','')), d.get('identifier','')), reverse=True)
-          # diversify: take from bands of ranking rather than only the top
-          candidate_docs=[]; seen=set()
-          bands=[ranked[:350], ranked[350:800], ranked[800:1400], ranked[1400:]]
-          for band in bands:
-            for d in band[:90]:
-              ident=d.get('identifier')
-              if ident and ident not in seen:
-                candidate_docs.append(d); seen.add(ident)
-          # ensure enough overall if bands are sparse
+          ranked=sorted(docs.values(),key=lambda d:(score(d),str(d.get('year','')),d.get('identifier','')),reverse=True)
+          # deliberately sample several ranking bands
+          pool=[]; seen=set()
+          for band in [ranked[:300],ranked[300:700],ranked[700:1200],ranked[1200:]]:
+            for d in band[:55]:
+              if d['identifier'] not in seen: pool.append(d); seen.add(d['identifier'])
           for d in ranked:
-            if len(candidate_docs)>=300: break
-            ident=d.get('identifier')
-            if ident and ident not in seen:
-              candidate_docs.append(d); seen.add(ident)
-
-          verified=[]; metadata_examined=0
-          for d in candidate_docs[:300]:
-            ident=d['identifier']; metadata_examined+=1
-            try:
-              meta=get_json(BASE+'/metadata/'+urllib.parse.quote(ident), timeout=35)
-            except Exception as e:
-              continue
-            md=meta.get('metadata',{}) or {}
-            coll=md.get('collection',[])
+            if len(pool)>=180: break
+            if d['identifier'] not in seen: pool.append(d); seen.add(d['identifier'])
+          pool=pool[:180]
+          def verify(d):
+            ident=d['identifier']
+            try: meta=get_json(BASE+'/metadata/'+urllib.parse.quote(ident),timeout=12)
+            except: return None
+            md=meta.get('metadata',{}) or {}; coll=md.get('collection',[])
             if isinstance(coll,str): coll=[coll]
-            if collection not in coll: continue
-            if md.get('mediatype') not in (None,'texts'): continue
-            title=md.get('title') or d.get('title') or ''
-            creator=md.get('creator') or d.get('creator') or ''
-            if isinstance(creator,list): creator='; '.join(map(str,creator))
-            subj=md.get('subject') or d.get('subject') or ''
-            if isinstance(subj,list): subj='; '.join(map(str,subj))
-            lang=md.get('language') or d.get('language') or ''
-            if isinstance(lang,list): lang='; '.join(map(str,lang))
-            contributor=md.get('contributor') or d.get('contributor') or ''
-            if isinstance(contributor,list): contributor='; '.join(map(str,contributor))
-            volume=md.get('volume','')
-            edition=md.get('edition','')
-            series=md.get('series','')
-            year=md.get('year') or md.get('date') or d.get('year') or d.get('date') or ''
-            imagecount=md.get('imagecount','')
+            if collection not in coll: return None
+            if md.get('mediatype') not in (None,'texts'): return None
+            def sv(k,fallback=''):
+              v=md.get(k,fallback)
+              if isinstance(v,list): return '; '.join(map(str,v))
+              return str(v or '')
             restricted=str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true'
             pdf=''
-            for f in meta.get('files',[]):
-              name=str(f.get('name',''))
-              if not name.lower().endswith('.pdf'): continue
-              if str(f.get('private','false')).lower()=='true': continue
-              low=name.lower()
-              if 'encrypted' in low or low.endswith('.lcpdf'): continue
-              fmt=str(f.get('format','')).lower()
-              # prefer original/public text pdf; reject obvious access derivatives
-              if not pdf or fmt=='text pdf': pdf=name
-              if fmt=='text pdf': break
-            public_pdf=bool(pdf) and not restricted
-            out={
-              'priority_score':score(d),'identifier':ident,'title':title,'creator':creator,'year':str(year),
-              'volume':str(volume),'edition':str(edition),'series':str(series),'language':str(lang),
-              'subject':str(subj),'contributor':str(contributor),'pages':str(imagecount),
-              'public_pdf':public_pdf,'pdf_name':pdf if public_pdf else '',
-              'item_link':BASE+'/details/'+ident,
-              'pdf_link':(BASE+'/download/'+ident+'/'+urllib.parse.quote(pdf)) if public_pdf else '',
-              'restricted':restricted
-            }
-            verified.append(out)
-            time.sleep(0.05)
-          # Final sort by score but interleave eras/languages to keep diversity
-          verified.sort(key=lambda x:(x['priority_score'], x['year']), reverse=True)
-          with open('candidates.json','w',encoding='utf-8') as f: json.dump(verified, f, ensure_ascii=False, indent=2)
-          with open('summary.json','w') as f: json.dump({'appearances':appearances,'unique_discovered':len(docs),'metadata_examined':metadata_examined,'verified_gtu':len(verified)},f)
-          print(json.dumps({'appearances':appearances,'unique_discovered':len(docs),'metadata_examined':metadata_examined,'verified_gtu':len(verified)}))
+            if not restricted:
+              for f in meta.get('files',[]):
+                name=str(f.get('name','')); low=name.lower(); fmt=str(f.get('format','')).lower()
+                if not low.endswith('.pdf') or str(f.get('private','false')).lower()=='true' or 'encrypted' in low or low.endswith('.lcpdf'): continue
+                if not pdf or fmt=='text pdf': pdf=name
+                if fmt=='text pdf': break
+            year=md.get('year') or md.get('date') or d.get('year') or d.get('date') or ''
+            return {'priority_score':score(d),'identifier':ident,'title':sv('title',d.get('title','')),'creator':sv('creator',d.get('creator','')),'year':str(year),'volume':sv('volume'),'edition':sv('edition'),'series':sv('series'),'language':sv('language',d.get('language','')),'subject':sv('subject',d.get('subject','')),'contributor':sv('contributor',d.get('contributor','')),'pages':sv('imagecount'),'public_pdf':bool(pdf),'pdf_name':pdf,'item_link':BASE+'/details/'+ident,'pdf_link':BASE+'/download/'+ident+'/'+urllib.parse.quote(pdf) if pdf else '','restricted':restricted}
+          verified=[]
+          with ThreadPoolExecutor(max_workers=18) as ex:
+            futs=[ex.submit(verify,d) for d in pool]
+            for fut in as_completed(futs):
+              x=fut.result()
+              if x: verified.append(x)
+          verified.sort(key=lambda x:(x['priority_score'],x['year']),reverse=True)
+          json.dump(verified,open('candidates.json','w',encoding='utf-8'),ensure_ascii=False,indent=2)
+          summary={'appearances':appearances,'unique_discovered':len(docs),'metadata_examined':len(pool),'verified_gtu':len(verified)}
+          json.dump(summary,open('summary.json','w')); print(json.dumps(summary))
           PY
           python3 /tmp/discover.py
       - uses: actions/upload-artifact@v4
