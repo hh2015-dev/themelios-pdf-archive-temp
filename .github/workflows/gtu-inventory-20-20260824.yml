@@ -34,7 +34,7 @@ jobs:
           ids=[]; seen=set(); examined=0
           def get(url):
               req=urllib.request.Request(url, headers={'User-Agent':'GTUInventory/1.0'})
-              with urllib.request.urlopen(req, timeout=20) as r: return json.load(r)
+              with urllib.request.urlopen(req, timeout=15) as r: return json.load(r)
           for q in queries:
               full=f'collection:graduatetheologicalunion AND mediatype:texts AND ({q})'
               url='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode({'q':full,'fl[]':['identifier'],'rows':30,'page':1,'output':'json','sort[]':'identifier asc'}, doseq=True)
@@ -57,7 +57,7 @@ jobs:
           keyA=['bible','biblical','testament','hebrew','aramaic','syriac','semit','greek','septuag','manuscript','codex','targum','talmud','mishnah','midrash','apocry','pseudep','palestine','archaeolog','assyri','babylon','ugarit','cuneiform','papy','inscription','genesis','exodus','levit','deuter','joshua','judges','samuel','kings','psalm','proverb','ecclesiast','isaiah','jeremiah','ezekiel','daniel','hosea','amos','micah','zechar','malachi','matthew','mark','luke','john','acts','romans','corinth','galatian','ephesian','hebrews','revelation','commentar','concordance','lexicon','grammar']
           keyB=['theolog','patrist','augustin','chrysost','irenae','tertull','origen','reformation','luther','calvin','zwingli','mission','creed','confession']
           out=[]
-          for i in ids[:300]:
+          for i in ids[:120]:
               try: m=get('https://archive.org/metadata/'+urllib.parse.quote(i))
               except Exception: continue
               md=m.get('metadata',{}) or {}; coll=md.get('collection',[])
@@ -74,9 +74,8 @@ jobs:
                   for f in m.get('files',[]) or []:
                       n=f.get('name','') or ''
                       if re.search(r'\.pdf$',n,re.I) and str(f.get('private','false')).lower()!='true' and not re.search(r'(encrypted|\.lcpdf$)',n,re.I): pdf=n; break
-              vals=[score,i,title,creator,md.get('date') or md.get('year') or '',md.get('volume','') or '',md.get('edition','') or '',md.get('series','') or '',md.get('language','') or '',md.get('contributor','') or '',md.get('pages','') or '',restricted,pdf,subject]
-              out.append(vals)
+              out.append([score,i,title,creator,md.get('date') or md.get('year') or '',md.get('volume','') or '',md.get('edition','') or '',md.get('series','') or '',md.get('language','') or '',md.get('contributor','') or '',md.get('pages','') or '',restricted,pdf,subject])
           out.sort(key=lambda x:(-x[0],str(x[4]),x[2])); print('VERIFIED_RELEVANT',len(out)); print('BEGIN_CANDIDATES')
-          for row in out[:120]: print(json.dumps(row,ensure_ascii=False))
+          for row in out[:100]: print(json.dumps(row,ensure_ascii=False))
           print('END_CANDIDATES')
           PY
