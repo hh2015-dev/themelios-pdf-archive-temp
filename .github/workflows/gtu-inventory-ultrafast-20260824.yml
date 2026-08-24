@@ -1,0 +1,69 @@
+name: GTU inventory ultrafast 20260824
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  mine:
+    runs-on: ubuntu-latest
+    steps:
+      - name: GTU-only discovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, urllib.parse, urllib.request, concurrent.futures
+          Q=[
+          '("Old Testament" OR "Hebrew Bible" OR Isaiah OR Psalms OR Job)',
+          '("New Testament" OR Gospel OR Pauline OR Revelation OR Acts)',
+          '(Hebrew OR Aramaic OR Syriac OR Ugaritic OR Akkadian)',
+          '(Septuagint OR manuscript OR papyrus OR "textual criticism")',
+          '(Qumran OR "Dead Sea" OR Mishnah OR Talmud OR Midrash)',
+          '("biblical archaeology" OR Assyria OR Babylonia OR Palestine)',
+          '(Calvin OR Luther OR Origen OR Jerome OR Chrysostom)',
+          '(lexicon OR grammar OR concordance OR bibliography)']
+          def get(url):
+            req=urllib.request.Request(url,headers={'User-Agent':'GTUInventory/1.0'})
+            with urllib.request.urlopen(req,timeout=18) as r:return json.load(r)
+          ids={};hits=0
+          for qi,q in enumerate(Q):
+            for page in [2+qi,12+qi]:
+              a=f'collection:graduatetheologicalunion AND mediatype:texts AND {q}'
+              u='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode({'q':a,'fl[]':['identifier','title','creator','year','volume','subject'],'rows':25,'page':page,'output':'json'},doseq=True)
+              try:ds=get(u).get('response',{}).get('docs',[])
+              except Exception:continue
+              hits+=len(ds)
+              for d in ds:
+                if d.get('identifier'):ids[d['identifier']]=d
+          pairs=list(ids.items())[:260]
+          def v(p):
+            ident,d=p
+            try:m=get('https://archive.org/metadata/'+urllib.parse.quote(ident))
+            except Exception:return None
+            md=m.get('metadata',{}) or {}; c=md.get('collection',[])
+            if isinstance(c,str):c=[c]
+            if 'graduatetheologicalunion' not in c:return None
+            cr=md.get('creator') or d.get('creator') or ''
+            if isinstance(cr,list):cr='; '.join(map(str,cr))
+            su=md.get('subject') or d.get('subject') or ''
+            if isinstance(su,list):su='; '.join(map(str,su[:8]))
+            pdf=''
+            for f in m.get('files',[]) or []:
+              n=f.get('name','') or ''
+              if n.lower().endswith('.pdf') and '.lcpdf' not in n.lower() and 'encrypted' not in n.lower() and str(f.get('private','false')).lower()!='true':
+                pdf='https://archive.org/download/'+ident+'/'+urllib.parse.quote(n);break
+            return {'identifier':ident,'title':str(md.get('title') or d.get('title') or ''),'creator':str(cr),'year':str(md.get('year') or md.get('date') or d.get('year') or ''),'volume':str(md.get('volume') or ''),'edition':str(md.get('edition') or ''),'series':str(md.get('series') or ''),'subject':str(su),'contributor':str(md.get('contributor') or 'Graduate Theological Union'),'item':'https://archive.org/details/'+ident,'pdf':pdf,'restricted':str(md.get('access-restricted-item') or md.get('printdisabled') or '')}
+          out=[]
+          with concurrent.futures.ThreadPoolExecutor(max_workers=40) as ex:
+            for r in ex.map(v,pairs):
+              if r:out.append(r)
+          with open('gtu_ultra.jsonl','w',encoding='utf8') as f:
+            for r in out:f.write(json.dumps(r,ensure_ascii=False)+'\n')
+          with open('gtu_ultra_summary.txt','w') as f:f.write(f'hits={hits}\nunique_ids={len(ids)}\nverified={len(out)}\n')
+          print('hits',hits,'unique',len(ids),'verified',len(out))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-ultra
+          path: |
+            gtu_ultra.jsonl
+            gtu_ultra_summary.txt
