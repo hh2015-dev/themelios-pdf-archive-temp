@@ -1,0 +1,60 @@
+name: GTU Inventory Discovery 20260824
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mine GTU collection and verify metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p work
+          : > work/raw.tsv
+          queries=(
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Septuagint OR LXX OR Hexapla OR Aquila OR Symmachus OR Theodotion))'
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Peshitta OR Syriac OR Aramaic OR Targum OR Chaldee))'
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Hebrew OR Masoretic OR Samaritan OR Ugaritic OR Phoenician))'
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Qumran OR Essene OR Dead Sea OR Pseudepigrapha OR Apocrypha))'
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(papyrus OR papyri OR palaeography OR manuscript OR codex))'
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Akkadian OR Assyrian OR Babylonian OR Sumerian OR cuneiform))'
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Genesis OR Exodus OR Leviticus OR Numbers OR Deuteronomy OR Isaiah OR Jeremiah OR Ezekiel OR Psalms OR Job))'
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Matthew OR Mark OR Luke OR John OR Romans OR Corinthians OR Galatians OR Hebrews OR Revelation))'
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(grammar OR lexicon OR concordance OR syntax) AND (Hebrew OR Greek OR Syriac OR Aramaic))'
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Irenaeus OR Origen OR Chrysostom OR Augustine OR Jerome OR Ephraem OR Theodore))'
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Calvin OR Luther OR Reformation) AND (commentary OR commentaries OR exposition OR exegesis))'
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(archaeology OR archaeological OR Palestine OR Israel OR Jordan OR Jerusalem))'
+          )
+          for q in "${queries[@]}"; do
+            enc=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "$q")
+            curl -fsSL "https://archive.org/advancedsearch.php?q=$enc&fl[]=identifier&rows=60&page=1&output=json" -o work/search.json
+            jq -r '.response.docs[].identifier' work/search.json >> work/ids.txt
+          done
+          sort -u work/ids.txt > work/uniq.txt
+          : > work/candidates.tsv
+          count=0
+          while IFS= read -r id; do
+            count=$((count+1)); [ "$count" -gt 220 ] && break
+            curl -fsSL "https://archive.org/metadata/$id" -o work/meta.json || continue
+            ingtu=$(jq -r '(.metadata.collection // []) | if type=="array" then any(. == "graduatetheologicalunion") else . == "graduatetheologicalunion" end' work/meta.json)
+            [ "$ingtu" = "true" ] || continue
+            title=$(jq -r '.metadata.title // "" | if type=="array" then join("; ") else . end' work/meta.json | tr '\t\n' '  ')
+            creator=$(jq -r '.metadata.creator // "" | if type=="array" then join("; ") else . end' work/meta.json | tr '\t\n' '  ')
+            year=$(jq -r '.metadata.year // .metadata.date // "" | if type=="array" then join("; ") else . end' work/meta.json | tr '\t\n' '  ')
+            volume=$(jq -r '.metadata.volume // "" | if type=="array" then join("; ") else . end' work/meta.json | tr '\t\n' '  ')
+            edition=$(jq -r '.metadata.edition // "" | if type=="array" then join("; ") else . end' work/meta.json | tr '\t\n' '  ')
+            series=$(jq -r '.metadata.series // "" | if type=="array" then join("; ") else . end' work/meta.json | tr '\t\n' '  ')
+            lang=$(jq -r '.metadata.language // "" | if type=="array" then join("; ") else . end' work/meta.json | tr '\t\n' '  ')
+            contributor=$(jq -r '.metadata.contributor // .metadata.scanningcenter // "" | if type=="array" then join("; ") else . end' work/meta.json | tr '\t\n' '  ')
+            restricted=$(jq -r '.metadata["access-restricted-item"] // .metadata.printdisabled // ""' work/meta.json)
+            pdf=$(jq -r '.files[]? | select(.name|test("\\.pdf$";"i")) | select((.private // "false") != "true") | select((.name|test("(encrypted|lcpdf)";"i"))|not) | .name' work/meta.json | head -n1)
+            printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$id" "$title" "$creator" "$year" "$volume" "$edition" "$series" "$lang" "$contributor" "$restricted" "$pdf" >> work/candidates.tsv
+          done < work/uniq.txt
+          echo "UNIQUE_IDS=$(wc -l < work/uniq.txt)"
+          echo "VERIFIED_CANDIDATES=$(wc -l < work/candidates.tsv)"
+          head -n 120 work/candidates.tsv
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-inventory-candidates-20260824
+          path: work/candidates.tsv
