@@ -1,0 +1,61 @@
+name: GTU inventory discovery 20260824
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mine GTU collection broadly
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, urllib.parse, urllib.request, time, csv
+          base='https://archive.org/advancedsearch.php'
+          queries=[
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Hebrew OR Aramaic OR Syriac OR Semitic OR Ugaritic OR Akkadian) OR subject:(Hebrew OR Aramaic OR Syriac OR Semitic OR Ugaritic OR Akkadian))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Greek OR Septuagint OR papyri OR manuscript) OR subject:(Greek OR Septuagint OR papyri OR manuscripts))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Bible OR biblical OR testament OR gospel OR psalm OR Isaiah OR Jeremiah OR Genesis OR Exodus OR Job) OR subject:(Bible OR biblical))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Qumran OR Dead Sea OR Talmud OR Mishnah OR rabbinic OR Philo OR Josephus) OR subject:(Qumran OR Dead Sea OR Talmud OR Mishnah OR rabbinic))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Assyria OR Babylon OR Palestine OR archaeology OR Canaan OR Phoenician) OR subject:(Assyria OR Babylon OR Palestine OR archaeology OR Canaan))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(commentary OR concordance OR lexicon OR grammar OR bibliography OR exegesis OR hermeneutics) OR subject:(commentary OR concordance OR lexicon OR grammar))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Origen OR Augustine OR Jerome OR Chrysostom OR patristic OR Calvin OR Luther OR Reformation) OR subject:(patristic OR Reformation))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(theology OR doctrine OR creed OR apologetics OR mission OR church history) OR subject:(theology OR doctrine OR missions))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND date:[1700-01-01 TO 1849-12-31]',
+            'collection:graduatetheologicalunion AND mediatype:texts AND date:[1850-01-01 TO 1899-12-31]',
+            'collection:graduatetheologicalunion AND mediatype:texts AND date:[1900-01-01 TO 1949-12-31]',
+            'collection:graduatetheologicalunion AND mediatype:texts AND date:[1950-01-01 TO 1999-12-31]'
+          ]
+          fields=['identifier','title','creator','date','year','volume','edition','subject','language','contributor','collection']
+          seen={}
+          examined=0
+          for qi,q in enumerate(queries):
+            pages=[1,2,4] if qi<8 else [3,8,15]
+            for page in pages:
+              params=[('q',q),('rows','100'),('page',str(page)),('output','json')]
+              for f in fields: params.append(('fl[]',f))
+              url=base+'?'+urllib.parse.urlencode(params)
+              try:
+                with urllib.request.urlopen(url,timeout=40) as r: data=json.load(r)
+              except Exception as e:
+                print('ERR',qi,page,e); continue
+              docs=data.get('response',{}).get('docs',[]); examined+=len(docs)
+              for d in docs:
+                ident=d.get('identifier')
+                if ident and ident not in seen: seen[ident]=d
+              time.sleep(.15)
+          print('EXAMINED_APPEARANCES',examined)
+          print('UNIQUE',len(seen))
+          with open('candidates.jsonl','w',encoding='utf-8') as f:
+            for d in seen.values(): f.write(json.dumps(d,ensure_ascii=False)+'\n')
+          with open('summary.txt','w') as f:
+            f.write(f'EXAMINED_APPEARANCES={examined}\nUNIQUE={len(seen)}\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-discovery-candidates
+          path: |
+            candidates.jsonl
+            summary.txt
+          compression-level: 6
