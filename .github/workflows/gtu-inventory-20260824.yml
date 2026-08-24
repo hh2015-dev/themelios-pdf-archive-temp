@@ -1,48 +1,55 @@
-name: GTU inventory discovery 20260824
+name: GTU inventory verification 20260824
 on:
   pull_request:
     branches: [ main ]
 jobs:
-  discover:
+  verify:
     runs-on: ubuntu-latest
     steps:
-      - name: Mine GTU corpus broadly
+      - name: Verify selected GTU items and PDF availability
         shell: bash
         run: |
           set -euo pipefail
-          : > candidates.jsonl
-          queries=(
-            'collection:graduatetheologicalunion AND mediatype:texts AND (Masoretic OR masorah OR targum OR targumim)'
-            'collection:graduatetheologicalunion AND mediatype:texts AND (Septuagint OR LXX OR hexapla)'
-            'collection:graduatetheologicalunion AND mediatype:texts AND (Syriac OR Syriac manuscripts OR Peshitta)'
-            'collection:graduatetheologicalunion AND mediatype:texts AND (Coptic OR Sahidic OR Bohairic)'
-            'collection:graduatetheologicalunion AND mediatype:texts AND (Aramaic OR Hebrew grammar OR Semitic)'
-            'collection:graduatetheologicalunion AND mediatype:texts AND (Akkadian OR Assyrian OR Babylonian OR Ugaritic)'
-            'collection:graduatetheologicalunion AND mediatype:texts AND (Qumran OR Dead Sea Scrolls OR pseudepigrapha OR apocrypha)'
-            'collection:graduatetheologicalunion AND mediatype:texts AND (Philo OR Josephus OR rabbinic OR Mishnah OR Talmud)'
-            'collection:graduatetheologicalunion AND mediatype:texts AND (textual criticism OR manuscript OR papyri)'
-            'collection:graduatetheologicalunion AND mediatype:texts AND (New Testament Greek OR Greek grammar OR Greek lexicon)'
-            'collection:graduatetheologicalunion AND mediatype:texts AND (biblical archaeology OR Palestine archaeology OR ancient near east)'
-            'collection:graduatetheologicalunion AND mediatype:texts AND (Origen OR Chrysostom OR Jerome OR Augustine OR Ephrem OR patristic)'
-            'collection:graduatetheologicalunion AND mediatype:texts AND (Luther OR Calvin OR Reformation) AND (commentary OR exegesis OR Bible)'
-            'collection:graduatetheologicalunion AND mediatype:texts AND (concordance OR bibliography OR lexicon OR grammar) AND Bible'
-            'collection:graduatetheologicalunion AND mediatype:texts AND (Isaiah OR Jeremiah OR Ezekiel OR Daniel OR Job OR Psalms OR Proverbs) AND (commentary OR criticism)'
-            'collection:graduatetheologicalunion AND mediatype:texts AND (Matthew OR Mark OR Luke OR John OR Romans OR Hebrews OR Revelation) AND (commentary OR criticism)'
-            'collection:graduatetheologicalunion AND mediatype:texts AND (biblical theology OR history of interpretation OR hermeneutics)'
-            'collection:graduatetheologicalunion AND mediatype:texts AND (creed OR doctrine OR systematic theology OR church history OR missions)'
+          : > verified.jsonl
+          ids=(
+            newdocumentsillu0005hors
+            qumranyelnuevote0000casc
+            lesaffinitesqumr0000copp
+            evangiledematthi0019unse
+            deuteronomeix7en0018unse
+            josuevi1625vii6x0021unse
+            hebraischegramma0001beer
+            hebraischegramma0002beer
+            newdirectionsinb0000davi
+            graecitasbiblica0000zerw
+            deadseascrollsof0002burr
+            aramaicdocuments0000pier
+            akkadianchrestom0001fran
+            gtu_32400000610406
+            catalogueofsyria0000wwri_r6z2
+            gtu_32400002832867_2
+            moffattbibleconc0000unse
+            flaviiiosephiope0005jose
+            flaviiiosephiope0006jose
+            philoofalexandri0008radi
+            gtu_32400004571927
+            hatorahehahafaro0000unse
+            holyscripturesac0000vari
+            grundzugeundchre0003unse
+            semeiaexperiment0000dani
           )
-          for q in "${queries[@]}"; do
-            enc=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "$q")
-            for page in 1 2 4 7; do
-              url="https://archive.org/advancedsearch.php?q=$enc&fl[]=identifier,title,creator,year,date,language,subject,volume,edition,series,contributor&rows=50&page=$page&output=json"
-              curl -fsSL --retry 3 "$url" -o search.json || continue
-              jq -c '.response.docs[]' search.json >> candidates.jsonl
-            done
+          for id in "${ids[@]}"; do
+            curl -fsSL --retry 3 "https://archive.org/metadata/$id" -o meta.json || continue
+            jq --arg id "$id" -c '
+              def arr(x): if x==null then [] elif (x|type)=="array" then x else [x] end;
+              . as $root |
+              (arr(.metadata.collection) | index("graduatetheologicalunion") != null) as $isgtu |
+              ([.files[]? | select((.name|ascii_downcase|endswith(".pdf"))) | select((.private // "false") != "true") | select((.name|ascii_downcase|endswith("_text.pdf")) or ((.name|ascii_downcase|contains("encrypted"))|not)) | select((.name|ascii_downcase|endswith(".lcpdf"))|not) | .name] | map(select((ascii_downcase|contains("encrypted"))|not)) | .[0] // "") as $pdf |
+              {identifier:$id,is_gtu:$isgtu,title:(.metadata.title//""),creator:(.metadata.creator//""),year:(.metadata.year//.metadata.date//""),volume:(.metadata.volume//""),edition:(.metadata.edition//""),series:(.metadata.series//""),language:(.metadata.language//""),subject:(.metadata.subject//""),contributor:(.metadata.contributor//""),description:(.metadata.description//""),imagecount:(.metadata.imagecount//""),access_restricted:(.metadata["access-restricted-item"]//""),printdisabled:(.metadata.printdisabled//""),pdf_name:$pdf}' meta.json >> verified.jsonl
           done
-          echo "TOTAL_LINES=$(wc -l < candidates.jsonl)"
-          echo "UNIQUE_IDS=$(jq -r .identifier candidates.jsonl | sort -u | wc -l)"
+          echo "VERIFIED_LINES=$(wc -l < verified.jsonl)"
       - uses: actions/upload-artifact@v4
         with:
-          name: gtu-candidates-20260824
-          path: candidates.jsonl
+          name: gtu-verified-20260824
+          path: verified.jsonl
           compression-level: 6
