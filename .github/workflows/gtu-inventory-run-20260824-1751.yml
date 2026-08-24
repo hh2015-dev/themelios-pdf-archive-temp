@@ -6,23 +6,56 @@ jobs:
   discover:
     runs-on: ubuntu-latest
     steps:
-      - name: Sample diverse exact GTU collection pages
+      - name: Verify final candidates from exact GTU collection
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p out
-          : > out/sample.tsv
-          q='collection:graduatetheologicalunion AND mediatype:texts'
-          enc=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "$q")
-          for page in 7 17 29 41 53 67 83; do
-            curl -fsSL --retry 3 "https://archive.org/advancedsearch.php?q=$enc&fl[]=identifier&fl[]=title&fl[]=creator&fl[]=year&fl[]=date&fl[]=volume&fl[]=edition&fl[]=series&fl[]=subject&rows=100&page=$page&sort[]=identifier+asc&output=json" -o s.json || continue
-            jq -r '.response.docs[] | [(.identifier//""),(.title//""|if type=="array" then join("; ") else . end),(.creator//""|if type=="array" then join("; ") else . end),(.year//.date//""|tostring),(.volume//""|tostring),(.edition//""|if type=="array" then join("; ") else . end),(.series//""|if type=="array" then join("; ") else . end),(.subject//""|if type=="array" then join("; ") else . end)] | @tsv' s.json >> out/sample.tsv
+          : > out/final.tsv
+          ids=(
+            aggeezachariemal0000albe_l8r9
+            akkadischeshandw0002wolf
+            americancommenta0002unse_b0g0
+            americancommenta0003amer
+            americancommenta0006alva
+            apostolicchurchi0000davi
+            biblekeywordsfro0002unse_i2v4
+            biblekeywordsfro0004unse_d8o9
+            biblekeywordsfro0007unse
+            biblekeywordsfro0010unse
+            biblelatinvulgat0002vari
+            biblelatinvulgat0002vari_i5b5
+            bibleliberationp0000unse_o8w7
+            bibleliberationp0000vari
+            biblemeaningssho0000hgra
+            biblemission0000mrsp
+            apostlescreedits0000unse
+            apologeticpracti0000tert
+            apostolicalepist0002jame
+            augustinebishopl0000bria
+          )
+          for id in "${ids[@]}"; do
+            curl -fsSL --retry 3 "https://archive.org/metadata/$id" -o m.json
+            belongs=$(jq -r '[.metadata.collection[]? // .metadata.collection] | flatten | map(select(.=="graduatetheologicalunion")) | length' m.json 2>/dev/null || echo 0)
+            title=$(jq -r '.metadata.title // "" | if type=="array" then join("; ") else . end' m.json | tr '\t\n\r' '   ')
+            creator=$(jq -r '.metadata.creator // "" | if type=="array" then join("; ") else . end' m.json | tr '\t\n\r' '   ')
+            year=$(jq -r '.metadata.year // .metadata.date // "" | if type=="array" then join("; ") else . end' m.json | tr '\t\n\r' '   ')
+            volume=$(jq -r '.metadata.volume // "" | if type=="array" then join("; ") else . end' m.json | tr '\t\n\r' '   ')
+            edition=$(jq -r '.metadata.edition // "" | if type=="array" then join("; ") else . end' m.json | tr '\t\n\r' '   ')
+            series=$(jq -r '.metadata.series // "" | if type=="array" then join("; ") else . end' m.json | tr '\t\n\r' '   ')
+            subject=$(jq -r '.metadata.subject // "" | if type=="array" then join("; ") else . end' m.json | tr '\t\n\r' '   ')
+            contributor=$(jq -r '.metadata.contributor // "" | if type=="array" then join("; ") else . end' m.json | tr '\t\n\r' '   ')
+            language=$(jq -r '.metadata.language // "" | if type=="array" then join("; ") else . end' m.json | tr '\t\n\r' '   ')
+            mediatype=$(jq -r '.metadata.mediatype // ""' m.json | tr '\t\n\r' '   ')
+            imagecount=$(jq -r '.metadata.imagecount // ""' m.json | tr '\t\n\r' '   ')
+            restricted=$(jq -r '.metadata["access-restricted-item"] // .metadata.printdisabled // ""' m.json | tr '\t\n\r' '   ')
+            pdf=$(jq -r '.files[]? | select(.name|test("\\.pdf$";"i")) | select((.private // "false") != "true") | select((.name|test("encrypted\\.pdf$|\\.lcpdf$";"i"))|not) | .name' m.json | head -n1 || true)
+            pdf=$(printf '%s' "$pdf" | tr '\t\n\r' '   ')
+            printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$id" "$belongs" "$title" "$creator" "$year" "$volume" "$edition" "$series" "$subject" "$contributor" "$language" "$mediatype" "$restricted" "$pdf|$imagecount" >> out/final.tsv
           done
-          sort -u out/sample.tsv -o out/sample.tsv
-          echo "SAMPLED=$(wc -l < out/sample.tsv | tr -d ' ')" > out/summary.txt
-          grep -Ei 'bible|biblical|testament|hebrew|aramaic|syriac|semitic|greek|septuagint|manuscript|textual|scroll|qumran|apocryph|pseudepigraph|rabbin|talmud|midrash|mishnah|targum|assyri|akkad|babylon|ugarit|coptic|papyr|archaeolog|palestine|israel|juda|gospel|genesis|exodus|leviticus|numbers|deuteronomy|joshua|judges|samuel|kings|chronicles|ezra|nehemiah|esther|job|psalm|proverb|ecclesiast|isaiah|jeremiah|ezekiel|daniel|hosea|joel|amos|obadiah|jonah|micah|nahum|habakkuk|zephaniah|haggai|zechariah|malachi|matthew|mark|luke|john|acts|romans|corinth|galatian|ephesian|philippian|colossian|thessalon|timothy|titus|philemon|hebrews|james|peter|jude|revelation|patrist|augustine|origen|jerome|chrysostom|calvin|luther|reformation|theology|creed|confession|mission|christianity|judaism' out/sample.tsv | head -n 220 | tee out/academic.tsv
+          cat out/final.tsv
       - uses: actions/upload-artifact@v4
         with:
-          name: gtu-diverse-sample-20260824
-          path: out/
+          name: gtu-final-verified-20260824
+          path: out/final.tsv
           compression-level: 6
