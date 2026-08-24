@@ -1,0 +1,73 @@
+name: GTU inventory 20260824
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mine GTU only
+        shell: bash
+        run: |
+          cat > /tmp/mine.py <<'PY'
+          import json, urllib.parse, urllib.request, re, concurrent.futures
+          base='https://archive.org/advancedsearch.php'
+          qs=[
+          'title:(bible OR biblical OR testament OR hebrew OR aramaic OR syriac OR greek OR septuagint OR commentary OR exegesis)',
+          'title:(manuscript OR textual OR papyri OR codex OR masoretic OR targum OR talmud OR midrash OR quran)',
+          'title:(assyrian OR babylonian OR akkadian OR ugaritic OR archaeology OR palestine OR semitic OR phoenician)',
+          'title:(calvin OR luther OR augustine OR origen OR chrysostom OR jerome OR patristic OR reformation)',
+          'title:(theology OR creed OR church OR mission OR christianity OR judaism OR early christian)',
+          'title:(journal OR bulletin OR translator OR archaeology OR studies)'
+          ]
+          ids={}
+          examined=0
+          for qi,q0 in enumerate(qs):
+            for page in (2,5,9,14):
+              q='collection:graduatetheologicalunion AND mediatype:texts AND ('+q0+')'
+              p={'q':q,'fl[]':['identifier','title','creator','year','volume','edition','series','subject'],'rows':100,'page':page,'output':'json','sort[]':'identifier asc' if (qi+page)%2 else 'identifier desc'}
+              url=base+'?'+urllib.parse.urlencode(p,doseq=True)
+              try:
+                d=json.load(urllib.request.urlopen(url,timeout=30))['response']['docs']; examined+=len(d)
+                for x in d: ids.setdefault(x['identifier'],x)
+              except Exception: pass
+          def verify(t):
+            id,x=t
+            try:
+              m=json.load(urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(id),timeout=30))
+              md=m.get('metadata',{}); col=md.get('collection',[]); col=[col] if isinstance(col,str) else col
+              if 'graduatetheologicalunion' not in col: return None
+              if str(md.get('mediatype','texts')) not in ('texts','text'): return None
+              fs=[]
+              for f in m.get('files',[]):
+                n=f.get('name','')
+                if n.lower().endswith('.pdf') and not n.lower().endswith('_text.pdf') and f.get('private') not in (True,'true') and 'encrypted' not in n.lower() and not n.lower().endswith('.lcpdf'):
+                  fs.append(f)
+              # allow generated text PDF too if public
+              if not fs:
+                for f in m.get('files',[]):
+                  n=f.get('name','')
+                  if n.lower().endswith('.pdf') and f.get('private') not in (True,'true') and 'encrypted' not in n.lower() and not n.lower().endswith('.lcpdf'): fs.append(f)
+              pdf=fs[0]['name'] if fs else ''
+              restricted=str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true'
+              pages=md.get('page-progression','')
+              # derive page count only from scandata/files metadata if explicit
+              pc=''
+              for k in ('imagecount','pagecount','pages'):
+                if md.get(k): pc=str(md.get(k)); break
+              def s(k):
+                v=md.get(k,x.get(k,'')); return '; '.join(map(str,v)) if isinstance(v,list) else str(v or '')
+              return [id,s('title'),s('creator'),s('year'),s('volume'),s('edition'),s('series'),s('subject')[:500],pdf,pc,'restricted' if restricted else 'public']
+            except Exception: return None
+          out=[]
+          with concurrent.futures.ThreadPoolExecutor(max_workers=16) as ex:
+            for r in ex.map(verify,list(ids.items())):
+              if r: out.append(r)
+          # relevance score
+          A=re.compile(r'bibl|testament|hebrew|arama|syri|greek|septuag|textual|manuscript|codex|papy|talmud|midrash|assyri|babylon|akkad|ugarit|archaeol|palestine|comment|exeg|calvin|luther|augustin|origen|chrysostom|jerome|josephus|philo|targum|masoret',re.I)
+          out.sort(key=lambda r:(-bool(A.search(' '.join(r[1:8]))),r[0]))
+          print('EXAMINED',examined,'UNIQUE',len(ids),'VERIFIED',len(out))
+          print('ID\tTITLE\tCREATOR\tYEAR\tVOLUME\tEDITION\tSERIES\tSUBJECT\tPDF\tPAGES\tACCESS')
+          for r in out[:120]: print('\t'.join(v.replace('\t',' ').replace('\n',' ') for v in r))
+          PY
+          python /tmp/mine.py
