@@ -1,1 +1,1 @@
-trigger AABNER V1 batch 2026-08-25T15:15+03:00
+trigger AABNER V1 batch 2 2026-08-25T15:16+03:00
