@@ -1,0 +1,132 @@
+name: TEMP GTU inventory discovery 20260825
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mine exact GTU collection and verify candidates
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, urllib.parse, urllib.request, time, re, unicodedata
+          COLLECTION='graduatetheologicalunion'
+          terms=[
+            'Hebrew','Aramaic','Syriac','Semitic','Septuagint','Greek New Testament','textual criticism','manuscript',
+            'Qumran','Dead Sea Scrolls','Targum','Mishnah','Talmud','Apocrypha','Pseudepigrapha','Ugaritic','Akkadian',
+            'Assyrian','Babylonian','biblical archaeology','Bible archaeology','Old Testament','New Testament','biblical theology',
+            'Genesis','Exodus','Isaiah','Jeremiah','Ezekiel','Psalms','Job','Minor Prophets','Gospel','Romans','Paul',
+            'Origen','Jerome','Augustine','Calvin','Luther','concordance','lexicon','grammar','bibliography','missions','church history'
+          ]
+          pages=[2,5,9]
+          docs={}
+          appearances=0
+          for term in terms:
+            for page in pages:
+              q=f'collection:{COLLECTION} AND mediatype:texts AND (title:("{term}") OR subject:("{term}"))'
+              params=[('q',q),('rows','50'),('page',str(page)),('output','json')]
+              for f in ['identifier','title','creator','year','date','volume','language','subject']:
+                params.append(('fl[]',f))
+              url='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(params)
+              try:
+                with urllib.request.urlopen(url, timeout=25) as r:
+                  data=json.load(r)
+              except Exception as e:
+                print('SEARCH_ERR',term,page,repr(e))
+                continue
+              got=data.get('response',{}).get('docs',[]); appearances+=len(got)
+              for d in got:
+                ident=d.get('identifier')
+                if ident: docs.setdefault(ident,d)
+              time.sleep(.04)
+          print(f'APPEARANCES={appearances} UNIQUE={len(docs)}')
+          A=['hebrew','aramaic','syriac','semitic','septuagint','lxx','greek','textual','manuscript','qumran','dead sea','targum','mishnah','talmud','apocry','pseudep','ugarit','akkad','assyri','babylon','archaeolog','old testament','new testament','biblical','genesis','exodus','isaiah','jeremiah','ezekiel','psalm','job','prophet','gospel','romans','paul','concordance','lexicon','grammar','origen','jerome','augustine','calvin','luther']
+          B=['theology','church history','reformation','patrist','doctrine','creed','confession','apolog','mission','judaism','early christian','religion']
+          def text(d):
+            vals=[]
+            for k in ('title','creator','subject'):
+              v=d.get(k,'')
+              if isinstance(v,list): vals.extend(map(str,v))
+              else: vals.append(str(v))
+            return ' '.join(vals).lower()
+          def score(d):
+            t=text(d)
+            s=100 if any(x in t for x in A) else 50 if any(x in t for x in B) else 10
+            # favor non-recent and varied scholarly corpus, not SIM journal dominance
+            if d.get('creator'): s+=5
+            if d.get('year') or d.get('date'): s+=2
+            if str(d.get('identifier','')).startswith('sim_'): s-=8
+            return s
+          ranked=sorted(docs.values(), key=lambda d:(score(d),str(d.get('year',''))), reverse=True)
+          out=[]
+          checked=0
+          for d in ranked[:260]:
+            ident=d['identifier']; checked+=1
+            try:
+              with urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident), timeout=25) as r:
+                m=json.load(r)
+            except Exception as e:
+              continue
+            md=m.get('metadata',{})
+            coll=md.get('collection',[])
+            if isinstance(coll,str): coll=[coll]
+            if COLLECTION not in coll: continue
+            files=m.get('files',[])
+            pdf=''
+            restricted=str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true'
+            if not restricted:
+              for f in files:
+                n=str(f.get('name',''))
+                if n.lower().endswith('.pdf') and not n.lower().endswith('_text.pdf') and 'encrypted' not in n.lower() and str(f.get('private','false')).lower()!='true':
+                  pdf=n; break
+              if not pdf:
+                for f in files:
+                  n=str(f.get('name',''))
+                  if n.lower().endswith('.pdf') and 'encrypted' not in n.lower() and str(f.get('private','false')).lower()!='true':
+                    pdf=n; break
+            title=md.get('title') or d.get('title') or ''
+            creator=md.get('creator') or d.get('creator') or ''
+            if isinstance(creator,list): creator='; '.join(map(str,creator))
+            year=md.get('year') or md.get('date') or d.get('year') or d.get('date') or ''
+            vol=md.get('volume') or ''
+            edition=md.get('edition') or ''
+            series=md.get('series') or ''
+            lang=md.get('language') or ''
+            if isinstance(lang,list): lang='; '.join(map(str,lang))
+            subj=md.get('subject') or d.get('subject') or ''
+            if isinstance(subj,list): subj='; '.join(map(str,subj[:8]))
+            contributor=md.get('contributor') or md.get('scanner') or ''
+            if isinstance(contributor,list): contributor='; '.join(map(str,contributor))
+            pages=md.get('page-progression','')
+            # derive page count only from scandata-related fields if explicit metadata unavailable; otherwise blank
+            pagecount=md.get('pages') or md.get('page_count') or ''
+            pdflink=('https://archive.org/download/'+ident+'/'+urllib.parse.quote(pdf)) if pdf else ''
+            out.append({
+              'score':score(d),'identifier':ident,'title':str(title),'creator':str(creator),'year':str(year),'volume':str(vol),
+              'edition':str(edition),'series':str(series),'language':str(lang),'subject':str(subj),'contributor':str(contributor),
+              'pdf':pdflink,'restricted':restricted,'pagecount':str(pagecount)
+            })
+            if len(out)>=140: break
+            time.sleep(.03)
+          print(f'METADATA_CHECKED={checked} VERIFIED={len(out)}')
+          cols=['score','identifier','title','creator','year','volume','edition','series','language','subject','contributor','pdf','restricted','pagecount']
+          with open('gtu_candidates.tsv','w',encoding='utf-8') as f:
+            f.write('\t'.join(cols)+'\n')
+            for x in out:
+              vals=[]
+              for c in cols:
+                v=str(x.get(c,'' )).replace('\t',' ').replace('\n',' ')
+                vals.append(v)
+              f.write('\t'.join(vals)+'\n')
+          print('--- CANDIDATES ---')
+          with open('gtu_candidates.tsv',encoding='utf-8') as f:
+            for i,line in enumerate(f):
+              if i>100: break
+              print(line.rstrip())
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-candidates-20260825
+          path: gtu_candidates.tsv
+          retention-days: 2
