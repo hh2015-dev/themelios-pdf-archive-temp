@@ -1,0 +1,52 @@
+name: GTU inventory discovery 20260826
+on:
+  push:
+    branches: [ gtu-inventory-20260826-0041 ]
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Query Internet Archive GTU collection only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, urllib.parse, urllib.request, time, csv
+          groups = [
+            '(hebrew OR aramaic OR syriac OR semitic OR akkadian OR ugaritic OR cuneiform)',
+            '(septuagint OR lxx OR papyrus OR manuscript OR textual OR masoretic OR samaritan)',
+            '(genesis OR exodus OR leviticus OR numbers OR deuteronomy OR joshua OR judges OR samuel OR kings OR isaiah OR jeremiah OR ezekiel OR daniel OR psalms OR job OR proverbs OR ecclesiastes)',
+            '(matthew OR mark OR luke OR john OR acts OR romans OR corinthians OR galatians OR ephesians OR philippians OR colossians OR hebrews OR revelation OR apocalypse)',
+            '(qumran OR dead sea OR pseudepigrapha OR apocrypha OR rabbinic OR talmud OR midrash OR josephus OR philo OR judaism)',
+            '(archaeology OR palestine OR assyria OR babylon OR ancient near east OR egypt OR phoenician OR canaan)',
+            '(calvin OR luther OR origen OR augustine OR jerome OR chrysostom OR patristic OR reformation OR exegesis OR commentary)',
+            '(concordance OR lexicon OR grammar OR bibliography OR biblical literature OR biblical archaeologist OR semitic studies OR near eastern studies)'
+          ]
+          rows=[]; seen=set(); total_hits=0
+          for gi,g in enumerate(groups):
+              for page in (1,3,7):
+                  q=f'collection:graduatetheologicalunion AND mediatype:texts AND title:{g}'
+                  params=[('q',q),('fl[]','identifier'),('fl[]','title'),('fl[]','creator'),('fl[]','year'),('fl[]','date'),('fl[]','volume'),('fl[]','language'),('fl[]','contributor'),('fl[]','description'),('rows','250'),('page',str(page)),('output','json')]
+                  url='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(params)
+                  try:
+                      with urllib.request.urlopen(url, timeout=40) as r:
+                          data=json.load(r)
+                  except Exception as e:
+                      print('QUERY_ERROR',gi,page,e)
+                      continue
+                  docs=data.get('response',{}).get('docs',[])
+                  total_hits += len(docs)
+                  for d in docs:
+                      ident=d.get('identifier')
+                      if not ident or ident in seen: continue
+                      seen.add(ident); rows.append(d)
+                  time.sleep(.2)
+          print('TOTAL_HITS',total_hits,'UNIQUE',len(rows))
+          with open('gtu_candidates.jsonl','w',encoding='utf-8') as f:
+              for d in rows: f.write(json.dumps(d,ensure_ascii=False)+'\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-candidates-20260826
+          path: gtu_candidates.jsonl
+          compression-level: 6
