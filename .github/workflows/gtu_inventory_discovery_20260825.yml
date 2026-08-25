@@ -1,0 +1,36 @@
+name: GTU inventory discovery 20260825
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mine GTU only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, urllib.parse, urllib.request
+          queries=[
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(papyri OR manuscript OR codex OR lexicon OR grammar) OR subject:(papyri OR manuscripts OR lexicography))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Isaiah OR Jeremiah OR Ezekiel OR Psalms OR Job OR Genesis OR Exodus OR Deuteronomy) OR subject:(Bible Old Testament))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Greek OR Hebrew OR Syriac OR Aramaic OR Ugaritic OR Akkadian) OR subject:(Semitic languages))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Qumran OR Dead Sea OR Talmud OR Midrash OR Josephus OR Philo OR Apocrypha) OR subject:(Judaism))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Biblical archaeology OR Palestine OR Assyria OR Babylonia OR Canaan) OR subject:(archaeology))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(New Testament OR Gospel OR Romans OR Corinthians OR Hebrews OR Revelation) OR subject:(Bible New Testament))'
+          ]
+          seen=set(); out=[]
+          for qi,q in enumerate(queries):
+            for page in (1,3,7,13):
+              params=[('q',q),('fl[]','identifier'),('fl[]','title'),('fl[]','creator'),('fl[]','year'),('fl[]','date'),('fl[]','language'),('fl[]','subject'),('fl[]','volume'),('fl[]','description'),('rows','50'),('page',str(page)),('output','json')]
+              url='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(params)
+              with urllib.request.urlopen(url,timeout=40) as r: data=json.load(r)
+              for d in data.get('response',{}).get('docs',[]):
+                i=d.get('identifier')
+                if i and i not in seen:
+                  seen.add(i); out.append(d)
+          print('UNIQUE_CANDIDATES',len(out))
+          for d in out[:600]:
+            print(json.dumps(d,ensure_ascii=False,separators=(',',':')))
+          PY
