@@ -14,7 +14,6 @@ jobs:
           ids='''urexcavationsneo0009sirl
 newtestamentapoc0000unse_u3n2
 grammatikdergrie0002mays_c2m3
-dieverwendungvon0002spin
 ancientisraeliti00unse
 dietauflehredesn0000osca
 urchristlichesge0000gunt
@@ -50,11 +49,11 @@ porphyrysphiloso0000john'''.splitlines()
               pdf=''
               for f in files:
                 n=f.get('name','')
-                if n.lower().endswith('.pdf') and not n.lower().endswith('_encrypted.pdf') and str(f.get('private','false')).lower()!='true':
+                if n.lower().endswith('.pdf') and not n.lower().endswith('_encrypted.pdf') and not n.lower().endswith('.lcpdf') and str(f.get('private','false')).lower()!='true':
                   pdf=n; break
-              restricted=m.get('access-restricted-item',m.get('printdisabled',''))
-              pages=m.get('imagecount','') or m.get('page-progression','')
-              fields=[ident,str(ingtu),clean(m.get('title')),clean(m.get('creator')),clean(m.get('date') or m.get('year')),clean(m.get('volume')),clean(m.get('edition')),clean(m.get('series')),clean(m.get('contributor')),clean(m.get('language')),clean(m.get('mediatype')),clean(restricted),clean(pdf),clean(pages)]
+              restricted=str(m.get('access-restricted-item',m.get('printdisabled',''))).lower()
+              imagecount=clean(m.get('imagecount',''))
+              fields=[ident,str(ingtu),clean(m.get('title')),clean(m.get('creator')),clean(m.get('date') or m.get('year')),clean(m.get('volume')),clean(m.get('edition')),clean(m.get('series')),clean(m.get('contributor')),clean(m.get('language')),clean(m.get('mediatype')),restricted,clean(pdf),imagecount,clean(m.get('subject'))]
               print('\t'.join(fields))
             except Exception as e: print(ident+'\tERROR\t'+str(e))
           PY
