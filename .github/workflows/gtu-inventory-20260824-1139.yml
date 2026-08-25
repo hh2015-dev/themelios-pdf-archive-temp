@@ -1,0 +1,55 @@
+name: GTU inventory discovery 20260824
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mine and verify deeper GTU candidates
+        shell: bash
+        run: |
+          cat > /tmp/discover.py <<'PY'
+          import json, urllib.parse, urllib.request, re
+          base='collection:graduatetheologicalunion AND mediatype:texts'
+          searches=[('Augustine',6),('Origen',4),('Chrysostom',3),('patristic',4),('church history',12),('Reformation',9),('Calvin',10),('Luther',10),('theology',18),('systematic theology',5),('creed',4),('confession',5),('apologetics',4),('missions',14),('missionary',16),('Judaism',9),('early Christianity',5),('religion',20),('philosophy religion',5),('ecclesiastical history',8)]
+          seen={}; examined=0
+          def getjson(url):
+            req=urllib.request.Request(url,headers={'User-Agent':'GTUInventory/1.0'})
+            with urllib.request.urlopen(req,timeout=20) as r: return json.load(r)
+          for term,page in searches:
+            url='https://archive.org/advancedsearch.php?q='+urllib.parse.quote(base+' AND title:("'+term+'")')+'&fl[]=identifier&fl[]=title&fl[]=creator&fl[]=year&fl[]=volume&fl[]=edition&fl[]=series&rows=20&page='+str(page)+'&output=json'
+            try: data=getjson(url)
+            except Exception as e: print('SEARCHERR',term,page,e); continue
+            for d in data.get('response',{}).get('docs',[]):
+              examined+=1; ident=d.get('identifier')
+              if ident: seen.setdefault(ident,d)
+          print('EXAMINED_SEARCH_HITS',examined); print('UNIQUE_SEARCH_HITS',len(seen))
+          keyA=re.compile(r'bible|biblic|testament|hebrew|greek|syriac|aramaic|commentar|exeg|scripture|calvin|luther|augustin|origen|chrysostom|patrist',re.I)
+          keyB=re.compile(r'theolog|church|reformation|creed|confession|apolog|mission|christian|religion|judaism|ecclesiast',re.I)
+          verified=[]
+          for ident,d in seen.items():
+            title=str(d.get('title','')); s=3 if keyA.search(title) else 2 if keyB.search(title) else 1
+            if s<2: continue
+            try: m=getjson('https://archive.org/metadata/'+urllib.parse.quote(ident,safe=''))
+            except Exception: continue
+            md=m.get('metadata',{}); coll=md.get('collection',[])
+            if isinstance(coll,str): coll=[coll]
+            if 'graduatetheologicalunion' not in coll: continue
+            pdfs=[]
+            for f in m.get('files',[]):
+              n=f.get('name','')
+              if n.lower().endswith('.pdf') and not n.lower().endswith('.lcpdf') and 'encrypted' not in n.lower() and str(f.get('private','false')).lower()!='true': pdfs.append(f)
+            if not pdfs: continue
+            f=pdfs[0]; creator=md.get('creator','')
+            if isinstance(creator,list): creator='; '.join(map(str,creator))
+            contrib=md.get('contributor','')
+            if isinstance(contrib,list): contrib='; '.join(map(str,contrib))
+            direct='https://archive.org/download/'+ident+'/'+urllib.parse.quote(f.get('name',''))
+            row=(s,ident,md.get('title',''),creator,md.get('date') or md.get('year') or '',md.get('volume',''),md.get('edition',''),md.get('series',''),direct,contrib)
+            verified.append(row)
+            if len(verified)>=50: break
+          print('VERIFIED_PUBLIC_PDF',len(verified))
+          for row in verified: print('CAND\t'+'\t'.join(str(x).replace('\t',' ').replace('\n',' ') for x in row))
+          PY
+          python3 /tmp/discover.py
