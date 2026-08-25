@@ -6,29 +6,25 @@ jobs:
   discover:
     runs-on: ubuntu-latest
     steps:
-      - name: Mine GTU-only Archive corpus
+      - name: Verify final GTU candidates
         shell: bash
         run: |
           python3 - <<'PY'
-          import requests,json,re
-          S=requests.Session(); BASE='https://archive.org/advancedsearch.php'
-          queries=[
-          ('sem','Hebrew OR Aramaic OR Syriac OR Semitic',4),('text','Septuagint OR textual criticism OR manuscript OR papyri',7),
-          ('ot','Genesis OR Exodus OR Isaiah OR Jeremiah OR Psalms OR Job',11),('nt','Matthew OR Mark OR Luke OR John OR Acts OR Romans OR Paul',13),
-          ('jud','Qumran OR Dead Sea OR Apocrypha OR Pseudepigrapha OR rabbinic OR Talmud',5),('ane','Assyrian OR Babylonian OR Akkadian OR Ugaritic OR Canaanite OR archaeology',9),
-          ('hist','Calvin OR Luther OR Origen OR Augustine OR patristic OR Reformation',8),('ref','lexicon OR grammar OR concordance OR bibliography',6),
-          ('journ','Journal OR Biblical OR Bible OR Scripture',15),('theol','theology OR church history OR Judaism OR early Christianity',10)]
-          seen={}; examined=0
-          for tag,t,page in queries:
-            q=f'collection:graduatetheologicalunion AND mediatype:texts AND ({t})'
-            p={'q':q,'fl[]':['identifier','title','creator','date','year','language','subject'],'rows':100,'page':page,'output':'json'}
-            try: docs=S.get(BASE,params=p,timeout=12).json()['response']['docs']
-            except Exception: continue
-            examined += len(docs)
-            for d in docs:
-              if d.get('identifier'):
-                d['_tag']=tag; seen.setdefault(d['identifier'],d)
-          print('EXAMINED_APPEARANCES',examined); print('UNIQUE_CANDIDATES',len(seen))
-          # Exact collection query establishes corpus membership. Print all candidates for downstream sheet-dedup.
-          for d in seen.values(): print('CANDIDATE\t'+json.dumps(d,ensure_ascii=False,separators=(',',':')))
+          import requests,json,urllib.parse,concurrent.futures,re
+          IDS=['hyksosparttheypl00unse','bookoftobitengli0000fran','problemofhistory0000jame_q8q3','jewishleaderinma0000unse','lifeteachingofpa0000prin','gospellettersofj0000alex','diekonkretisieru0000siah','rabbinischegleic0000fieb','sim_journal-of-cuneiform-studies_1948_2_2','sim_journal-of-cuneiform-studies_1951_5_3','sim_journal-of-cuneiform-studies_1953_7_4','sim_journal-of-cuneiform-studies_1953_7_2','sim_journal-of-cuneiform-studies_1955_9_2','sim_journal-of-cuneiform-studies_1955_9_4','sim_journal-of-near-eastern-studies_1948-10_7_4','sim_journal-of-near-eastern-studies_1956_15_contents','sim_journal-of-near-eastern-studies_1968_27_contents','sim_journal-of-near-eastern-studies_1969_28_contents','sim_journal-of-near-eastern-studies_1977_36_contents','sim_journal-of-near-eastern-studies_1951-07_10_3']
+          def one(i):
+            m=requests.get('https://archive.org/metadata/'+i,timeout=20).json(); md=m.get('metadata',{})
+            col=md.get('collection',[]); col=[col] if isinstance(col,str) else col
+            files=m.get('files',[]); pubs=[]
+            for f in files:
+              n=f.get('name','')
+              if n.lower().endswith('.pdf') and not n.lower().endswith('.lcpdf') and str(f.get('private','false')).lower()!='true' and 'encrypted' not in n.lower(): pubs.append(n)
+            restricted=str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true'
+            direct='' if restricted or not pubs else 'https://archive.org/download/'+i+'/'+urllib.parse.quote(pubs[0])
+            pages=md.get('pages') or md.get('page-count') or md.get('page_count') or ''
+            return {'identifier':i,'in_gtu':'graduatetheologicalunion' in col,'title':md.get('title',''),'creator':md.get('creator',''),'date':md.get('date') or md.get('year') or '','volume':md.get('volume',''),'edition':md.get('edition',''),'series':md.get('series',''),'subject':md.get('subject',''),'language':md.get('language',''),'contributor':md.get('contributor',''),'pages':pages,'direct_pdf':direct,'restricted':restricted,'public_pdf_count':len(pubs),'mediatype':md.get('mediatype','')}
+          with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:
+            results=list(ex.map(one,IDS))
+          print('FINAL_COUNT',len(results)); print('GTU_COUNT',sum(x['in_gtu'] for x in results))
+          for x in results: print('FINAL\t'+json.dumps(x,ensure_ascii=False,separators=(',',':')))
           PY
