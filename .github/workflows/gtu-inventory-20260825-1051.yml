@@ -1,0 +1,93 @@
+name: GTU inventory discovery 20260825
+on:
+  push:
+    branches: [ gtu-inventory-20260825-1051 ]
+permissions:
+  contents: read
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mine and verify GTU-only candidates
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, urllib.parse, urllib.request, time, re
+          BASE='https://archive.org'
+          queries=[
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Hebrew OR Aramaic OR Syriac OR Semitic OR Ugaritic OR Akkadian))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Greek OR Septuagint OR LXX OR papyri OR manuscript))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Qumran OR "Dead Sea" OR Talmud OR Midrash OR Apocrypha OR Pseudepigrapha))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Genesis OR Exodus OR Isaiah OR Jeremiah OR Ezekiel OR Psalms OR Job OR Daniel))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Matthew OR Mark OR Luke OR John OR Acts OR Romans OR Corinthians OR Hebrews OR Revelation))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:("Biblical Archaeology" OR Palestine OR Assyria OR Babylonia OR Canaan OR archaeology))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Calvin OR Luther OR Augustine OR Origen OR Chrysostom OR Jerome))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:("Journal of Biblical Literature" OR "Biblical Archaeologist" OR "Bible Translator" OR "Semitic Studies" OR "Biblical Quarterly"))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (subject:("Bible" OR "Biblical" OR "Judaism" OR "Early Christianity")) AND year:[1800 TO 1969]',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (subject:("Hebrew language" OR "Greek language" OR "Syriac language" OR "Aramaic language"))'
+          ]
+          pages=[1,2,4,7,11]
+          docs={}
+          examined=0
+          for q in queries:
+            for page in pages:
+              params=[('q',q),('fl[]','identifier'),('fl[]','title'),('fl[]','creator'),('fl[]','year'),('fl[]','date'),('fl[]','subject'),('fl[]','language'),('rows','50'),('page',str(page)),('output','json')]
+              url=BASE+'/advancedsearch.php?'+urllib.parse.urlencode(params)
+              try:
+                with urllib.request.urlopen(url,timeout=30) as r: data=json.load(r)
+              except Exception as e:
+                print('SEARCHERR',q,page,repr(e)); continue
+              found=data.get('response',{}).get('docs',[])
+              examined += len(found)
+              for d in found:
+                i=d.get('identifier')
+                if i: docs[i]=d
+              time.sleep(.08)
+          print('DISCOVERY_COUNTS',json.dumps({'appearances':examined,'unique':len(docs)},ensure_ascii=False))
+          A=['bible','biblical','old testament','new testament','hebrew','aramaic','syriac','semitic','greek','septuagint','lxx','textual','manuscript','qumran','dead sea','apocrypha','pseudepigrapha','talmud','midrash','assyri','babylon','canaan','archaeolog','genesis','exodus','isaiah','jeremiah','ezekiel','psalm','job','daniel','matthew','mark','luke','john','acts','romans','corinth','hebrews','revelation','calvin','luther','augustine','origen','chrysostom','jerome','concordance','lexicon','grammar','papyri']
+          B=['theology','church history','reformation','patrist','doctrine','creed','confession','apolog','mission','judaism','early christian','religion']
+          def score(d):
+            txt=' '.join(str(d.get(k,'')) for k in ('title','subject','creator')).lower()
+            s=sum(3 for k in A if k in txt)+sum(1 for k in B if k in txt)
+            y=str(d.get('year') or d.get('date') or '')
+            if re.search(r'18\d\d|19\d\d|20\d\d',y): s+=1
+            return s
+          ranked=sorted(docs.values(), key=lambda d:(score(d),str(d.get('year',''))), reverse=True)
+          verified=[]
+          for d in ranked[:260]:
+            ident=d['identifier']
+            try:
+              with urllib.request.urlopen(BASE+'/metadata/'+urllib.parse.quote(ident),timeout=30) as r: m=json.load(r)
+            except Exception as e:
+              continue
+            md=m.get('metadata',{})
+            coll=md.get('collection',[])
+            if isinstance(coll,str): coll=[coll]
+            if 'graduatetheologicalunion' not in coll: continue
+            mt=md.get('mediatype','')
+            if mt and mt!='texts': continue
+            files=m.get('files',[])
+            pubpdf=''
+            for f in files:
+              n=f.get('name','')
+              if not n.lower().endswith('.pdf'): continue
+              if n.lower().endswith('.lcpdf') or 'encrypted' in n.lower(): continue
+              if str(f.get('private','false')).lower()=='true': continue
+              pubpdf=BASE+'/download/'+urllib.parse.quote(ident)+'/'+urllib.parse.quote(n)
+              break
+            rec={
+              'score':score(d),'identifier':ident,'title':md.get('title') or d.get('title',''),
+              'creator':md.get('creator') or d.get('creator',''),'date':md.get('date') or md.get('year') or d.get('year') or d.get('date') or '',
+              'volume':md.get('volume',''),'edition':md.get('edition',''),'series':md.get('series',''),
+              'subject':md.get('subject') or d.get('subject',''),'language':md.get('language') or d.get('language',''),
+              'contributor':md.get('contributor',''),'pages':md.get('pages') or md.get('page-progression') or '',
+              'public_pdf':pubpdf,'restricted':md.get('access-restricted-item') or md.get('printdisabled') or '',
+              'collection':coll,'item_link':BASE+'/details/'+ident
+            }
+            verified.append(rec)
+            if len(verified)>=140: break
+            time.sleep(.05)
+          print('VERIFIED_COUNT',len(verified))
+          for rec in verified:
+            print('GTUCAND\t'+json.dumps(rec,ensure_ascii=False,separators=(',',':')))
+          PY
