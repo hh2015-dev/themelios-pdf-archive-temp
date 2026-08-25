@@ -1,0 +1,89 @@
+name: GTU inventory discovery 20260825
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mine and verify GTU-only candidates
+        shell: bash
+        run: |
+          cat > /tmp/discover.py <<'PY'
+          import json, urllib.parse, urllib.request, re, time
+          BASE='https://archive.org'
+          searches=[
+            ('textual criticism manuscript biblical',1),('septuagint lxx hexapla',1),('syriac aramaic targum',2),
+            ('hebrew grammar lexicon concordance',2),('greek new testament grammar papyri',3),('qumran dead sea scrolls',1),
+            ('apocrypha pseudepigrapha second temple',2),('mishnah midrash talmud rabbinic',3),('ugaritic akkadian assyrian semitic',4),
+            ('biblical archaeology palestine excavation',5),('isaiah jeremiah ezekiel prophets commentary',4),('psalms job wisdom commentary',5),
+            ('genesis exodus pentateuch commentary',6),('romans acts corinthians hebrews commentary',5),('john luke mark matthew gospel commentary',6),
+            ('calvin luther exegesis commentary',7),('origen jerome augustine chrysostom exegesis',5),
+            ('journal biblical literature',8),('biblical archaeologist',9),('bible translator',7),
+            ('church history reformation patristic',8),('missions missionary history theology',9)
+          ]
+          seen={}
+          examined=0
+          def get_json(url):
+            req=urllib.request.Request(url,headers={'User-Agent':'Mozilla/5.0 GTU inventory research'})
+            with urllib.request.urlopen(req,timeout=40) as r: return json.load(r)
+          for terms,page in searches:
+            # Search title/subject text, but corpus is closed to GTU collection.
+            termq=' OR '.join('"'+t+'"' if ' ' in t else t for t in terms.split())
+            q=f'collection:graduatetheologicalunion AND mediatype:texts AND ({termq})'
+            params={'q':q,'fl[]':['identifier','title','creator','date','year','subject','language'],'rows':50,'page':page,'output':'json'}
+            url=BASE+'/advancedsearch.php?'+urllib.parse.urlencode(params,doseq=True)
+            try: docs=get_json(url)['response']['docs']
+            except Exception as e:
+              print('SEARCH_ERR\t'+terms+'\t'+repr(e)); continue
+            examined += len(docs)
+            for d in docs:
+              ident=d.get('identifier')
+              if ident: seen.setdefault(ident,d)
+          print(f'SUMMARY_SEARCH_APPEARANCES\t{examined}')
+          print(f'SUMMARY_UNIQUE_IDENTIFIERS\t{len(seen)}')
+          # Score for academic usefulness and diversity.
+          A=['bible','biblical','testament','hebrew','aramaic','syriac','semitic','greek','septuagint','lxx','textual','manuscript','qumran','scroll','targum','mishnah','midrash','talmud','ugarit','akkad','assyri','archaeolog','isaiah','jeremiah','ezekiel','psalm','job','genesis','exodus','romans','acts','corinth','hebrews','gospel','john','luke','mark','matthew','calvin','luther','origen','jerome','augustine','chrysostom','papyr','lexicon','grammar','concordance','apocryph','pseudepigraph','jewish','palestine']
+          B=['theology','church','reformation','patrist','doctrine','creed','mission','religion','christian']
+          def score(d):
+            s=' '.join(str(d.get(k,'')) for k in ('title','subject','creator')).lower()
+            return sum(4 for x in A if x in s)+sum(1 for x in B if x in s)
+          ranked=sorted(seen.values(),key=lambda d:(score(d),str(d.get('year',''))),reverse=True)
+          verified=0
+          for d in ranked[:180]:
+            ident=d['identifier']
+            try: m=get_json(BASE+'/metadata/'+urllib.parse.quote(ident))
+            except Exception as e: continue
+            md=m.get('metadata',{})
+            coll=md.get('collection',[])
+            if isinstance(coll,str): coll=[coll]
+            if 'graduatetheologicalunion' not in coll: continue
+            verified += 1
+            title=md.get('title') or d.get('title') or ''
+            creator=md.get('creator') or d.get('creator') or ''
+            if isinstance(creator,list): creator='; '.join(map(str,creator))
+            date=md.get('date') or md.get('year') or d.get('date') or d.get('year') or ''
+            volume=md.get('volume','')
+            edition=md.get('edition','')
+            series=md.get('series','')
+            contributor=md.get('contributor','')
+            if isinstance(contributor,list): contributor='; '.join(map(str,contributor))
+            subject=md.get('subject','')
+            if isinstance(subject,list): subject='; '.join(map(str,subject[:8]))
+            language=md.get('language','')
+            if isinstance(language,list): language='; '.join(map(str,language))
+            restricted=str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true'
+            pdf=''
+            if not restricted:
+              for f in m.get('files',[]):
+                n=f.get('name','')
+                if n.lower().endswith('.pdf') and str(f.get('private','false')).lower()!='true' and not n.lower().endswith('encrypted.pdf') and '.lcpdf' not in n.lower():
+                  pdf=n; break
+            pdflink=(BASE+'/download/'+urllib.parse.quote(ident)+'/'+urllib.parse.quote(pdf)) if pdf else ''
+            # page count only if explicit item metadata field exists.
+            pages=md.get('pages') or md.get('page_count') or ''
+            vals=[ident,title,creator,str(date),str(volume),str(edition),str(series),str(contributor),str(subject),str(language),'true' if restricted else 'false',pdflink,str(pages),str(score(d))]
+            print('CANDIDATE\t'+'\t'.join(v.replace('\t',' ').replace('\n',' ') for v in vals))
+          print(f'SUMMARY_METADATA_VERIFIED\t{verified}')
+          PY
+          python3 /tmp/discover.py
