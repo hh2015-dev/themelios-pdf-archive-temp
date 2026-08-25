@@ -1,47 +1,86 @@
-name: GTU inventory hourly discovery 20260825
+name: GTU inventory hourly validation 20260825
 on:
   pull_request:
     branches: [ main ]
 jobs:
-  discover:
+  validate:
     runs-on: ubuntu-latest
     steps:
-      - name: Mine GTU corpus broadly
+      - name: Validate selected GTU items
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p out
           python3 - <<'PY'
           import json, urllib.parse, urllib.request, time
-          queries = [
-            'collection:graduatetheologicalunion AND mediatype:texts AND (subject:(Bible OR Biblical OR Hebrew OR Testament OR Gospel OR Psalms OR Isaiah OR Genesis OR Exodus OR Prophets))',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Hebrew OR Aramaic OR Syriac OR Semitic OR Greek OR Septuagint OR Targum OR Mishnah OR Talmud))',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (subject:(Manuscripts OR Papyri OR Qumran OR archaeology OR Assyria OR Babylon OR Ugarit OR Coptic OR Patristics))',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Journal OR Bulletin OR Review OR Studies OR Commentary OR Concordance OR Lexicon OR Grammar OR Dictionary OR Bibliography))',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (creator:(Calvin OR Luther OR Jerome OR Augustine OR Origen OR Lightfoot OR Delitzsch OR Keil OR Westcott OR Hort OR Albright))',
-            'collection:graduatetheologicalunion AND mediatype:texts AND year:[1800 TO 1899]',
-            'collection:graduatetheologicalunion AND mediatype:texts AND year:[1900 TO 1949]',
-            'collection:graduatetheologicalunion AND mediatype:texts AND year:[1950 TO 1999]'
+          ids = [
+            'prophets0000krae',
+            'origeneswerke04orig_1',
+            'labibletraductio0005unse',
+            'joaugernestiopus00erne',
+            'sefersegalmugash0000grin',
+            'bibleinworksofth0013marc',
+            'zwischenathenund0000kais',
+            'introductiontool0000cere_h1u6',
+            'scripturediscern0000john_k3z0',
+            'ladoctrinemorale0000tres',
+            'psaltermartyrolo0000lawl',
+            'flaviiiosephiope0005jose',
+            'dieverwendungvon0002spin',
+            'sibyllineoracles0000unse_n9d9',
+            'newenglishbible0000vari',
+            'sim_journal-of-biblical-literature_1930_49_3',
+            'sim_journal-of-biblical-literature_1938-03_57_1',
+            'sim_journal-of-biblical-literature_1940-09_59_3',
+            'greatpersonaliti0000laso_m3q2',
+            'holybiblerevised0000thom'
           ]
-          all_docs={}
-          for qi,q in enumerate(queries):
-              for page in (1,3,7,12):
-                  params=[('q',q),('rows','250'),('page',str(page)),('output','json')]
-                  for f in ['identifier','title','creator','date','year','volume','language','subject','collection','format','contributor','description']:
-                      params.append(('fl[]',f))
-                  url='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(params)
-                  with urllib.request.urlopen(url, timeout=45) as r:
-                      data=json.load(r)
-                  for d in data.get('response',{}).get('docs',[]):
-                      if d.get('identifier'):
-                          all_docs[d['identifier']]=d
-                  time.sleep(0.15)
-          docs=list(all_docs.values())
-          with open('out/candidates.json','w',encoding='utf-8') as f:
-              json.dump(docs,f,ensure_ascii=False,indent=2)
-          print('UNIQUE_CANDIDATES',len(docs))
+          def scalar(v):
+              if isinstance(v,list): return '; '.join(str(x) for x in v)
+              return '' if v is None else str(v)
+          out=[]
+          for ident in ids:
+              with urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident), timeout=45) as r:
+                  data=json.load(r)
+              m=data.get('metadata',{})
+              col=m.get('collection',[])
+              cols=col if isinstance(col,list) else [col]
+              public_pdf=''
+              for f in data.get('files',[]):
+                  name=f.get('name','')
+                  low=name.lower()
+                  if not low.endswith('.pdf'): continue
+                  if f.get('private') in (True,'true','1',1): continue
+                  if low.endswith('encrypted.pdf') or low.endswith('.lcpdf'): continue
+                  public_pdf=name; break
+              imagecount=m.get('imagecount','') or m.get('pagecount','') or ''
+              rec={
+                'identifier':ident,
+                'gtu_member':'graduatetheologicalunion' in cols,
+                'collections':cols,
+                'title':scalar(m.get('title')),
+                'creator':scalar(m.get('creator')),
+                'date':scalar(m.get('date') or m.get('year')),
+                'volume':scalar(m.get('volume')),
+                'edition':scalar(m.get('edition')),
+                'series':scalar(m.get('series')),
+                'language':scalar(m.get('language')),
+                'contributor':scalar(m.get('contributor')),
+                'mediatype':scalar(m.get('mediatype')),
+                'subject':scalar(m.get('subject')),
+                'description':scalar(m.get('description')),
+                'restricted':scalar(m.get('access-restricted-item') or m.get('printdisabled')),
+                'public_pdf':public_pdf,
+                'direct_pdf':('https://archive.org/download/'+urllib.parse.quote(ident)+'/'+urllib.parse.quote(public_pdf)) if public_pdf else '',
+                'pages':scalar(imagecount)
+              }
+              out.append(rec)
+              print(ident, rec['gtu_member'], rec['title'][:100], 'PDF' if public_pdf else 'NO_PUBLIC_PDF')
+              time.sleep(.1)
+          with open('out/validated.json','w',encoding='utf-8') as f:
+              json.dump(out,f,ensure_ascii=False,indent=2)
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: gtu-hourly-candidates
-          path: out/candidates.json
+          name: gtu-hourly-validated
+          path: out/validated.json
