@@ -1,0 +1,60 @@
+name: GTU inventory run2 discovery
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mine GTU collection broadly
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import requests, urllib.parse, json, re, time
+          queries = [
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(hebrew) OR subject:(hebrew))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(aramaic) OR subject:(aramaic))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(syriac) OR subject:(syriac))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(septuagint) OR subject:(septuagint) OR title:(LXX))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(biblical) OR subject:(biblical))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(testament) OR subject:(testament))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(manuscript) OR subject:(manuscript))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(archaeology) OR subject:(archaeology))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(talmud) OR title:(rabbinic) OR subject:(judaism))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(greek) OR subject:(greek))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(commentary) OR title:(commentaries))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(theology) OR subject:(theology))',
+          ]
+          seen={}
+          examined=0
+          for qi,q in enumerate(queries):
+            for page in (1,3,6,10):
+              params=[('q',q),('fl[]','identifier'),('fl[]','title'),('fl[]','creator'),('fl[]','year'),('fl[]','date'),('fl[]','language'),('fl[]','subject'),('rows','100'),('page',str(page)),('output','json')]
+              try:
+                r=requests.get('https://archive.org/advancedsearch.php',params=params,timeout=30)
+                r.raise_for_status(); docs=r.json()['response']['docs']
+              except Exception as e:
+                print('ERR', qi,page,e); continue
+              examined += len(docs)
+              for d in docs:
+                ident=d.get('identifier')
+                if not ident: continue
+                seen.setdefault(ident,d)
+              time.sleep(.1)
+          print(f'EXAMINED={examined} UNIQUE={len(seen)}')
+          kwsA=['hebrew','aramaic','syriac','semitic','greek','septuagint','lxx','testament','biblical','bible','scripture','manuscript','papyrus','papyri','textual','archaeolog','talmud','rabbin','juda','israel','ugarit','akkad','assyri','babylon','genesis','exodus','leviticus','numbers','deuteronomy','joshua','judges','samuel','kings','isaiah','jeremiah','ezekiel','daniel','psalm','job','proverbs','ecclesiastes','song of songs','gospel','matthew','mark','luke','john','acts','romans','corinth','galati','ephesians','philipp','coloss','thessalon','timothy','titus','philemon','hebrews','james','peter','jude','revelation','apocrypha','pseudepigrapha','dead sea','qumran','lexicon','grammar','concordance','commentary','commentaries']
+          kwsB=['theology','patrist','augustine','origen','jerome','chrysostom','reformation','luther','calvin','church history','mission','creed','confession','apologetic']
+          scored=[]
+          for ident,d in seen.items():
+            text=' '.join(str(d.get(k,'')) for k in ('title','creator','subject')).lower()
+            score=sum(4 for k in kwsA if k in text)+sum(2 for k in kwsB if k in text)
+            if score>0:
+              scored.append((score,ident,d))
+          scored.sort(key=lambda x:(-x[0],str(x[2].get('year','')),x[1]))
+          print(f'RELEVANT={len(scored)}')
+          for score,ident,d in scored[:320]:
+            def clean(v):
+              if isinstance(v,list): v='; '.join(map(str,v[:4]))
+              return re.sub(r'\s+',' ',str(v or '')).strip()
+            print('\t'.join([str(score),ident,clean(d.get('title')),clean(d.get('creator')),clean(d.get('year') or d.get('date')),clean(d.get('language'))]))
+          PY
