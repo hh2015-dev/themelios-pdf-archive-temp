@@ -1,4 +1,4 @@
-name: GTU inventory verify 20260825
+name: GTU inventory replacement verify 20260825
 on:
   pull_request:
     branches: [ main ]
@@ -6,75 +6,28 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - name: Verify selected GTU items
+      - name: Verify replacement GTU items
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import json, subprocess, urllib.parse, re
-          ids = [
-            'calvinscommentar0006calv','calvinscommentar0019calv','calvinscommentar0018calv','calvinscommentar0030calv',
-            'commentairesursa0222orig','enarrationesinps0951augu','symvoleeistenana0000goud',
-            'sim_journal-of-biblical-literature_1961-03_80_1','sim_journal-of-biblical-literature_1961-09_80_3',
-            'sim_journal-of-biblical-literature_1959-03_78_1','sim_journal-of-biblical-literature_1959-09_78_3',
-            'sim_journal-of-biblical-literature_1958-06_77_2','sim_journal-of-biblical-literature_1958-09_77_3','sim_journal-of-biblical-literature_1958-12_77_4',
-            'sim_journal-of-biblical-literature_1957-12_76_4','sim_journal-of-biblical-literature_1957-09_76_3','sim_journal-of-biblical-literature_1957-03_76_1',
-            'sim_journal-of-biblical-literature_1956-09_75_3',
-            'sim_near-eastern-archaeology_1960-12_23_4','sim_near-eastern-archaeology_1955-09_18_3'
-          ]
+          import json, subprocess, urllib.parse
+          ids=['sim_journal-of-biblical-literature_1955-03_74_1','sim_journal-of-biblical-literature_1955-06_74_2','sim_near-eastern-archaeology_1954-12_17_4','sim_journal-of-biblical-literature_1954-06_73_2']
           out=[]
           for iid in ids:
-            raw=subprocess.check_output(['curl','-fsSL','--retry','3',f'https://archive.org/metadata/{iid}'],timeout=60)
-            m=json.loads(raw)
-            md=m.get('metadata',{})
-            coll=md.get('collection',[])
+            m=json.loads(subprocess.check_output(['curl','-fsSL','--retry','3',f'https://archive.org/metadata/{iid}'],timeout=60))
+            md=m.get('metadata',{}); coll=md.get('collection',[])
             if isinstance(coll,str): coll=[coll]
-            files=m.get('files',[])
-            pdfs=[]
-            for f in files:
-              name=f.get('name','')
-              if not name.lower().endswith('.pdf'): continue
-              if name.lower().endswith('.lcpdf'): continue
-              if f.get('private') in (True,'true','1'): continue
-              pdfs.append(f)
-            public_pdf=None
-            for f in pdfs:
-              name=f.get('name','')
-              if 'encrypted' in name.lower(): continue
-              public_pdf=name; break
-            pages=md.get('imagecount') or md.get('page-progression') or ''
-            if not pages:
-              for f in files:
-                if f.get('name','').endswith('_text.pdf') and f.get('size'):
-                  pass
-            row={
-              'identifier':iid,
-              'in_gtu':'graduatetheologicalunion' in coll,
-              'collection':coll,
-              'title':md.get('title',''),
-              'creator':md.get('creator',''),
-              'date':md.get('date',''),
-              'year':md.get('year',''),
-              'volume':md.get('volume',''),
-              'edition':md.get('edition',''),
-              'series':md.get('series',''),
-              'language':md.get('language',''),
-              'contributor':md.get('contributor',''),
-              'subject':md.get('subject',''),
-              'description':md.get('description',''),
-              'mediatype':md.get('mediatype',''),
-              'access_restricted':md.get('access-restricted-item',''),
-              'printdisabled':md.get('printdisabled',''),
-              'public_pdf':public_pdf,
-              'public_pdf_url': f'https://archive.org/download/{iid}/{urllib.parse.quote(public_pdf)}' if public_pdf else '',
-              'imagecount':md.get('imagecount','')
-            }
-            out.append(row)
-            print(json.dumps(row,ensure_ascii=False))
-          with open('gtu_verified.json','w',encoding='utf-8') as f: json.dump(out,f,ensure_ascii=False,indent=2)
-          print('VERIFIED',len(out),'GTU',sum(1 for x in out if x['in_gtu']))
+            public=''
+            for f in m.get('files',[]):
+              n=f.get('name','')
+              if n.lower().endswith('.pdf') and not n.lower().endswith('.lcpdf') and 'encrypted' not in n.lower() and f.get('private') not in (True,'true','1'):
+                public=n; break
+            row={'identifier':iid,'in_gtu':'graduatetheologicalunion' in coll,'title':md.get('title',''),'creator':md.get('creator',''),'date':md.get('date',''),'volume':md.get('volume',''),'edition':md.get('edition',''),'language':md.get('language',''),'contributor':md.get('contributor',''),'subject':md.get('subject',''),'access_restricted':md.get('access-restricted-item',''),'public_pdf_url':f'https://archive.org/download/{iid}/{urllib.parse.quote(public)}' if public else '', 'imagecount':md.get('imagecount','')}
+            out.append(row); print(json.dumps(row,ensure_ascii=False))
+          with open('gtu_replacements.json','w',encoding='utf-8') as f: json.dump(out,f,ensure_ascii=False,indent=2)
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: gtu-verified-20260825
-          path: gtu_verified.json
+          name: gtu-replacements-20260825
+          path: gtu_replacements.json
