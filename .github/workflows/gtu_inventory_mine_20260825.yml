@@ -1,4 +1,4 @@
-name: GTU inventory verify 20260825
+name: GTU inventory verify diversified 20260825
 on:
   pull_request:
     branches: [ main ]
@@ -8,7 +8,7 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - name: Verify selected GTU items
+      - name: Verify diversified GTU items
         shell: bash
         run: |
           set -euo pipefail
@@ -16,7 +16,7 @@ jobs:
           python3 - <<'PY'
           import json, urllib.request, urllib.parse, time
           ids = [
-          'apocryphapseudep0001rhch_e9d0','aprocryphapseude0002unse','newtestamentapoc0000unse_u3n2','sixthbookofselec0001seve','shortofliteratur0000woeo','bibliothecajudai0102furs','catalogofhebrewb0003jiq','calvinscommentar0019calv','enarrationesinps0951augu','enarrationesinps0954augu','lavisiondematthi0000chri','newtestamentinhi0000ghcm','bentarbutyisrael0000stei','labibletraductio0006unse','labibletraductio0008unse','labibletraductio0009unse','labibletraductio0011unse','labibletraductio0014unse','labibletraductio0016unse','labibletraductio0017unse','labibletraductio0018unse','greekenglishlexi0000henr_n3b4','newtestamentfrom0000ivan','thesamaritanlitu00unse','sim_journal-of-biblical-literature_1937-03_56_1','sim_journal-of-biblical-literature_1937-06_56_2','sim_journal-of-biblical-literature_1937-09_56_3','sim_journal-of-biblical-literature_1937-12_56_4','sim_journal-of-biblical-literature_1936-03_55_1','sim_journal-of-biblical-literature_1936-09_55_3','sim_journal-of-biblical-literature_1936-12_55_4','gtu_32400008182671'
+          'newtestamentapoc0000unse_u3n2','shortofliteratur0000woeo','catalogofhebrewb0003jiq','enarrationesinps0951augu','enarrationesinps0954augu','lavisiondematthi0000chri','thesamaritanlitu00unse','greekenglishlexi0000henr_n3b4','historicallingui0000unse_c5c5','doctrineofchurch0000geor_e8s7','archeologyssolut0000revj','introductiontool0000arob','introductiontool0002unse','introductiontone0000unse_k2v8','gtu_32400007167970','bibliographyofbi0000jerr','journal-for-the-study-of-the-old-testament_1980-1982_index-18-23','companiontonewte0000harv_m4v9','bentarbutyisrael0000stei','exodusintroducti00unse','expositionofoldt0003gill','newenglishcompan0000aeha','sim_journal-of-biblical-literature_1937-03_56_1','gtu_32400008182671'
           ]
           out=[]
           for ident in ids:
@@ -33,19 +33,13 @@ jobs:
               for f in files:
                   name=f.get('name','')
                   if not name.lower().endswith('.pdf'): continue
-                  if name.lower().endswith('.lcpdf'): continue
+                  if name.lower().endswith('.lcpdf') or 'encrypted' in name.lower(): continue
                   if f.get('private') is True or str(f.get('private','')).lower()=='true': continue
-                  if 'encrypted' in name.lower(): continue
                   public_pdfs.append({'name':name,'size':f.get('size'),'source':f.get('source'),'format':f.get('format')})
-              # prefer original/text pdf over derivatives where possible
               pdf=public_pdfs[0]['name'] if public_pdfs else ''
               for p in public_pdfs:
                   if p.get('format')=='Text PDF' or p['name'].lower()==ident.lower()+'.pdf':
                       pdf=p['name']; break
-              pages=m.get('page-progression')
-              if not pages:
-                  # derive from scandata only if explicit leaf count file metadata exists
-                  pages=m.get('pages') or m.get('page_count')
               rec={
                 'identifier':ident,
                 'in_gtu':'graduatetheologicalunion' in coll,
@@ -71,11 +65,11 @@ jobs:
               out.append(rec)
               print(ident, rec['in_gtu'], bool(pdf), rec['title'], flush=True)
               time.sleep(0.1)
-          with open('out/verified.json','w',encoding='utf-8') as f:
+          with open('out/verified2.json','w',encoding='utf-8') as f:
               json.dump(out,f,ensure_ascii=False,indent=2)
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: gtu-verified-20260825
-          path: out/verified.json
+          name: gtu-verified-diverse-20260825
+          path: out/verified2.json
           compression-level: 6
