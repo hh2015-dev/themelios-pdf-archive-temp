@@ -11,7 +11,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import json, urllib.parse, urllib.request, time, re, csv
+          import json, urllib.parse, urllib.request, time
           queries = [
             '(title:hebrew OR title:aramaic OR title:syriac OR title:semitic OR title:ugaritic OR title:akkadian)',
             '(title:"old testament" OR title:"hebrew bible" OR title:genesis OR title:exodus OR title:isaiah OR title:psalms OR title:job)',
@@ -27,72 +27,45 @@ jobs:
             '(year:[1800 TO 1899] OR year:[1900 TO 1949] OR year:[1950 TO 1999])'
           ]
           base='collection:graduatetheologicalunion AND mediatype:texts AND '
-          docs={}
-          examined=0
-          for qi,q in enumerate(queries):
+          docs={}; examined=0
+          for q in queries:
             for page in (1,2):
               params={'q':base+q,'fl[]':['identifier','title','creator','year','language','volume'],'rows':100,'page':page,'output':'json'}
               url='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(params,doseq=True)
-              with urllib.request.urlopen(url,timeout=30) as r: data=json.load(r)
+              with urllib.request.urlopen(url,timeout=15) as r: data=json.load(r)
               rows=data.get('response',{}).get('docs',[]); examined += len(rows)
               for d in rows:
                 if d.get('identifier'): docs[d['identifier']]=d
-              time.sleep(.1)
-          # Score academically useful records to choose a broad verification pool.
           termsA=['bible','biblical','testament','hebrew','aramaic','syriac','semitic','greek','septuagint','manuscript','textual','qumran','dead sea','talmud','rabbin','josephus','philo','assyri','babylon','akkadian','ugarit','archaeolog','genesis','exodus','isaiah','psalm','job','gospel','romans','acts','revelation','lexicon','grammar','concordance','commentary','exegesis','apocrypha','pseudepigrapha']
           termsB=['augustine','calvin','luther','origen','jerome','patrist','church','theolog','reformation','mission','judaism','christian']
           def score(d):
             s=(str(d.get('title',''))+' '+str(d.get('creator',''))).lower()
             return 4*sum(t in s for t in termsA)+sum(t in s for t in termsB)
-          pool=sorted(docs.values(), key=lambda d:(score(d),str(d.get('year',''))), reverse=True)[:420]
+          pool=sorted(docs.values(), key=lambda d:(score(d),str(d.get('year',''))), reverse=True)[:140]
           verified=[]
-          for n,d in enumerate(pool):
+          for d in pool:
             ident=d['identifier']
             try:
-              with urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident),timeout=25) as r: m=json.load(r)
-            except Exception:
-              continue
-            md=m.get('metadata',{})
-            coll=md.get('collection',[])
+              with urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident),timeout=12) as r: m=json.load(r)
+            except Exception: continue
+            md=m.get('metadata',{}); coll=md.get('collection',[])
             if isinstance(coll,str): coll=[coll]
             if 'graduatetheologicalunion' not in coll: continue
-            files=m.get('files',[])
-            pdf=''
+            files=m.get('files',[]); pdf=''
             for f in files:
               nm=f.get('name','')
-              if nm.lower().endswith('.pdf') and f.get('private') not in (True,'true') and not nm.lower().endswith('_encrypted.pdf') and 'lcpdf' not in nm.lower():
-                pdf=nm; break
+              if nm.lower().endswith('.pdf') and f.get('private') not in (True,'true') and not nm.lower().endswith('_encrypted.pdf') and 'lcpdf' not in nm.lower(): pdf=nm; break
             restricted=str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true'
-            pages=md.get('page-progression','')
-            # Prefer explicit scandata/page-number hints only if simple numeric metadata exists.
-            pagecount=md.get('pages','') or md.get('page-count','') or ''
-            creator=md.get('creator','')
-            if isinstance(creator,list): creator='; '.join(map(str,creator))
-            lang=md.get('language','')
-            if isinstance(lang,list): lang='; '.join(map(str,lang))
-            contributor=md.get('contributor','')
-            if isinstance(contributor,list): contributor='; '.join(map(str,contributor))
-            volume=md.get('volume','')
-            edition=md.get('edition','')
-            series=md.get('series','')
-            year=md.get('date','') or md.get('year','') or d.get('year','') or ''
-            title=md.get('title','') or d.get('title','') or ''
-            direct=''
-            if pdf and not restricted:
-              direct='https://archive.org/download/'+ident+'/'+urllib.parse.quote(pdf)
-            verified.append({
-              'identifier':ident,'title':title,'creator':creator,'year':year,'volume':volume,'edition':edition,'series':series,
-              'language':lang,'contributor':contributor,'restricted':restricted,'pdf':pdf,'direct_pdf':direct,'pages':pagecount,
-              'item_link':'https://archive.org/details/'+ident,'score':score(d)
-            })
-            if len(verified)>=180: break
-            time.sleep(.08)
+            def s(v): return '; '.join(map(str,v)) if isinstance(v,list) else ('' if v is None else str(v))
+            title=s(md.get('title') or d.get('title')); creator=s(md.get('creator') or d.get('creator')); year=s(md.get('date') or md.get('year') or d.get('year'))
+            volume=s(md.get('volume')); edition=s(md.get('edition')); series=s(md.get('series')); lang=s(md.get('language') or d.get('language')); contributor=s(md.get('contributor'))
+            pagecount=s(md.get('pages') or md.get('page-count'))
+            direct='' if restricted or not pdf else 'https://archive.org/download/'+ident+'/'+urllib.parse.quote(pdf)
+            verified.append({'identifier':ident,'title':title,'creator':creator,'year':year,'volume':volume,'edition':edition,'series':series,'language':lang,'contributor':contributor,'restricted':restricted,'pdf':pdf,'direct_pdf':direct,'pages':pagecount,'item_link':'https://archive.org/details/'+ident,'score':score(d)})
+            if len(verified)>=80: break
           with open('gtu_candidates.json','w',encoding='utf-8') as f: json.dump({'examined_hits':examined,'unique_hits':len(docs),'verified':verified},f,ensure_ascii=False,indent=2)
-          print('EXAMINED_HITS',examined)
-          print('UNIQUE_HITS',len(docs))
-          print('VERIFIED',len(verified))
-          for x in verified:
-            print('\t'.join(str(x[k]).replace('\t',' ') for k in ['identifier','title','creator','year','volume','edition','restricted','direct_pdf']))
+          print('EXAMINED_HITS',examined); print('UNIQUE_HITS',len(docs)); print('VERIFIED',len(verified))
+          for x in verified: print('\t'.join(str(x[k]).replace('\t',' ') for k in ['identifier','title','creator','year','volume','edition','restricted','direct_pdf']))
           PY
       - uses: actions/upload-artifact@v4
         with:
