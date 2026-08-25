@@ -6,25 +6,23 @@ jobs:
   discover:
     runs-on: ubuntu-latest
     steps:
-      - name: Verify final GTU candidates
+      - name: Verify four replacement GTU journal candidates
         shell: bash
         run: |
           python3 - <<'PY'
-          import requests,json,urllib.parse,concurrent.futures,re
-          IDS=['hyksosparttheypl00unse','bookoftobitengli0000fran','problemofhistory0000jame_q8q3','jewishleaderinma0000unse','lifeteachingofpa0000prin','gospellettersofj0000alex','diekonkretisieru0000siah','rabbinischegleic0000fieb','sim_journal-of-cuneiform-studies_1948_2_2','sim_journal-of-cuneiform-studies_1951_5_3','sim_journal-of-cuneiform-studies_1953_7_4','sim_journal-of-cuneiform-studies_1953_7_2','sim_journal-of-cuneiform-studies_1955_9_2','sim_journal-of-cuneiform-studies_1955_9_4','sim_journal-of-near-eastern-studies_1948-10_7_4','sim_journal-of-near-eastern-studies_1956_15_contents','sim_journal-of-near-eastern-studies_1968_27_contents','sim_journal-of-near-eastern-studies_1969_28_contents','sim_journal-of-near-eastern-studies_1977_36_contents','sim_journal-of-near-eastern-studies_1951-07_10_3']
+          import requests,json,urllib.parse,concurrent.futures
+          IDS=['sim_journal-of-cuneiform-studies_1957_11_2','sim_journal-of-cuneiform-studies_1961_15_3','sim_bulletin-of-the-american-schools-of-oriental-research_1922-01_5','sim_bulletin-of-the-american-schools-of-oriental-research_1924-12_16']
           def one(i):
             m=requests.get('https://archive.org/metadata/'+i,timeout=20).json(); md=m.get('metadata',{})
             col=md.get('collection',[]); col=[col] if isinstance(col,str) else col
-            files=m.get('files',[]); pubs=[]
-            for f in files:
+            pubs=[]
+            for f in m.get('files',[]):
               n=f.get('name','')
               if n.lower().endswith('.pdf') and not n.lower().endswith('.lcpdf') and str(f.get('private','false')).lower()!='true' and 'encrypted' not in n.lower(): pubs.append(n)
             restricted=str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true'
             direct='' if restricted or not pubs else 'https://archive.org/download/'+i+'/'+urllib.parse.quote(pubs[0])
-            pages=md.get('pages') or md.get('page-count') or md.get('page_count') or ''
-            return {'identifier':i,'in_gtu':'graduatetheologicalunion' in col,'title':md.get('title',''),'creator':md.get('creator',''),'date':md.get('date') or md.get('year') or '','volume':md.get('volume',''),'edition':md.get('edition',''),'series':md.get('series',''),'subject':md.get('subject',''),'language':md.get('language',''),'contributor':md.get('contributor',''),'pages':pages,'direct_pdf':direct,'restricted':restricted,'public_pdf_count':len(pubs),'mediatype':md.get('mediatype','')}
-          with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:
-            results=list(ex.map(one,IDS))
+            return {'identifier':i,'in_gtu':'graduatetheologicalunion' in col,'title':md.get('title',''),'creator':md.get('creator',''),'date':md.get('date') or md.get('year') or '','volume':md.get('volume',''),'edition':md.get('edition',''),'series':md.get('series',''),'subject':md.get('subject',''),'language':md.get('language',''),'contributor':md.get('contributor',''),'pages':md.get('pages') or md.get('page-count') or md.get('page_count') or '','direct_pdf':direct,'restricted':restricted,'public_pdf_count':len(pubs),'mediatype':md.get('mediatype','')}
+          with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex: results=list(ex.map(one,IDS))
           print('FINAL_COUNT',len(results)); print('GTU_COUNT',sum(x['in_gtu'] for x in results))
           for x in results: print('FINAL\t'+json.dumps(x,ensure_ascii=False,separators=(',',':')))
           PY
