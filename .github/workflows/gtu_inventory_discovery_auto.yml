@@ -8,32 +8,29 @@ jobs:
   discover:
     runs-on: ubuntu-latest
     steps:
-      - name: Mine GTU search corpus
+      - name: Mine distributed GTU corpus
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import json, urllib.parse, urllib.request, time
-          terms = [
-            'hebrew','aramaic','syriac','semitic','septuagint','old testament','new testament','biblical','bible',
-            'textual criticism','manuscript','papyri','dead sea scrolls','qumran','talmud','rabbinic','judaism',
-            'apocrypha','pseudepigrapha','cuneiform','assyrian','babylonian','ugaritic','archaeology','palestine',
-            'greek','lexicon','grammar','concordance','calvin','luther','augustine','origen','patristic','theology',
-            'church history','reformation','missions'
+          import json, urllib.parse, urllib.request
+          queries=[
+            ('hebrew',1),('aramaic',3),('syriac',7),('septuagint',12),('textual criticism',4),
+            ('manuscript',9),('papyri',6),('qumran',2),('rabbinic',5),('apocrypha',8),
+            ('cuneiform',11),('ugaritic',3),('archaeology',10),('new testament',13),('old testament',14),
+            ('greek',15),('calvin',6),('patristic',9),('reformation',12),('missions',15)
           ]
-          pages=[1,2,4,7]
           found={}
-          for term in terms:
-            for page in pages:
-              q=f'collection:graduatetheologicalunion AND mediatype:texts AND ({term})'
-              params=[('q',q),('fl[]','identifier'),('fl[]','title'),('fl[]','creator'),('fl[]','date'),('fl[]','year'),('fl[]','volume'),('fl[]','language'),('fl[]','subject'),('fl[]','contributor'),('rows','50'),('page',str(page)),('output','json')]
-              url='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(params)
-              try:
-                with urllib.request.urlopen(url,timeout=20) as r: docs=json.load(r)['response']['docs']
-                for d in docs:
-                  if d.get('identifier'): found[d['identifier']]=d
-              except Exception as e: print('ERR',term,page,e)
-              time.sleep(0.03)
+          for term,page in queries:
+            q=f'collection:graduatetheologicalunion AND mediatype:texts AND ({term})'
+            params=[('q',q),('fl[]','identifier'),('fl[]','title'),('fl[]','creator'),('fl[]','date'),('fl[]','year'),('fl[]','volume'),('fl[]','language'),('fl[]','subject'),('fl[]','contributor'),('rows','100'),('page',str(page)),('output','json')]
+            url='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(params)
+            try:
+              with urllib.request.urlopen(url,timeout=20) as r: docs=json.load(r)['response']['docs']
+              for d in docs:
+                if d.get('identifier'): found[d['identifier']]=d
+              print(term,page,len(docs))
+            except Exception as e: print('ERR',term,page,e)
           with open('gtu_search_candidates.json','w',encoding='utf-8') as f: json.dump(list(found.values()),f,ensure_ascii=False,indent=2)
           print('UNIQUE_SEARCH_RESULTS',len(found))
           PY
