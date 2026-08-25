@@ -1,0 +1,68 @@
+name: GTU Inventory Fast 20260825
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  minefast:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fast GTU-only mining
+        shell: bash
+        run: |
+          cat > /tmp/fast.py <<'PY'
+          import requests, json, urllib.parse, concurrent.futures, re
+          B='https://archive.org'
+          qs=[
+          'collection:graduatetheologicalunion AND mediatype:texts AND (Hebrew OR Aramaic OR Syriac OR Semitic)',
+          'collection:graduatetheologicalunion AND mediatype:texts AND (Greek OR Septuagint OR papyri OR textual)',
+          'collection:graduatetheologicalunion AND mediatype:texts AND (Qumran OR "Dead Sea" OR Apocrypha OR Pseudepigrapha)',
+          'collection:graduatetheologicalunion AND mediatype:texts AND (Talmud OR Midrash OR rabbinic OR Judaism)',
+          'collection:graduatetheologicalunion AND mediatype:texts AND (Assyrian OR Babylonian OR Akkadian OR Ugaritic)',
+          'collection:graduatetheologicalunion AND mediatype:texts AND (archaeology OR Palestine OR inscriptions)',
+          'collection:graduatetheologicalunion AND mediatype:texts AND (Genesis OR Exodus OR Psalms OR Isaiah OR Jeremiah OR Ezekiel OR Daniel)',
+          'collection:graduatetheologicalunion AND mediatype:texts AND (Matthew OR Mark OR Luke OR John OR Acts OR Romans OR Corinthians OR Revelation)',
+          'collection:graduatetheologicalunion AND mediatype:texts AND (lexicon OR grammar OR concordance OR bibliography)',
+          'collection:graduatetheologicalunion AND mediatype:texts AND (Origen OR Jerome OR Augustine OR Calvin OR Luther OR patristic OR Reformation)']
+          docs={}; apps=0
+          for qi,q in enumerate(qs):
+            for page in (2,9):
+              p={'q':q,'fl[]':['identifier','title','creator','year','volume','edition','series','subject','language','contributor'],'rows':50,'page':page,'output':'json'}
+              try:
+                a=requests.get(B+'/advancedsearch.php',params=p,timeout=15).json()['response']['docs']; apps+=len(a)
+                for d in a: docs[d.get('identifier','')]=d
+              except Exception: pass
+          docs.pop('',None)
+          def verify(d):
+            try:
+              ident=d['identifier']; m=requests.get(B+'/metadata/'+urllib.parse.quote(ident),timeout=18).json(); md=m.get('metadata',{})
+              c=md.get('collection',[]); c=[c] if isinstance(c,str) else c
+              if 'graduatetheologicalunion' not in c: return None
+              files=m.get('files',[]); restricted=str(md.get('access-restricted-item','false')).lower()=='true' or str(md.get('printdisabled','false')).lower()=='true'
+              pdf=''
+              if not restricted:
+                for f in files:
+                  n=f.get('name',''); priv=str(f.get('private','false')).lower()=='true'
+                  if n.lower().endswith('.pdf') and not priv and not n.lower().endswith('_encrypted.pdf') and not n.lower().endswith('.lcpdf'):
+                    pdf=n; break
+              def val(k):
+                v=md.get(k,''); return '; '.join(map(str,v)) if isinstance(v,list) else v
+              return {'identifier':ident,'title':val('title') or d.get('title',''),'creator':val('creator'),'year':val('year') or d.get('year',''),'volume':val('volume'),'edition':val('edition'),'series':val('series'),'subject':val('subject'),'language':val('language'),'contributor':val('contributor'),'restricted':restricted,'pdf':pdf,'pages':val('pages') or val('page-count') or val('page_count')}
+            except Exception:return None
+          vals=list(docs.values())[:500]
+          out=[]
+          with concurrent.futures.ThreadPoolExecutor(max_workers=24) as ex:
+            for x in ex.map(verify,vals):
+              if x: out.append(x)
+          def score(x):
+            s=(str(x['title'])+' '+str(x['subject'])).lower(); A=['bible','biblical','hebrew','aramaic','syriac','semit','greek','septuagint','textual','manuscript','papyr','qumran','dead sea','apocry','pseudep','talmud','midrash','rabbin','assyri','babylon','akkad','ugarit','archaeol','genesis','exodus','psalm','isaiah','jeremiah','ezekiel','daniel','matthew','mark','luke','john','acts','romans','corinth','revelation','lexicon','grammar','concordance','commentar','exeges']; return sum(k in s for k in A)
+          out.sort(key=lambda x:(score(x),bool(x['pdf'])),reverse=True)
+          data={'appearances':apps,'unique':len(docs),'verified':len(out),'items':out[:160]}
+          open('gtu_fast.json','w').write(json.dumps(data,ensure_ascii=False,indent=2))
+          print('APPEARANCES',apps,'UNIQUE',len(docs),'VERIFIED',len(out))
+          for x in out[:100]: print(json.dumps(x,ensure_ascii=False))
+          PY
+          python /tmp/fast.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-fast-20260825
+          path: gtu_fast.json
