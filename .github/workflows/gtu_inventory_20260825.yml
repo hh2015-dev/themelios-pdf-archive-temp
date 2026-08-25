@@ -1,4 +1,4 @@
-name: GTU Inventory Discovery 20260825
+name: GTU Inventory Discovery 20260825 Fast
 on:
   pull_request:
     branches: [ main ]
@@ -6,14 +6,14 @@ jobs:
   discover:
     runs-on: ubuntu-latest
     steps:
-      - name: Mine GTU collection broadly and verify metadata
+      - name: Mine GTU broadly and verify metadata in parallel
         shell: bash
         run: |
           set -euo pipefail
           cat > /tmp/discover.py <<'PY'
-          import json, urllib.parse, urllib.request, time, re, random
+          import json, urllib.parse, urllib.request, time, re
           from collections import OrderedDict
-
+          from concurrent.futures import ThreadPoolExecutor, as_completed
           BASE='collection:graduatetheologicalunion AND mediatype:texts'
           queries=[
             '(hebrew OR aramaic OR syriac OR semitic OR ugaritic OR akkadian OR assyrian OR cuneiform)',
@@ -24,110 +24,65 @@ jobs:
             '("biblical theology" OR "biblical archaeology" OR "biblical criticism" OR hermeneutics OR exegesis OR concordance OR lexicon OR grammar)',
             '(calvin OR luther OR origen OR augustine OR jerome OR chrysostom OR patristic OR reformation)',
             '("journal of biblical literature" OR "biblical archaeologist" OR "bulletin of the american schools" OR "journal of semitic studies" OR "journal of near eastern studies" OR semeia)',
-            '(palestine OR archaeology OR ancient near east OR babylonian OR assyrian OR egyptian OR phoenician OR canaanite)',
-            '(bible OR biblical OR scripture OR testament) AND year:[1800 TO 1940]',
-            '(bible OR biblical OR scripture OR testament) AND year:[1941 TO 1979]',
+            '(palestine OR archaeology OR "ancient near east" OR babylonian OR assyrian OR egyptian OR phoenician OR canaanite)',
+            '(bible OR biblical OR scripture OR testament) AND year:[1800 TO 1939]',
+            '(bible OR biblical OR scripture OR testament) AND year:[1940 TO 1979]',
             '(bible OR biblical OR scripture OR testament) AND year:[1980 TO 2026]',
-            '(theology OR doctrine OR creed OR confession OR apologetics OR missiology OR missions OR church history)',
+            '(theology OR doctrine OR creed OR confession OR apologetics OR missiology OR missions OR "church history")'
           ]
-          sort_specs=['identifier asc','date asc','date desc','downloads asc']
-          pages=[1,4,9,17]
-          rows=50
-          ids=OrderedDict()
-          examined_search_hits=0
-          def get_json(url, tries=4):
+          def get_json(url,tries=2):
             last=None
             for i in range(tries):
               try:
                 req=urllib.request.Request(url,headers={'User-Agent':'Mozilla/5.0 GTUInventory/1.0'})
-                with urllib.request.urlopen(req,timeout=30) as r:
-                  return json.load(r)
-              except Exception as e:
-                last=e; time.sleep(1.5*(i+1))
+                with urllib.request.urlopen(req,timeout=15) as r: return json.load(r)
+              except Exception as e: last=e; time.sleep(.5)
             raise last
+          ids=OrderedDict(); hits=0
           for qi,q in enumerate(queries):
-            for pi,p in enumerate(pages):
-              sort=sort_specs[(qi+pi)%len(sort_specs)]
-              full=f'{BASE} AND {q}'
-              params={'q':full,'fl[]':['identifier','title','creator','date','year','subject','language','volume'],'rows':rows,'page':p,'output':'json','sort[]':sort}
-              url='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(params,doseq=True)
-              try:
-                data=get_json(url)
-              except Exception as e:
-                continue
-              docs=data.get('response',{}).get('docs',[])
-              examined_search_hits += len(docs)
+            for p in (2,11):
+              params={'q':f'{BASE} AND {q}','fl[]':['identifier','title','creator','date','year','subject','language','volume'],'rows':80,'page':p,'output':'json','sort[]':'identifier asc' if qi%2==0 else 'date asc'}
+              try: data=get_json('https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(params,doseq=True))
+              except Exception: continue
+              docs=data.get('response',{}).get('docs',[]); hits+=len(docs)
               for d in docs:
-                ident=d.get('identifier')
-                if ident and ident not in ids:
-                  ids[ident]=d
-          # Deterministically sample broadly but verify up to 360 unique candidates.
-          all_ids=list(ids.keys())
-          # interleave beginning/end/middle to avoid top-only bias
-          order=[]
-          if all_ids:
-            step=max(1,len(all_ids)//360)
-            order=all_ids[::step][:360]
-          out=[]
-          verified=0
-          for ident in order:
-            try:
-              meta=get_json('https://archive.org/metadata/'+urllib.parse.quote(ident,safe=''))
-            except Exception:
-              continue
-            md=meta.get('metadata',{}) or {}
-            coll=md.get('collection',[])
+                if d.get('identifier'): ids.setdefault(d['identifier'],d)
+          allids=list(ids)
+          if len(allids)>240:
+            step=max(1,len(allids)//240); sample=allids[::step][:240]
+          else: sample=allids
+          def scalar(v):
+            if isinstance(v,list): return '; '.join(str(x) for x in v)
+            return '' if v is None else str(v)
+          def verify(ident):
+            try: meta=get_json('https://archive.org/metadata/'+urllib.parse.quote(ident,safe=''))
+            except Exception: return None
+            md=meta.get('metadata',{}) or {}; coll=md.get('collection',[])
             if isinstance(coll,str): coll=[coll]
-            if 'graduatetheologicalunion' not in coll:
-              continue
-            verified += 1
+            if 'graduatetheologicalunion' not in coll: return None
             restricted=str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true'
-            pdf_name=''
-            pdf_size=None
-            for f in meta.get('files',[]) or []:
-              n=f.get('name','')
-              if not re.search(r'\.pdf$',n,re.I): continue
-              if re.search(r'(encrypted|_text\.pdf|lcpdf)',n,re.I): continue
-              if str(f.get('private','false')).lower()=='true': continue
-              if restricted: continue
-              pdf_name=n; pdf_size=f.get('size'); break
-            direct=''
-            if pdf_name:
-              direct='https://archive.org/download/'+urllib.parse.quote(ident,safe='')+'/'+urllib.parse.quote(pdf_name,safe='')
-            pages_val=md.get('page-progression','')
-            # try known metadata page count fields, never infer from identifier
-            page_count=md.get('pages') or md.get('page_count') or md.get('imagecount') or ''
-            def scalar(v):
-              if isinstance(v,list): return '; '.join(str(x) for x in v)
-              return '' if v is None else str(v)
-            rec={
-              'identifier':ident,
-              'title':scalar(md.get('title')),
-              'creator':scalar(md.get('creator')),
-              'year':scalar(md.get('year') or md.get('date')),
-              'volume':scalar(md.get('volume')),
-              'edition':scalar(md.get('edition')),
-              'series':scalar(md.get('series')),
-              'language':scalar(md.get('language')),
-              'subject':scalar(md.get('subject')),
-              'contributor':scalar(md.get('contributor')),
-              'description':scalar(md.get('description'))[:1200],
-              'publisher':scalar(md.get('publisher')),
-              'collection':coll,
-              'restricted':restricted,
-              'direct_pdf':direct,
-              'page_count':scalar(page_count),
-              'mediatype':scalar(md.get('mediatype')),
-              'item_link':'https://archive.org/details/'+urllib.parse.quote(ident,safe=''),
-            }
-            out.append(rec)
-          with open('gtu_candidates.json','w',encoding='utf-8') as f:
-            json.dump({'search_hits_examined':examined_search_hits,'unique_ids_mined':len(ids),'metadata_verified':verified,'records':out},f,ensure_ascii=False,indent=2)
-          print(json.dumps({'search_hits_examined':examined_search_hits,'unique_ids_mined':len(ids),'metadata_verified':verified,'records':len(out)}))
+            pdf=''
+            if not restricted:
+              for f in meta.get('files',[]) or []:
+                n=f.get('name','')
+                if re.search(r'\.pdf$',n,re.I) and not re.search(r'(encrypted|lcpdf)',n,re.I) and str(f.get('private','false')).lower()!='true':
+                  pdf=n; break
+            direct='https://archive.org/download/'+urllib.parse.quote(ident,safe='')+'/'+urllib.parse.quote(pdf,safe='') if pdf else ''
+            return {'identifier':ident,'title':scalar(md.get('title')),'creator':scalar(md.get('creator')),'year':scalar(md.get('year') or md.get('date')),'volume':scalar(md.get('volume')),'edition':scalar(md.get('edition')),'series':scalar(md.get('series')),'language':scalar(md.get('language')),'subject':scalar(md.get('subject')),'contributor':scalar(md.get('contributor')),'description':scalar(md.get('description'))[:1000],'publisher':scalar(md.get('publisher')),'collection':coll,'restricted':restricted,'direct_pdf':direct,'page_count':scalar(md.get('pages') or md.get('page_count') or md.get('imagecount') or ''),'item_link':'https://archive.org/details/'+urllib.parse.quote(ident,safe='')}
+          out=[]
+          with ThreadPoolExecutor(max_workers=20) as ex:
+            futs={ex.submit(verify,i):i for i in sample}
+            for fut in as_completed(futs):
+              r=fut.result()
+              if r: out.append(r)
+          out.sort(key=lambda x:x['identifier'])
+          obj={'search_hits_examined':hits,'unique_ids_mined':len(ids),'metadata_attempted':len(sample),'metadata_verified':len(out),'records':out}
+          json.dump(obj,open('gtu_candidates.json','w',encoding='utf-8'),ensure_ascii=False,indent=2)
+          print(json.dumps({k:obj[k] for k in ('search_hits_examined','unique_ids_mined','metadata_attempted','metadata_verified')}))
           PY
           python3 /tmp/discover.py
       - uses: actions/upload-artifact@v4
         with:
-          name: gtu-inventory-candidates-20260825
+          name: gtu-inventory-candidates-20260825-fast
           path: gtu_candidates.json
           compression-level: 6
