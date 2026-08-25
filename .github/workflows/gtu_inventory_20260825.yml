@@ -1,4 +1,4 @@
-name: GTU Inventory Discovery 20260825 Simple
+name: GTU Inventory Discovery 20260825 SearchOnly
 on:
   pull_request:
     branches: [ main ]
@@ -6,62 +6,37 @@ jobs:
   discover:
     runs-on: ubuntu-latest
     steps:
-      - name: Sample exact GTU collection and verify metadata
+      - name: Mine broad GTU corpus windows
         shell: bash
         run: |
           set -euo pipefail
-          cat > /tmp/discover.py <<'PY'
-          import json, urllib.parse, urllib.request, time, re
+          python3 - <<'PY'
+          import json, urllib.parse, urllib.request, time
           from collections import OrderedDict
-          from concurrent.futures import ThreadPoolExecutor, as_completed
           BASE='collection:graduatetheologicalunion AND mediatype:texts'
-          def get_json(url,tries=2):
-            last=None
-            for i in range(tries):
-              try:
-                req=urllib.request.Request(url,headers={'User-Agent':'Mozilla/5.0 GTUInventory/1.0'})
-                with urllib.request.urlopen(req,timeout=10) as r: return json.load(r)
-              except Exception as e: last=e; time.sleep(.4)
-            raise last
+          specs=[(3,'identifier asc'),(23,'identifier asc'),(43,'identifier asc'),(63,'identifier asc'),(83,'identifier asc'),(7,'date asc'),(27,'date asc'),(47,'date desc'),(67,'date desc'),(87,'date desc')]
           ids=OrderedDict(); hits=0
-          # Broad corpus windows, not top-only; alternate sorting to vary years/titles.
-          specs=[(3,'identifier asc'),(23,'identifier asc'),(43,'identifier asc'),(63,'identifier asc'),(7,'date asc'),(27,'date asc'),(47,'date desc'),(67,'date desc')]
           for p,sort in specs:
-            params={'q':BASE,'fl[]':['identifier','title','creator','date','year','subject','language','volume'],'rows':100,'page':p,'output':'json','sort[]':sort}
-            try: data=get_json('https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(params,doseq=True))
-            except Exception: continue
+            params={'q':BASE,'fl[]':['identifier','title','creator','date','year','subject','language','volume','edition','series','contributor'],'rows':100,'page':p,'output':'json','sort[]':sort}
+            url='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(params,doseq=True)
+            try:
+              req=urllib.request.Request(url,headers={'User-Agent':'Mozilla/5.0 GTUInventory/1.0'})
+              with urllib.request.urlopen(req,timeout=15) as r: data=json.load(r)
+            except Exception:
+              continue
             docs=data.get('response',{}).get('docs',[]); hits+=len(docs)
             for d in docs:
-              if d.get('identifier'): ids.setdefault(d['identifier'],d)
-          allids=list(ids)
-          sample=allids[:240]
-          def scalar(v):
-            if isinstance(v,list): return '; '.join(str(x) for x in v)
-            return '' if v is None else str(v)
-          def verify(ident):
-            try: meta=get_json('https://archive.org/metadata/'+urllib.parse.quote(ident,safe=''))
-            except Exception: return None
-            md=meta.get('metadata',{}) or {}; coll=md.get('collection',[])
-            if isinstance(coll,str): coll=[coll]
-            if 'graduatetheologicalunion' not in coll: return None
-            restricted=str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true'
-            pdf=''
-            if not restricted:
-              for f in meta.get('files',[]) or []:
-                n=f.get('name','')
-                if re.search(r'\.pdf$',n,re.I) and not re.search(r'(encrypted|lcpdf)',n,re.I) and str(f.get('private','false')).lower()!='true': pdf=n; break
-            return {'identifier':ident,'title':scalar(md.get('title')),'creator':scalar(md.get('creator')),'year':scalar(md.get('year') or md.get('date')),'volume':scalar(md.get('volume')),'edition':scalar(md.get('edition')),'series':scalar(md.get('series')),'language':scalar(md.get('language')),'subject':scalar(md.get('subject')),'contributor':scalar(md.get('contributor')),'description':scalar(md.get('description'))[:1000],'publisher':scalar(md.get('publisher')),'collection':coll,'restricted':restricted,'direct_pdf':('https://archive.org/download/'+urllib.parse.quote(ident,safe='')+'/'+urllib.parse.quote(pdf,safe='')) if pdf else '','page_count':scalar(md.get('pages') or md.get('page_count') or md.get('imagecount') or ''),'item_link':'https://archive.org/details/'+urllib.parse.quote(ident,safe='')}
-          out=[]
-          with ThreadPoolExecutor(max_workers=30) as ex:
-            for r in ex.map(verify,sample):
-              if r: out.append(r)
-          obj={'search_hits_examined':hits,'unique_ids_mined':len(ids),'metadata_attempted':len(sample),'metadata_verified':len(out),'records':out}
-          json.dump(obj,open('gtu_candidates.json','w',encoding='utf-8'),ensure_ascii=False,indent=2)
-          print(json.dumps({k:obj[k] for k in ('search_hits_examined','unique_ids_mined','metadata_attempted','metadata_verified')}))
+              ident=d.get('identifier')
+              if ident: ids.setdefault(ident,d)
+          recs=[]
+          for ident,d in ids.items():
+            x=dict(d); x['identifier']=ident; x['item_link']='https://archive.org/details/'+urllib.parse.quote(ident,safe=''); recs.append(x)
+          obj={'search_hits_examined':hits,'unique_ids_mined':len(ids),'records':recs}
+          json.dump(obj,open('gtu_search_candidates.json','w',encoding='utf-8'),ensure_ascii=False,indent=2)
+          print(json.dumps({'search_hits_examined':hits,'unique_ids_mined':len(ids)}))
           PY
-          python3 /tmp/discover.py
       - uses: actions/upload-artifact@v4
         with:
-          name: gtu-inventory-candidates-20260825-simple
-          path: gtu_candidates.json
+          name: gtu-search-candidates-20260825
+          path: gtu_search_candidates.json
           compression-level: 6
