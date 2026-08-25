@@ -1,0 +1,47 @@
+name: GTU inventory hourly discovery 20260825
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mine GTU corpus broadly
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          python3 - <<'PY'
+          import json, urllib.parse, urllib.request, time
+          queries = [
+            'collection:graduatetheologicalunion AND mediatype:texts AND (subject:(Bible OR Biblical OR Hebrew OR Testament OR Gospel OR Psalms OR Isaiah OR Genesis OR Exodus OR Prophets))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Hebrew OR Aramaic OR Syriac OR Semitic OR Greek OR Septuagint OR Targum OR Mishnah OR Talmud))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (subject:(Manuscripts OR Papyri OR Qumran OR archaeology OR Assyria OR Babylon OR Ugarit OR Coptic OR Patristics))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(Journal OR Bulletin OR Review OR Studies OR Commentary OR Concordance OR Lexicon OR Grammar OR Dictionary OR Bibliography))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (creator:(Calvin OR Luther OR Jerome OR Augustine OR Origen OR Lightfoot OR Delitzsch OR Keil OR Westcott OR Hort OR Albright))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND year:[1800 TO 1899]',
+            'collection:graduatetheologicalunion AND mediatype:texts AND year:[1900 TO 1949]',
+            'collection:graduatetheologicalunion AND mediatype:texts AND year:[1950 TO 1999]'
+          ]
+          all_docs={}
+          for qi,q in enumerate(queries):
+              for page in (1,3,7,12):
+                  params=[('q',q),('rows','250'),('page',str(page)),('output','json')]
+                  for f in ['identifier','title','creator','date','year','volume','language','subject','collection','format','contributor','description']:
+                      params.append(('fl[]',f))
+                  url='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(params)
+                  with urllib.request.urlopen(url, timeout=45) as r:
+                      data=json.load(r)
+                  for d in data.get('response',{}).get('docs',[]):
+                      if d.get('identifier'):
+                          all_docs[d['identifier']]=d
+                  time.sleep(0.15)
+          docs=list(all_docs.values())
+          with open('out/candidates.json','w',encoding='utf-8') as f:
+              json.dump(docs,f,ensure_ascii=False,indent=2)
+          print('UNIQUE_CANDIDATES',len(docs))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-hourly-candidates
+          path: out/candidates.json
