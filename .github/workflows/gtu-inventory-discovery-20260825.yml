@@ -1,48 +1,49 @@
-name: GTU inventory discovery 20260825
+name: GTU inventory verify 20260825
 on:
   pull_request:
     branches: [ main ]
 jobs:
-  discover:
+  verify:
     runs-on: ubuntu-latest
     steps:
-      - name: Mine exact GTU collection
+      - name: Verify exact GTU membership and metadata
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import json, urllib.parse, urllib.request, time
-          queries = [
-            ('collection:graduatetheologicalunion AND mediatype:texts AND (title:Hebrew OR subject:Hebrew OR subject:Aramaic OR subject:Syriac OR subject:Semitic)', 8),
-            ('collection:graduatetheologicalunion AND mediatype:texts AND (subject:Bible OR title:Bible OR title:Testament OR subject:"Biblical criticism")', 13),
-            ('collection:graduatetheologicalunion AND mediatype:texts AND (title:Greek OR subject:Greek OR subject:Septuagint OR subject:papyri OR subject:manuscripts)', 6),
-            ('collection:graduatetheologicalunion AND mediatype:texts AND (subject:Assyrian OR subject:Akkadian OR subject:Babylonian OR subject:Ugaritic OR subject:archaeology)', 4),
-            ('collection:graduatetheologicalunion AND mediatype:texts AND (title:Isaiah OR title:Jeremiah OR title:Psalms OR title:Job OR title:Genesis OR title:Exodus)', 7),
-            ('collection:graduatetheologicalunion AND mediatype:texts AND (title:Matthew OR title:Mark OR title:Luke OR title:John OR title:Romans OR title:Paul)', 5),
-            ('collection:graduatetheologicalunion AND mediatype:texts AND (creator:Calvin OR creator:Luther OR creator:Origen OR creator:Augustine OR subject:patristic)', 3),
-            ('collection:graduatetheologicalunion AND mediatype:texts AND (title:"Journal of Biblical Literature" OR title:"Biblical Archaeologist" OR title:"Bible Translator" OR title:"Semitic Studies")', 9),
-            ('collection:graduatetheologicalunion AND mediatype:texts AND (subject:Judaism OR subject:Talmud OR subject:rabbinic OR subject:Philo OR subject:Josephus OR subject:Qumran)', 4),
-            ('collection:graduatetheologicalunion AND mediatype:texts AND (title:lexicon OR title:grammar OR title:concordance OR title:bibliography OR subject:lexicography)', 6),
+          import json, urllib.request, urllib.parse, time
+          ids = [
+            'labibletraductio0015unse','labibletraductio0013unse','dasproblemdeszwe0000harn','peopleofoldtesta0000pete',
+            'hexaglotbiblecom0000reve','ledivorcedanslen0000jose','historicalmapsof0000gern','svenskexegetiska0016unse_w4x5',
+            'sim_near-eastern-archaeology_1951-09_14_3','sim_journal-of-biblical-literature_1929_48_3-4',
+            'sim_journal-of-biblical-literature_1931_50_3','sim_journal-of-biblical-literature_1948-12_67_4',
+            'sim_journal-of-biblical-literature_1960-09_79_3','sim_journal-of-near-eastern-studies_1943-10_2_4',
+            'sim_journal-of-near-eastern-studies_1948-01_7_1','sim_journal-of-cuneiform-studies_1947_1_2',
+            'sim_journal-of-cuneiform-studies_1948_2_1','sim_bulletin-of-the-american-schools-of-oriental-research_1958-10_151',
+            'sim_bulletin-of-the-american-schools-of-oriental-research_1946-12_104','newtestamentinhi0000ghcm'
           ]
           out=[]
-          fields=['identifier','title','creator','year','date','volume','edition','series','subject','contributor','language']
-          for q,page in queries:
-              params=[('q',q),('rows','100'),('page',str(page)),('output','json')]+[('fl[]',f) for f in fields]
-              url='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(params)
-              with urllib.request.urlopen(url, timeout=30) as r:
+          for ident in ids:
+              with urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident), timeout=30) as r:
                   data=json.load(r)
-              docs=data.get('response',{}).get('docs',[])
-              for d in docs:
-                  d['_query']=q; d['_page']=page
-                  out.append(d)
-              time.sleep(.2)
-          # unique by identifier
-          uniq={d.get('identifier'):d for d in out if d.get('identifier')}
-          with open('gtu_candidates.json','w',encoding='utf-8') as f:
-              json.dump(list(uniq.values()),f,ensure_ascii=False,indent=2)
-          print('UNIQUE_CANDIDATES',len(uniq))
+              m=data.get('metadata',{})
+              coll=m.get('collection',[])
+              if isinstance(coll,str): coll=[coll]
+              files=data.get('files',[])
+              pdfs=[]
+              for f in files:
+                  name=f.get('name','')
+                  if name.lower().endswith('.pdf') and not name.lower().endswith('.lcpdf') and str(f.get('private','false')).lower()!='true' and 'encrypt' not in name.lower():
+                      pdfs.append({'name':name,'size':f.get('size'),'source':f.get('source'),'format':f.get('format')})
+              rec={'identifier':ident,'in_gtu':'graduatetheologicalunion' in coll,'collection':coll,'metadata':m,'public_pdfs':pdfs}
+              out.append(rec)
+              print(ident,'GTU=',rec['in_gtu'],'PDFS=',len(pdfs),'TITLE=',m.get('title',''))
+              time.sleep(.1)
+          with open('gtu_verified.json','w',encoding='utf-8') as f:
+              json.dump(out,f,ensure_ascii=False,indent=2)
+          print('VERIFIED',sum(1 for x in out if x['in_gtu']),'OF',len(out))
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: gtu-candidates-20260825
-          path: gtu_candidates.json
+          name: gtu-verified-20260825
+          path: gtu_verified.json
