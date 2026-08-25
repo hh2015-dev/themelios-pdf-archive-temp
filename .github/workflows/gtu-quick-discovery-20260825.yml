@@ -6,39 +6,74 @@ jobs:
   quick:
     runs-on: ubuntu-latest
     steps:
-      - name: Query exact GTU collection
+      - name: Verify final selected items in exact GTU collection
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import json,urllib.parse,urllib.request
-          terms=[
-          'Bible','biblical','Hebrew','Aramaic','Syriac','Semitic','Greek','Septuagint','textual criticism','manuscript','Qumran','Talmud','Mishnah','Ugaritic','Akkadian','archaeology','Palestine','Calvin','Luther','patristic','Journal of Biblical Literature','Biblical Archaeologist','Journal of Semitic Studies','New Testament Studies','Interpretation']
-          seen={}
-          for ti,t in enumerate(terms):
-            for page in [1,3,6,10,15]:
-              q=f'collection:graduatetheologicalunion AND mediatype:texts AND (title:("{t}") OR subject:("{t}"))'
-              p=[('q',q),('rows','40'),('page',str(page)),('output','json'),('sort[]','identifier asc')]
-              for f in ['identifier','title','creator','year','date','volume','language','subject','contributor']:
-                p.append(('fl[]',f))
-              try:
-                d=json.load(urllib.request.urlopen('https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(p),timeout=25))
-              except Exception: continue
-              for x in d.get('response',{}).get('docs',[]):
-                if x.get('identifier'): seen.setdefault(x['identifier'],x)
-          print('QUICK_UNIQUE',len(seen))
-          vals=list(seen.values())
-          vals.sort(key=lambda x:(sum(ord(c) for c in x.get('identifier',''))%211,x.get('identifier','')))
-          with open('quick.tsv','w',encoding='utf-8') as f:
-            for i,x in enumerate(vals[:400],1):
-              cr=x.get('creator',''); cr='; '.join(cr) if isinstance(cr,list) else str(cr)
-              su=x.get('subject',''); su='; '.join(map(str,su[:3])) if isinstance(su,list) else str(su)
-              row=[str(i),x.get('identifier',''),str(x.get('year',x.get('date',''))),str(x.get('volume','')),cr.replace('\t',' '),str(x.get('title','')).replace('\t',' '),su.replace('\t',' ')]
-              line='\t'.join(row)
-              f.write(line+'\n')
-              print('Q\t'+line[:800])
+          import json, urllib.parse, urllib.request
+          ids='''encyclopediaofhe0004unse
+journalofbiblica0104vict
+journalofbiblica0106burk
+biblicalmotifsor0003alex
+shortguidetoacce0000jppo_h1d6
+palestine-exploration-quarterly_january-june-1956
+palestine-exploration-quarterly_january-june-1957
+practicalguidefo0000kost
+ancientsynagogue0000suke_e1m2
+sim_bulletin-of-the-american-schools-of-oriental-research_1950-12_120
+sim_bulletin-of-the-american-schools-of-oriental-research_1951-02_121
+gtu_32400001585011_1
+sim_journal-of-biblical-literature_1951-03_70_1
+sim_near-eastern-archaeology_1942-05_5_2
+sim_bulletin-of-the-american-schools-of-oriental-research_1946-02_101
+catholic-biblical-quarterly_1939-1948_1-10_index
+semeiaexperiment0000kati
+rationalviewofbi0000mann
+revelationcanoni0000john
+sim_journal-of-biblical-literature_1953-03_72_1'''.splitlines()
+          out=[]
+          for ident in ids:
+            url='https://archive.org/metadata/'+urllib.parse.quote(ident)
+            md=json.load(urllib.request.urlopen(url,timeout=35))
+            m=md.get('metadata',{}) or {}
+            col=m.get('collection',[])
+            if isinstance(col,str): col=[col]
+            files=md.get('files',[]) or []
+            pub=[]
+            for f in files:
+              n=str(f.get('name','') or '')
+              if not n.lower().endswith('.pdf'): continue
+              if n.lower().endswith('.lcpdf') or 'encrypted' in n.lower(): continue
+              if str(f.get('private','false')).lower()=='true': continue
+              pub.append(n)
+            rec={
+              'identifier': ident,
+              'in_gtu': 'graduatetheologicalunion' in col,
+              'title': m.get('title',''),
+              'creator': m.get('creator',''),
+              'year': m.get('year',''),
+              'date': m.get('date',''),
+              'volume': m.get('volume',''),
+              'edition': m.get('edition',''),
+              'series': m.get('series',''),
+              'language': m.get('language',''),
+              'subject': m.get('subject',''),
+              'contributor': m.get('contributor',''),
+              'description': m.get('description',''),
+              'access_restricted': m.get('access-restricted-item',''),
+              'printdisabled': m.get('printdisabled',''),
+              'public_pdf': pub[0] if pub else '',
+              'imagecount': m.get('imagecount','')
+            }
+            out.append(rec)
+            print('VERIFY\t'+json.dumps(rec,ensure_ascii=False))
+          assert len(out)==20
+          assert all(r['in_gtu'] for r in out)
+          with open('final.json','w',encoding='utf-8') as f:
+            json.dump(out,f,ensure_ascii=False,indent=2)
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: gtu-quick-candidates
-          path: quick.tsv
+          name: gtu-final-candidates
+          path: final.json
