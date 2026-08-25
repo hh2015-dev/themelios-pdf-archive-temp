@@ -1,0 +1,96 @@
+name: GTU inventory discovery 20260825 0739
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mine GTU collection broadly
+        shell: bash
+        run: |
+          cat > /tmp/discover.py <<'PY'
+          import json, urllib.parse, urllib.request, time, re
+          BASE='https://archive.org/advancedsearch.php'
+          queries=[
+            '(title:hebrew OR subject:hebrew)', '(title:aramaic OR subject:aramaic)', '(title:syriac OR subject:syriac)',
+            '(title:semitic OR subject:semitic)', '(title:greek OR subject:"Greek language")', '(title:septuagint OR title:LXX OR subject:septuagint)',
+            '(title:"textual criticism" OR subject:"textual criticism")', '(title:manuscript* OR subject:manuscript*)', '(title:papyr* OR subject:papyr*)',
+            '(title:qumran OR title:"dead sea" OR subject:qumran)', '(title:apocryph* OR title:pseudepigraph* OR subject:apocryph*)',
+            '(title:talmud OR title:mishnah OR title:rabbin* OR subject:talmud)', '(title:akkadian OR title:assyri* OR title:babylon* OR subject:akkadian)',
+            '(title:ugarit* OR subject:ugarit*)', '(title:archaeolog* OR subject:"biblical archaeology")',
+            '(title:genesis OR title:exodus OR title:leviticus OR title:numbers OR title:deuteronomy)',
+            '(title:joshua OR title:judges OR title:samuel OR title:kings OR title:chronicles)',
+            '(title:psalm* OR title:job OR title:proverb* OR title:ecclesiastes OR title:"song of songs")',
+            '(title:isaiah OR title:jeremiah OR title:ezekiel OR title:daniel OR title:prophet*)',
+            '(title:matthew OR title:mark OR title:luke OR title:john OR title:acts)',
+            '(title:romans OR title:corinth* OR title:galatian* OR title:ephesian* OR title:hebrews OR title:revelation)',
+            '(title:commentar* OR title:exeges* OR title:interpret*)', '(title:concordance OR title:lexicon OR title:grammar OR title:bibliograph*)',
+            '(title:philo OR title:josephus OR title:origen OR title:jerome OR title:augustine OR title:calvin OR title:luther)',
+            '(title:"biblical archaeologist" OR title:"journal of biblical literature" OR title:"bible translator" OR title:"semitic studies")'
+          ]
+          pages=[1,2,4,7]
+          docs={}
+          examined=0
+          for qi,q in enumerate(queries):
+            for page in pages:
+              full=f'collection:graduatetheologicalunion AND mediatype:texts AND {q}'
+              params={'q':full,'fl[]':['identifier','title','creator','year','date','volume','edition','series','subject','language','contributor'],'rows':100,'page':page,'output':'json','sort[]':'identifier asc'}
+              url=BASE+'?'+urllib.parse.urlencode(params,doseq=True)
+              try:
+                with urllib.request.urlopen(url,timeout=30) as r: data=json.load(r)
+              except Exception as e:
+                print('SEARCH_ERR',qi,page,e); continue
+              arr=data.get('response',{}).get('docs',[]); examined += len(arr)
+              for d in arr:
+                ident=d.get('identifier')
+                if ident: docs.setdefault(ident,d)
+              time.sleep(.05)
+          print('SEARCH_APPEARANCES',examined)
+          print('UNIQUE_IDENTIFIERS',len(docs))
+          # metadata verification for up to 700 diverse identifiers, sorted by stable hash-ish title/identifier ordering
+          ids=sorted(docs)[:700]
+          out=[]
+          for idx,ident in enumerate(ids):
+            try:
+              with urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident),timeout=30) as r: m=json.load(r)
+            except Exception as e:
+              continue
+            md=m.get('metadata',{}) or {}
+            coll=md.get('collection',[])
+            if isinstance(coll,str): coll=[coll]
+            if 'graduatetheologicalunion' not in coll: continue
+            files=m.get('files',[]) or []
+            pdfs=[]
+            for f in files:
+              name=str(f.get('name',''))
+              if not name.lower().endswith('.pdf'): continue
+              if str(f.get('private','false')).lower()=='true': continue
+              if name.lower().endswith('_encrypted.pdf') or name.lower().endswith('.lcpdf'): continue
+              pdfs.append({'name':name,'size':f.get('size'),'source':f.get('source')})
+            pagecount=md.get('page-progression') or md.get('page_number_confidence')
+            # Prefer scandata leaf count if present in files metadata not parsed; leave blank rather than infer.
+            rec={
+              'identifier':ident,'title':md.get('title') or docs[ident].get('title'),'creator':md.get('creator') or docs[ident].get('creator'),
+              'date':md.get('date') or docs[ident].get('date'),'year':docs[ident].get('year'),'volume':md.get('volume') or docs[ident].get('volume'),
+              'edition':md.get('edition') or docs[ident].get('edition'),'series':md.get('series') or docs[ident].get('series'),
+              'subject':md.get('subject') or docs[ident].get('subject'),'language':md.get('language') or docs[ident].get('language'),
+              'contributor':md.get('contributor') or docs[ident].get('contributor'),'collection':coll,
+              'access_restricted':md.get('access-restricted-item'),'printdisabled':md.get('printdisabled'),'pdfs':pdfs[:3]
+            }
+            out.append(rec)
+            if len(out)>=500: break
+            if idx%50==0: time.sleep(.1)
+          with open('gtu_candidates.jsonl','w',encoding='utf-8') as f:
+            for r in out: f.write(json.dumps(r,ensure_ascii=False)+'\n')
+          with open('summary.txt','w') as f: f.write(f'search_appearances={examined}\nunique_identifiers={len(docs)}\nmetadata_verified={len(out)}\n')
+          print('METADATA_VERIFIED',len(out))
+          PY
+          python /tmp/discover.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-inventory-candidates
+          path: |
+            gtu_candidates.jsonl
+            summary.txt
+          compression-level: 6
