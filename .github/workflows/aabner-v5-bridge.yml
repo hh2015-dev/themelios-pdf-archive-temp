@@ -1,0 +1,92 @@
+name: AABNER Volume 5 bridge
+
+on:
+  push:
+    paths:
+      - 'aabner-v5-trigger.txt'
+  workflow_dispatch:
+
+jobs:
+  fetch-v5:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install PDF merger
+        run: python -m pip install --quiet pypdf
+      - name: Download and merge official article PDFs
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os,re,html,urllib.request,urllib.parse
+          from pypdf import PdfReader, PdfWriter
+          UA={'User-Agent':'Mozilla/5.0'}
+          base='https://aabner.org/ojs/index.php/beabs'
+          issues=[(157,1),(156,2)]
+          os.makedirs('aabner_v5',exist_ok=True)
+          def get(url):
+              req=urllib.request.Request(url,headers=UA)
+              with urllib.request.urlopen(req,timeout=120) as r:
+                  return r.read(),r.headers.get_content_type(),r.geturl()
+          for issue_id,inum in issues:
+              issue_url=f'{base}/issue/view/{issue_id}'
+              body,_,_=get(issue_url)
+              txt=body.decode('utf-8','replace')
+              # collect article PDF links in page order
+              hrefs=re.findall(r'href=["\']([^"\']+)["\']',txt,re.I)
+              candidates=[]
+              for h in hrefs:
+                  u=urllib.parse.urljoin(issue_url,html.unescape(h))
+                  if '/article/view/' in u and (u.endswith('/pdf') or '/pdf/' in u):
+                      if u not in candidates: candidates.append(u)
+              # OJS themes sometimes expose article/view links with PDF text separately.
+              if not candidates:
+                  # collect all article view URLs and inspect each article page for a PDF/download link
+                  article_pages=[]
+                  for h in hrefs:
+                      u=urllib.parse.urljoin(issue_url,html.unescape(h))
+                      if '/article/view/' in u and u not in article_pages: article_pages.append(u)
+                  for ap in article_pages:
+                      try:
+                          ab,_,_=get(ap); at=ab.decode('utf-8','replace')
+                      except Exception as e:
+                          print('ARTICLE PAGE ERR',ap,e); continue
+                      for ph in re.findall(r'href=["\']([^"\']+)["\']',at,re.I):
+                          pu=urllib.parse.urljoin(ap,html.unescape(ph))
+                          if ('/article/download/' in pu or '/article/view/' in pu and '/pdf' in pu.lower()) and pu not in candidates:
+                              candidates.append(pu)
+              print('ISSUE',inum,'PDF candidates',len(candidates))
+              parts=[]
+              for idx,u in enumerate(candidates,1):
+                  try:
+                      b,c,f=get(u)
+                      # If HTML landing, find real download URL.
+                      if not b.startswith(b'%PDF'):
+                          t=b.decode('utf-8','replace')
+                          dl=None
+                          for h in re.findall(r'(?:href|src)=["\']([^"\']+)',t,re.I):
+                              pu=urllib.parse.urljoin(f,html.unescape(h))
+                              if '/article/download/' in pu:
+                                  try:
+                                      bb,cc,ff=get(pu)
+                                      if bb.startswith(b'%PDF') or cc=='application/pdf': b,c,f=bb,cc,ff; dl=pu; break
+                                  except Exception: pass
+                          if not b.startswith(b'%PDF'): continue
+                      p=f'aabner_v5/i{inum:02d}-part-{idx:02d}.pdf'
+                      open(p,'wb').write(b); parts.append(p)
+                      print('SAVED PART',inum,idx,len(b),f)
+                  except Exception as e: print('PDF ERR',u,e)
+              if not parts: raise SystemExit(f'No article PDFs downloaded for issue {inum}')
+              writer=PdfWriter()
+              for p in parts:
+                  reader=PdfReader(p)
+                  for page in reader.pages: writer.add_page(page)
+              out=f'aabner_v5/AABNER - Volume 005 Issue {inum:02d} - 2025 - Combined Official Articles.pdf'
+              with open(out,'wb') as fh: writer.write(fh)
+              print('MERGED',out,os.path.getsize(out),'parts',len(parts))
+          PY
+      - name: Upload Volume 5 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: aabner-volume-005-2025
+          path: aabner_v5/AABNER*.pdf
+          if-no-files-found: error
+          compression-level: 0
