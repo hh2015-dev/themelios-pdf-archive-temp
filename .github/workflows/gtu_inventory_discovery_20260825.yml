@@ -9,53 +9,26 @@ jobs:
       - name: Mine GTU-only Archive corpus
         shell: bash
         run: |
-          cat > /tmp/mine.py <<'PY'
-          import requests, urllib.parse, json, re
+          python3 - <<'PY'
+          import requests,json,re
           S=requests.Session(); BASE='https://archive.org/advancedsearch.php'
-          terms=[
-            'Hebrew OR Aramaic OR Syriac OR Semitic','Septuagint OR textual criticism OR manuscript OR papyri',
-            'Genesis OR Exodus OR Isaiah OR Jeremiah OR Psalms OR Job','Matthew OR Mark OR Luke OR John OR Acts OR Romans OR Paul',
-            'Qumran OR Dead Sea OR Apocrypha OR Pseudepigrapha OR rabbinic OR Talmud','Assyrian OR Babylonian OR Akkadian OR Ugaritic OR Canaanite OR archaeology',
-            'Calvin OR Luther OR Origen OR Augustine OR patristic OR Reformation','lexicon OR grammar OR concordance OR bibliography OR theology',
-            'Journal OR Biblical OR Bible OR Scripture']
-          pages=[1,3,6,10,16]
+          queries=[
+          ('sem','Hebrew OR Aramaic OR Syriac OR Semitic',4),('text','Septuagint OR textual criticism OR manuscript OR papyri',7),
+          ('ot','Genesis OR Exodus OR Isaiah OR Jeremiah OR Psalms OR Job',11),('nt','Matthew OR Mark OR Luke OR John OR Acts OR Romans OR Paul',13),
+          ('jud','Qumran OR Dead Sea OR Apocrypha OR Pseudepigrapha OR rabbinic OR Talmud',5),('ane','Assyrian OR Babylonian OR Akkadian OR Ugaritic OR Canaanite OR archaeology',9),
+          ('hist','Calvin OR Luther OR Origen OR Augustine OR patristic OR Reformation',8),('ref','lexicon OR grammar OR concordance OR bibliography',6),
+          ('journ','Journal OR Biblical OR Bible OR Scripture',15),('theol','theology OR church history OR Judaism OR early Christianity',10)]
           seen={}; examined=0
-          for t in terms:
-            for page in pages:
-              q=f'collection:graduatetheologicalunion AND mediatype:texts AND ({t})'
-              params={'q':q,'fl[]':['identifier','title','creator','year','language','subject'],'rows':80,'page':page,'output':'json'}
-              try:
-                docs=S.get(BASE,params=params,timeout=10).json()['response']['docs']; examined+=len(docs)
-              except Exception: continue
-              for d in docs:
-                if d.get('identifier'): seen.setdefault(d['identifier'],d)
-          kwsA=re.compile(r'\b(hebrew|aramaic|syriac|semitic|septuagint|lxx|textual|manuscript|papyri|genesis|exodus|leviticus|numbers|deuteronomy|joshua|judges|samuel|kings|isaiah|jeremiah|ezekiel|psalm|job|proverbs|ecclesiastes|daniel|prophet|matthew|mark|luke|john|acts|romans|corinth|galatians|ephesians|philippians|colossians|hebrews|revelation|qumran|dead sea|apocrypha|pseudepigrapha|talmud|midrash|rabbinic|assyrian|babylonian|akkadian|ugaritic|canaanite|archaeolog|lexicon|grammar|concordance|biblical|bible|scripture|calvin|luther|origen|augustine)\b',re.I)
-          kwsB=re.compile(r'\b(theology|church history|patristic|reformation|doctrine|creed|confession|apologetic|mission|judaism|early christian)\b',re.I)
-          scored=[]
-          for d in seen.values():
-            text=' '.join(str(d.get(k,'')) for k in ['title','creator','subject'])
-            score=5*len(kwsA.findall(text))+2*len(kwsB.findall(text))
-            if score: scored.append((score,d))
-          scored.sort(key=lambda x:(-x[0],str(x[1].get('year','')),x[1].get('title','')))
-          print('EXAMINED_APPEARANCES',examined); print('UNIQUE_CANDIDATES',len(seen)); print('SCORED_CANDIDATES',len(scored))
-          # Broad candidates from the exact collection query. Verify only the highest 70 individually in metadata.
-          out=[]
-          for score,d in scored[:70]:
-            ident=d['identifier']
-            try:
-              m=S.get(f'https://archive.org/metadata/{ident}',timeout=8).json(); md=m.get('metadata',{})
-              col=md.get('collection',[]); col=[col] if isinstance(col,str) else col
-              if 'graduatetheologicalunion' not in col: continue
-              files=m.get('files',[]); pdfs=[]
-              for f in files:
-                n=f.get('name','')
-                if n.lower().endswith('.pdf') and not n.lower().endswith('.lcpdf') and str(f.get('private','false')).lower()!='true' and 'encrypted' not in n.lower(): pdfs.append(n)
-              access=str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true'
-              direct='' if access or not pdfs else 'https://archive.org/download/'+ident+'/'+urllib.parse.quote(pdfs[0])
-              item={'score':score,'identifier':ident,'title':md.get('title') or d.get('title',''),'creator':md.get('creator') or d.get('creator',''),'date':md.get('date') or md.get('year') or d.get('year',''),'volume':md.get('volume',''),'edition':md.get('edition',''),'series':md.get('series',''),'language':md.get('language') or d.get('language',''),'subject':md.get('subject') or d.get('subject',''),'contributor':md.get('contributor',''),'mediatype':md.get('mediatype','texts'),'direct_pdf':direct,'access_restricted':access,'pdf_count':len(pdfs)}
-              out.append(item)
+          for tag,t,page in queries:
+            q=f'collection:graduatetheologicalunion AND mediatype:texts AND ({t})'
+            p={'q':q,'fl[]':['identifier','title','creator','date','year','language','subject'],'rows':100,'page':page,'output':'json'}
+            try: docs=S.get(BASE,params=p,timeout=12).json()['response']['docs']
             except Exception: continue
-          print('VERIFIED_GTU',len(out))
-          for x in out: print('CANDIDATE\t'+json.dumps(x,ensure_ascii=False,separators=(',',':')))
+            examined += len(docs)
+            for d in docs:
+              if d.get('identifier'):
+                d['_tag']=tag; seen.setdefault(d['identifier'],d)
+          print('EXAMINED_APPEARANCES',examined); print('UNIQUE_CANDIDATES',len(seen))
+          # Exact collection query establishes corpus membership. Print all candidates for downstream sheet-dedup.
+          for d in seen.values(): print('CANDIDATE\t'+json.dumps(d,ensure_ascii=False,separators=(',',':')))
           PY
-          python /tmp/mine.py
