@@ -1,0 +1,65 @@
+name: GTU Verify Final 20260825
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify final candidates against Archive metadata
+        shell: bash
+        run: |
+          cat > /tmp/verify.py <<'PY'
+          import requests,json,urllib.parse,concurrent.futures
+          B='https://archive.org'
+          ids='''kritischexegetis0002meye
+          lefilslhommeetle0000copp
+          greekenglishlexi0002lidd_i3w6
+          saintaugustinesd0000unse
+          luthersprefacest0000hein
+          gotteswortundmen0000herm_r8m2
+          newtestamentcomm0000unse_u0c0
+          divinityofchrist0000atro
+          talmud0007vari
+          aramaischechrsto0000drjj
+          lecturesonreligi0000smit
+          melangesdelunive0026univ
+          melangesdelunive0027univ
+          journal-of-near-eastern-studies_1888-04_4_3
+          journal-of-near-eastern-studies_1888-10_5_1
+          journal-of-near-eastern-studies_1889-01_5_2
+          journal-of-near-eastern-studies_1891-01_7_2
+          sim_journal-of-biblical-literature_1960-06_79_2
+          sim_journal-of-biblical-literature_1961-06_80_2
+          sim_journal-of-biblical-literature_1923_42_1-2
+          sim_near-eastern-archaeology_1946-02_9_1
+          sim_near-eastern-archaeology_1957-05_20_2
+          journal-of-jewish-studies_1948_1_3
+          journal-of-jewish-studies_1948_1_4
+          journal-of-jewish-studies_1961_12_3-4'''.split()
+          def one(ident):
+            try:
+              m=requests.get(B+'/metadata/'+urllib.parse.quote(ident),timeout=20).json(); md=m.get('metadata',{})
+              c=md.get('collection',[]); c=[c] if isinstance(c,str) else c
+              if 'graduatetheologicalunion' not in c:return {'identifier':ident,'valid':False,'reason':'not_gTU'}
+              def val(k):
+                v=md.get(k,''); return '; '.join(map(str,v)) if isinstance(v,list) else v
+              restricted=str(md.get('access-restricted-item','false')).lower()=='true' or str(md.get('printdisabled','false')).lower()=='true'
+              pdf=''
+              if not restricted:
+                for f in m.get('files',[]):
+                  n=f.get('name',''); priv=str(f.get('private','false')).lower()=='true'
+                  if n.lower().endswith('.pdf') and not priv and not n.lower().endswith('_encrypted.pdf') and not n.lower().endswith('.lcpdf'):
+                    pdf=n; break
+              return {'identifier':ident,'valid':True,'title':val('title'),'creator':val('creator'),'year':val('year') or val('date'),'volume':val('volume'),'edition':val('edition'),'series':val('series'),'subject':val('subject'),'language':val('language'),'contributor':val('contributor'),'pages':val('pages') or val('page-count') or val('page_count'),'restricted':restricted,'pdf':pdf}
+            except Exception as e:return {'identifier':ident,'valid':False,'reason':str(e)}
+          with concurrent.futures.ThreadPoolExecutor(max_workers=12) as ex: out=list(ex.map(one,ids))
+          open('gtu_verified_final.json','w').write(json.dumps(out,ensure_ascii=False,indent=2))
+          print('VERIFIED',sum(bool(x.get('valid')) for x in out),'OF',len(out))
+          for x in out: print(json.dumps(x,ensure_ascii=False))
+          PY
+          python /tmp/verify.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-verified-final-20260825
+          path: gtu_verified_final.json
