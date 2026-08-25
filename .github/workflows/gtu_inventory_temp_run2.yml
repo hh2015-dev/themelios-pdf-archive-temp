@@ -1,6 +1,6 @@
 name: GTU exact collection verification temp
 on:
-  push:
+  pull_request:
     branches: [ main ]
 jobs:
   verify:
@@ -10,7 +10,7 @@ jobs:
         shell: bash
         run: |
           python3 - <<'PY'
-          import requests,re,urllib.parse
+          import requests,re
           ids='''urexcavationsneo0009sirl
 newtestamentapoc0000unse_u3n2
 grammatikdergrie0002mays_c2m3
@@ -42,16 +42,13 @@ porphyrysphiloso0000john'''.splitlines()
           print('identifier\tingtu\ttitle\tcreator\tdate\tvolume\tedition\tseries\tcontributor\tlanguage\tmediatype\trestricted\tpdf\timagecount\tsubject')
           for ident in ids:
             try:
-              j=requests.get('https://archive.org/metadata/'+ident,timeout=30).json()
-              m=j.get('metadata',{})
+              j=requests.get('https://archive.org/metadata/'+ident,timeout=30).json(); m=j.get('metadata',{})
               coll=m.get('collection',[]); coll=[coll] if isinstance(coll,str) else coll
               ingtu='graduatetheologicalunion' in coll
-              files=j.get('files',[])
               pdf=''
-              for f in files:
+              for f in j.get('files',[]):
                 n=f.get('name','')
-                if n.lower().endswith('.pdf') and not n.lower().endswith('_encrypted.pdf') and not n.lower().endswith('.lcpdf') and str(f.get('private','false')).lower()!='true':
-                  pdf=n; break
+                if n.lower().endswith('.pdf') and not n.lower().endswith('_encrypted.pdf') and not n.lower().endswith('.lcpdf') and str(f.get('private','false')).lower()!='true': pdf=n; break
               restricted=str(m.get('access-restricted-item',m.get('printdisabled',''))).lower()
               fields=[ident,str(ingtu),clean(m.get('title')),clean(m.get('creator')),clean(m.get('date') or m.get('year')),clean(m.get('volume')),clean(m.get('edition')),clean(m.get('series')),clean(m.get('contributor')),clean(m.get('language')),clean(m.get('mediatype')),restricted,clean(pdf),clean(m.get('imagecount','')),clean(m.get('subject'))]
               print('\t'.join(fields))
