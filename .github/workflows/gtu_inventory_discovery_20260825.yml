@@ -1,0 +1,91 @@
+name: GTU Inventory Discovery 20260825
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mine GTU-only Archive corpus
+        shell: bash
+        run: |
+          cat > /tmp/mine.py <<'PY'
+          import requests, urllib.parse, json, re, time
+          BASE='https://archive.org/advancedsearch.php'
+          terms=[
+            'Hebrew OR Aramaic OR Syriac OR Semitic',
+            'Septuagint OR textual criticism OR manuscript OR papyri',
+            'Genesis OR Exodus OR Isaiah OR Jeremiah OR Psalms OR Job',
+            'Matthew OR Mark OR Luke OR John OR Acts OR Romans OR Paul',
+            'Qumran OR Dead Sea OR Apocrypha OR Pseudepigrapha OR rabbinic OR Talmud',
+            'Assyrian OR Babylonian OR Akkadian OR Ugaritic OR Canaanite OR archaeology',
+            'Calvin OR Luther OR Origen OR Augustine OR patristic OR Reformation',
+            'lexicon OR grammar OR concordance OR bibliography OR theology',
+            'Journal OR Biblical OR Bible OR Scripture'
+          ]
+          pages=[1,2,4,7,11]
+          seen={}
+          examined=0
+          for t in terms:
+            for page in pages:
+              q=f'collection:graduatetheologicalunion AND mediatype:texts AND ({t})'
+              params={'q':q,'fl[]':['identifier','title','creator','year','language','subject'],'rows':60,'page':page,'output':'json'}
+              try:
+                r=requests.get(BASE,params=params,timeout=30); r.raise_for_status()
+                docs=r.json()['response']['docs']; examined += len(docs)
+              except Exception:
+                continue
+              for d in docs:
+                ident=d.get('identifier')
+                if not ident or ident in seen: continue
+                seen[ident]=d
+          kwsA=re.compile(r'\b(hebrew|aramaic|syriac|semitic|septuagint|lxx|textual|manuscript|papyri|genesis|exodus|leviticus|numbers|deuteronomy|joshua|judges|samuel|kings|isaiah|jeremiah|ezekiel|psalm|job|proverbs|ecclesiastes|song of songs|daniel|prophet|matthew|mark|luke|john|acts|romans|corinth|galatians|ephesians|philippians|colossians|thessalonians|timothy|titus|hebrews|james|peter|jude|revelation|qumran|dead sea|apocrypha|pseudepigrapha|talmud|midrash|rabbinic|assyrian|babylonian|akkadian|ugaritic|canaanite|archaeolog|lexicon|grammar|concordance|biblical|bible|scripture|calvin|luther|origen|augustine)\b',re.I)
+          kwsB=re.compile(r'\b(theology|church history|patristic|reformation|doctrine|creed|confession|apologetic|mission|judaism|early christian)\b',re.I)
+          scored=[]
+          for d in seen.values():
+            text=' '.join(str(d.get(k,'')) for k in ['title','creator','subject'])
+            a=len(kwsA.findall(text)); b=len(kwsB.findall(text))
+            score=a*5+b*2
+            if score<=0: continue
+            scored.append((score,d))
+          scored.sort(key=lambda x:(-x[0], str(x[1].get('year','')), x[1].get('title','')))
+          print('EXAMINED_APPEARANCES',examined)
+          print('UNIQUE_CANDIDATES',len(seen))
+          print('SCORED_CANDIDATES',len(scored))
+          out=[]
+          for score,d in scored[:180]:
+            ident=d['identifier']
+            try:
+              m=requests.get(f'https://archive.org/metadata/{ident}',timeout=30).json()
+              md=m.get('metadata',{})
+              col=md.get('collection',[])
+              if isinstance(col,str): col=[col]
+              if 'graduatetheologicalunion' not in col: continue
+              files=m.get('files',[])
+              pdfs=[]
+              for f in files:
+                n=f.get('name','')
+                if n.lower().endswith('.pdf') and not n.lower().endswith('.lcpdf') and str(f.get('private','false')).lower()!='true' and 'encrypted' not in n.lower():
+                  pdfs.append((n,f.get('size')))
+              access=str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true'
+              direct=''
+              if pdfs and not access:
+                direct='https://archive.org/download/'+ident+'/'+urllib.parse.quote(pdfs[0][0])
+              pages=md.get('page-progression','')
+              item={
+                'score':score,'identifier':ident,'title':md.get('title') or d.get('title',''),
+                'creator':md.get('creator') or d.get('creator',''),'date':md.get('date') or md.get('year') or d.get('year',''),
+                'volume':md.get('volume',''),'edition':md.get('edition',''),'series':md.get('series',''),
+                'language':md.get('language') or d.get('language',''),'subject':md.get('subject') or d.get('subject',''),
+                'contributor':md.get('contributor',''),'mediatype':md.get('mediatype','texts'),
+                'direct_pdf':direct,'access_restricted':access,'pdf_count':len(pdfs),
+                'description':md.get('description','')
+              }
+              out.append(item)
+            except Exception:
+              continue
+          print('VERIFIED_GTU',len(out))
+          for x in out:
+            print('CANDIDATE\t'+json.dumps(x,ensure_ascii=False,separators=(',',':')))
+          PY
+          python /tmp/mine.py
