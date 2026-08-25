@@ -1,0 +1,41 @@
+name: GTU inventory fast discovery 20260825 0739
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  discover-fast:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Broad GTU search only
+        shell: bash
+        run: |
+          cat > /tmp/fast.py <<'PY'
+          import json, urllib.parse, urllib.request
+          qs=[
+          'hebrew','aramaic','syriac','semitic','greek','septuagint','textual','manuscript','papyri','qumran','apocrypha','talmud','akkadian','ugaritic','archaeology',
+          'genesis','exodus','deuteronomy','psalms','job','isaiah','jeremiah','daniel','matthew','mark','luke','john','acts','romans','corinthians','hebrews','revelation',
+          'commentary','exegesis','concordance','lexicon','grammar','bibliography','philo','josephus','origen','jerome','calvin','luther','biblical archaeologist','journal biblical literature','bible translator'
+          ]
+          docs={}; appearances=0
+          for term in qs:
+            q=f'collection:graduatetheologicalunion AND mediatype:texts AND (title:({term}) OR subject:({term}))'
+            for page in (1,3):
+              p={'q':q,'fl[]':['identifier','title','creator','year','date','volume','edition','series','subject','language','contributor'],'rows':100,'page':page,'output':'json','sort[]':'identifier asc'}
+              try:
+                with urllib.request.urlopen('https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(p,doseq=True),timeout=20) as r: data=json.load(r)
+              except Exception: continue
+              arr=data.get('response',{}).get('docs',[]); appearances+=len(arr)
+              for d in arr:
+                if d.get('identifier'): docs[d['identifier']]=d
+          with open('gtu_fast.jsonl','w',encoding='utf-8') as f:
+            for d in docs.values(): f.write(json.dumps(d,ensure_ascii=False)+'\n')
+          with open('fast_summary.txt','w') as f:f.write(f'appearances={appearances}\nunique={len(docs)}\n')
+          print('APPEARANCES',appearances,'UNIQUE',len(docs))
+          PY
+          python /tmp/fast.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-fast-candidates
+          path: |
+            gtu_fast.jsonl
+            fast_summary.txt
