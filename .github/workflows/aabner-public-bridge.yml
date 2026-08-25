@@ -1,0 +1,28 @@
+name: AABNER public bridge
+
+on:
+  push:
+    paths:
+      - 'aabner-public-trigger.txt'
+  workflow_dispatch:
+
+jobs:
+  fetch-aabner:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download PDF
+        shell: bash
+        run: |
+          set -e
+          OUT='AABNER - Volume 001 Issue 01 - 2021.pdf'
+          URL='https://aabner.org/ojs/index.php/beabs/issue/download/130/AABNER%201%2C1%20%282021%29%20complete%20issue'
+          curl -L --fail --retry 3 -A 'Mozilla/5.0' "$URL" -o "$OUT"
+          test "$(head -c 4 "$OUT")" = '%PDF'
+          ls -lh "$OUT"
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: aabner-v001-i01-public
+          path: AABNER - Volume 001 Issue 01 - 2021.pdf
+          if-no-files-found: error
+          compression-level: 0
