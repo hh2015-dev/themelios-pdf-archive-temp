@@ -1,4 +1,4 @@
-name: GTU inventory discovery 20260825
+name: GTU inventory discovery 20260825 deep
 on:
   pull_request:
     branches: [ main ]
@@ -6,12 +6,12 @@ jobs:
   discover:
     runs-on: ubuntu-latest
     steps:
-      - name: Broad GTU-only discovery and metadata verification
+      - name: Deep GTU-only discovery and metadata verification
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import json, urllib.parse, urllib.request, time
+          import json, urllib.parse, urllib.request
           queries = [
             '(title:hebrew OR title:aramaic OR title:syriac OR title:semitic OR title:ugaritic OR title:akkadian)',
             '(title:"old testament" OR title:"hebrew bible" OR title:genesis OR title:exodus OR title:isaiah OR title:psalms OR title:job)',
@@ -23,25 +23,27 @@ jobs:
             '(title:lexicon OR title:grammar OR title:concordance OR title:bibliography OR title:dictionary)',
             '(title:"biblical literature" OR title:"biblical archaeologist" OR title:"bible translator" OR title:interpretation)',
             '(title:apocrypha OR title:pseudepigrapha OR title:patristic OR title:exegesis OR title:commentary)',
-            '(language:ger OR language:fre OR language:lat OR language:grc OR language:heb OR language:syr)',
+            '(subject:"Bible" OR subject:"Judaism" OR subject:"Semitic" OR subject:"Church history")',
             '(year:[1800 TO 1899] OR year:[1900 TO 1949] OR year:[1950 TO 1999])'
           ]
           base='collection:graduatetheologicalunion AND mediatype:texts AND '
           docs={}; examined=0
           for q in queries:
-            for page in (1,2):
-              params={'q':base+q,'fl[]':['identifier','title','creator','year','language','volume'],'rows':100,'page':page,'output':'json'}
+            for page in (3,4,5):
+              params={'q':base+q,'fl[]':['identifier','title','creator','year','language','volume','subject'],'rows':100,'page':page,'output':'json'}
               url='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(params,doseq=True)
-              with urllib.request.urlopen(url,timeout=15) as r: data=json.load(r)
+              try:
+                with urllib.request.urlopen(url,timeout=20) as r: data=json.load(r)
+              except Exception: continue
               rows=data.get('response',{}).get('docs',[]); examined += len(rows)
               for d in rows:
                 if d.get('identifier'): docs[d['identifier']]=d
-          termsA=['bible','biblical','testament','hebrew','aramaic','syriac','semitic','greek','septuagint','manuscript','textual','qumran','dead sea','talmud','rabbin','josephus','philo','assyri','babylon','akkadian','ugarit','archaeolog','genesis','exodus','isaiah','psalm','job','gospel','romans','acts','revelation','lexicon','grammar','concordance','commentary','exegesis','apocrypha','pseudepigrapha']
+          termsA=['bible','biblical','testament','hebrew','aramaic','syriac','semitic','greek','septuagint','manuscript','textual','qumran','dead sea','talmud','rabbin','josephus','philo','assyri','babylon','akkadian','ugarit','archaeolog','genesis','exodus','isaiah','psalm','job','gospel','romans','acts','revelation','lexicon','grammar','concordance','commentary','exegesis','apocrypha','pseudepigrapha','prophet','coptic','samaritan']
           termsB=['augustine','calvin','luther','origen','jerome','patrist','church','theolog','reformation','mission','judaism','christian']
+          def txt(d): return (str(d.get('title',''))+' '+str(d.get('creator',''))+' '+str(d.get('subject',''))).lower()
           def score(d):
-            s=(str(d.get('title',''))+' '+str(d.get('creator',''))).lower()
-            return 4*sum(t in s for t in termsA)+sum(t in s for t in termsB)
-          pool=sorted(docs.values(), key=lambda d:(score(d),str(d.get('year',''))), reverse=True)[:140]
+            s=txt(d); return 4*sum(t in s for t in termsA)+sum(t in s for t in termsB)
+          pool=sorted(docs.values(), key=lambda d:(score(d),str(d.get('year',''))), reverse=True)[:220]
           verified=[]
           for d in pool:
             ident=d['identifier']
@@ -58,16 +60,15 @@ jobs:
             restricted=str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true'
             def s(v): return '; '.join(map(str,v)) if isinstance(v,list) else ('' if v is None else str(v))
             title=s(md.get('title') or d.get('title')); creator=s(md.get('creator') or d.get('creator')); year=s(md.get('date') or md.get('year') or d.get('year'))
-            volume=s(md.get('volume')); edition=s(md.get('edition')); series=s(md.get('series')); lang=s(md.get('language') or d.get('language')); contributor=s(md.get('contributor'))
-            pagecount=s(md.get('pages') or md.get('page-count'))
+            volume=s(md.get('volume')); edition=s(md.get('edition')); series=s(md.get('series')); lang=s(md.get('language') or d.get('language')); contributor=s(md.get('contributor')); pagecount=s(md.get('pages') or md.get('page-count'))
+            subject=s(md.get('subject') or d.get('subject'))
             direct='' if restricted or not pdf else 'https://archive.org/download/'+ident+'/'+urllib.parse.quote(pdf)
-            verified.append({'identifier':ident,'title':title,'creator':creator,'year':year,'volume':volume,'edition':edition,'series':series,'language':lang,'contributor':contributor,'restricted':restricted,'pdf':pdf,'direct_pdf':direct,'pages':pagecount,'item_link':'https://archive.org/details/'+ident,'score':score(d)})
-            if len(verified)>=80: break
-          with open('gtu_candidates.json','w',encoding='utf-8') as f: json.dump({'examined_hits':examined,'unique_hits':len(docs),'verified':verified},f,ensure_ascii=False,indent=2)
+            verified.append({'identifier':ident,'title':title,'creator':creator,'year':year,'volume':volume,'edition':edition,'series':series,'language':lang,'subject':subject,'contributor':contributor,'restricted':restricted,'pdf':pdf,'direct_pdf':direct,'pages':pagecount,'item_link':'https://archive.org/details/'+ident,'score':score(d)})
+            if len(verified)>=120: break
+          with open('gtu_candidates_deep.json','w',encoding='utf-8') as f: json.dump({'examined_hits':examined,'unique_hits':len(docs),'verified':verified},f,ensure_ascii=False,indent=2)
           print('EXAMINED_HITS',examined); print('UNIQUE_HITS',len(docs)); print('VERIFIED',len(verified))
-          for x in verified: print('\t'.join(str(x[k]).replace('\t',' ') for k in ['identifier','title','creator','year','volume','edition','restricted','direct_pdf']))
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: gtu-candidates-20260825
-          path: gtu_candidates.json
+          name: gtu-candidates-deep-20260825
+          path: gtu_candidates_deep.json
