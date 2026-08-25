@@ -6,52 +6,60 @@ jobs:
   discover:
     runs-on: ubuntu-latest
     steps:
-      - name: Mine exact GTU collection
+      - name: Verify GTU membership and metadata
         shell: bash
         run: |
-          cat > /tmp/discover.py <<'PY'
-          import requests,json,urllib.parse,time
-          terms=[
-          'title:(Bible OR biblical OR scripture)',
-          'title:(Genesis OR Exodus OR Leviticus OR Numbers OR Deuteronomy OR Joshua OR Judges OR Samuel OR Kings)',
-          'title:(Isaiah OR Jeremiah OR Ezekiel OR Daniel OR Psalms OR Job OR Proverbs OR Ecclesiastes)',
-          'title:(Matthew OR Mark OR Luke OR John OR Acts OR Romans OR Corinthians OR Galatians OR Hebrews OR Revelation)',
-          'title:(Hebrew OR Aramaic OR Syriac OR Semitic OR Ugaritic OR Akkadian OR Assyrian OR Babylonian)',
-          'title:(Greek OR Septuagint OR LXX OR papyri OR manuscript OR codex)',
-          'title:(Qumran OR "Dead Sea" OR Targum OR Talmud OR Mishnah OR Midrash OR rabbinic)',
-          'title:(archaeology OR Palestine OR Canaan OR Israel OR Assyria OR Babylonia OR "Near East")',
-          'title:(lexicon OR dictionary OR concordance OR grammar OR bibliography OR catalogue)',
-          'title:(commentary OR exegesis OR exegetical OR hermeneutics OR interpretation)',
-          'title:(Origen OR Augustine OR Jerome OR Chrysostom OR Calvin OR Luther OR Zwingli)',
-          'title:(Apocrypha OR Pseudepigrapha OR Maccabees OR Enoch OR Tobit OR Judith OR Sirach)',
-          'subject:(Bible)','subject:(Hebrew)','subject:(Greek)','subject:(Judaism)','subject:(Archaeology)','subject:(Theology)',
-          'title:(church OR theology OR doctrine OR creed OR confession OR mission OR missionary)',
-          'year:[1500 TO 1799]','year:[1800 TO 1849]','year:[1850 TO 1874]','year:[1875 TO 1899]',
-          'year:[1900 TO 1919]','year:[1920 TO 1939]','year:[1940 TO 1959]','year:[1960 TO 1979]',
-          'year:[1980 TO 1999]','year:[2000 TO 2026]'
-          ]
-          fields=['identifier','title','creator','year','date','volume','edition','series','subject','language','description','contributor','mediatype']
-          seen={}; appearances=0
-          s=requests.Session(); s.headers['User-Agent']='GTU-inventory/1.0'
-          for i,term in enumerate(terms):
-              q=f'collection:graduatetheologicalunion AND mediatype:texts AND ({term})'
-              pages=[1,3] if term.startswith('year:') else [1]
-              for page in pages:
-                  params={'q':q,'rows':100,'page':page,'output':'json','fl[]':fields,'sort[]':['date asc','date desc','titleSorter asc','titleSorter desc'][i%4]}
-                  try:
-                      r=s.get('https://archive.org/advancedsearch.php',params=params,timeout=45); r.raise_for_status(); docs=r.json().get('response',{}).get('docs',[])
-                  except Exception as e:
-                      print('QUERY_FAIL',i,page,repr(e)); continue
-                  appearances += len(docs)
-                  for d in docs:
-                      if d.get('identifier'): seen.setdefault(d['identifier'],d)
-          out={'appearances':appearances,'unique':len(seen),'candidates':list(seen.values())}
-          open('candidates.json','w').write(json.dumps(out,ensure_ascii=False))
-          print('APPEARANCES',appearances,'UNIQUE',len(seen))
+          cat > /tmp/verify.py <<'PY'
+          import requests,json,urllib.parse
+          ids='''calvinscommentar0019calv
+calvinscommentar0005calv_i9r8
+calvinscommentar0029calv
+dieweisheitdesje0000smen_z0k1
+babylonianchrono0000park_u8h8
+oldbabyloniandiv0009hern
+hkainhaiaohkhnov0002wets
+makingoflukeacts0000henr
+commentaryonepis0000norb
+historicalintrod0000robe_h4n1
+projectinbiblica0000rich
+introductiontoex0000otto
+israelspraisestu0000viol
+jeremiahbeingbai0000geor_g9t1
+jeremiahthistime0000adam
+jobtemoindelasou0120jean
+surveyofwesternp0006cols
+potteryofpalesti0000gern
+gtu_32400000857528
+ideaofhistoryina0000rola_o4q8
+spokenarabicofpa0000enha
+journal-of-the-palestine-oriental-society_1948_21
+sim_journal-of-biblical-literature_1897_16_1-2
+sim_journal-of-biblical-literature_1899_18_1-2
+sim_journal-of-biblical-literature_1900_19_1-2
+classbookofnewte0000unse_c3a4
+dictionaryofprop0000hgod
+hexaplathatissix0000unse
+greekenglishlexi0000henr_n3b4
+comparisonofegyp0000port'''.split()
+          s=requests.Session(); s.headers['User-Agent']='GTU-inventory/1.0'; out=[]
+          for ident in ids:
+              try:
+                  r=s.get('https://archive.org/metadata/'+urllib.parse.quote(ident,safe=''),timeout=45); r.raise_for_status(); j=r.json(); md=j.get('metadata',{}) or {}
+              except Exception as e:
+                  out.append({'identifier':ident,'error':repr(e)}); continue
+              coll=md.get('collection',[]); coll=[coll] if isinstance(coll,str) else coll
+              files=j.get('files',[]) or []; pdf=''
+              for f in files:
+                  n=str(f.get('name',''))
+                  if n.lower().endswith('.pdf') and str(f.get('private','false')).lower()!='true' and 'encrypted' not in n.lower() and not n.lower().endswith('.lcpdf'):
+                      pdf=n; break
+              pages=md.get('imagecount','') or md.get('pages','') or ''
+              out.append({'identifier':ident,'in_gtu':'graduatetheologicalunion' in coll,'metadata':{k:md.get(k,'') for k in ['title','creator','date','year','volume','edition','series','subject','language','contributor','description','mediatype','access-restricted-item','printdisabled']},'pdfname':pdf,'pages':pages})
+          open('verified.json','w').write(json.dumps(out,ensure_ascii=False))
+          print('VERIFIED',len(out),'GTU',sum(1 for x in out if x.get('in_gtu')),'PUBLIC_PDF',sum(1 for x in out if x.get('pdfname')))
           PY
-          python /tmp/discover.py
+          python /tmp/verify.py
       - uses: actions/upload-artifact@v4
         with:
-          name: gtu-discovery-candidates
-          path: candidates.json
-          compression-level: 6
+          name: gtu-verified-candidates
+          path: verified.json
