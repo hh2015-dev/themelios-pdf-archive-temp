@@ -1,0 +1,65 @@
+name: GTU inventory verify 20260825
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify GTU membership and metadata
+        shell: bash
+        run: |
+          cat > /tmp/verify.py <<'PY'
+          import requests,json,urllib.parse
+          ids='''calvinscommentar0019calv
+calvinscommentar0005calv_i9r8
+calvinscommentar0029calv
+dieweisheitdesje0000smen_z0k1
+babylonianchrono0000park_u8h8
+oldbabyloniandiv0009hern
+hkainhaiaohkhnov0002wets
+makingoflukeacts0000henr
+commentaryonepis0000norb
+historicalintrod0000robe_h4n1
+projectinbiblica0000rich
+introductiontoex0000otto
+israelspraisestu0000viol
+jeremiahbeingbai0000geor_g9t1
+jeremiahthistime0000adam
+jobtemoindelasou0120jean
+surveyofwesternp0006cols
+potteryofpalesti0000gern
+gtu_32400000857528
+ideaofhistoryina0000rola_o4q8
+spokenarabicofpa0000enha
+journal-of-the-palestine-oriental-society_1948_21
+sim_journal-of-biblical-literature_1897_16_1-2
+sim_journal-of-biblical-literature_1899_18_1-2
+sim_journal-of-biblical-literature_1900_19_1-2
+classbookofnewte0000unse_c3a4
+dictionaryofprop0000hgod
+hexaplathatissix0000unse
+greekenglishlexi0000henr_n3b4
+comparisonofegyp0000port'''.split()
+          s=requests.Session(); s.headers['User-Agent']='GTU-inventory/1.0'; out=[]
+          for ident in ids:
+              try:
+                  r=s.get('https://archive.org/metadata/'+urllib.parse.quote(ident,safe=''),timeout=45); r.raise_for_status(); j=r.json(); md=j.get('metadata',{}) or {}
+              except Exception as e:
+                  out.append({'identifier':ident,'error':repr(e)}); continue
+              coll=md.get('collection',[]); coll=[coll] if isinstance(coll,str) else coll
+              files=j.get('files',[]) or []; pdf=''
+              for f in files:
+                  n=str(f.get('name',''))
+                  if n.lower().endswith('.pdf') and str(f.get('private','false')).lower()!='true' and 'encrypted' not in n.lower() and not n.lower().endswith('.lcpdf'):
+                      pdf=n; break
+              pages=md.get('imagecount','') or md.get('pages','') or ''
+              out.append({'identifier':ident,'in_gtu':'graduatetheologicalunion' in coll,'metadata':{k:md.get(k,'') for k in ['title','creator','date','year','volume','edition','series','subject','language','contributor','description','mediatype','access-restricted-item','printdisabled']},'pdfname':pdf,'pages':pages})
+          open('verified.json','w').write(json.dumps(out,ensure_ascii=False))
+          print('VERIFIED',len(out),'GTU',sum(1 for x in out if x.get('in_gtu')),'PUBLIC_PDF',sum(1 for x in out if x.get('pdfname')))
+          PY
+          python /tmp/verify.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-verified-candidates
+          path: verified.json
