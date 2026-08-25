@@ -1,0 +1,53 @@
+name: GTU inventory mine
+on:
+  pull_request:
+    branches: [main]
+jobs:
+  mine:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mine GTU only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, urllib.parse, urllib.request, time
+          base='https://archive.org/advancedsearch.php'
+          queries=[
+            'collection:graduatetheologicalunion AND mediatype:texts',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(hebrew OR aramaic OR syriac OR semitic OR greek OR septuagint OR lexicon OR grammar))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(bible OR biblical OR testament OR gospel OR psalm OR isaiah OR jeremiah OR genesis OR exodus OR job))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(manuscript OR papyri OR textual OR criticism OR archaeology OR assyrian OR akkadian OR ugaritic OR qumran))',
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:(journal OR quarterly OR bulletin OR studies OR commentary OR concordance))'
+          ]
+          seen={}
+          for qi,q in enumerate(queries):
+            pages=range(1,9) if qi==0 else range(1,5)
+            for page in pages:
+              params=[]
+              params.append(('q',q))
+              for f in ['identifier','title','creator','year','date','volume','language','subject','contributor','publisher','description']:
+                params.append(('fl[]',f))
+              params += [('rows','200'),('page',str(page)),('output','json')]
+              url=base+'?'+urllib.parse.urlencode(params)
+              try:
+                with urllib.request.urlopen(url, timeout=60) as r:
+                  data=json.load(r)
+              except Exception as e:
+                print('ERR',qi,page,e)
+                continue
+              docs=data.get('response',{}).get('docs',[])
+              print('QPAGE',qi,page,'COUNT',len(docs))
+              for d in docs:
+                ident=d.get('identifier')
+                if ident: seen[ident]=d
+              time.sleep(.15)
+          with open('gtu_candidates.jsonl','w',encoding='utf-8') as f:
+            for ident,d in seen.items():
+              f.write(json.dumps(d,ensure_ascii=False)+'\n')
+          print('UNIQUE',len(seen))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-candidates
+          path: gtu_candidates.jsonl
