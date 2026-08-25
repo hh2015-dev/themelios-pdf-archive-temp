@@ -1,0 +1,42 @@
+name: GTU Discovery Fastest 20260825
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Discover exact GTU collection candidates
+        shell: bash
+        run: |
+          cat > /tmp/discover.py <<'PY'
+          import requests,json
+          B='https://archive.org'
+          qs=[
+          'collection:graduatetheologicalunion AND mediatype:texts AND (Hebrew OR Aramaic OR Syriac OR Semitic)',
+          'collection:graduatetheologicalunion AND mediatype:texts AND (Greek OR Septuagint OR textual OR manuscript OR papyri)',
+          'collection:graduatetheologicalunion AND mediatype:texts AND (Qumran OR "Dead Sea" OR Apocrypha OR Pseudepigrapha OR rabbinic)',
+          'collection:graduatetheologicalunion AND mediatype:texts AND (Assyrian OR Babylonian OR Akkadian OR Ugaritic OR archaeology)',
+          'collection:graduatetheologicalunion AND mediatype:texts AND (Genesis OR Exodus OR Psalms OR Isaiah OR Jeremiah OR Ezekiel OR Daniel)',
+          'collection:graduatetheologicalunion AND mediatype:texts AND (Matthew OR Mark OR Luke OR John OR Acts OR Romans OR Corinthians OR Revelation)',
+          'collection:graduatetheologicalunion AND mediatype:texts AND (lexicon OR grammar OR concordance OR bibliography OR commentary)',
+          'collection:graduatetheologicalunion AND mediatype:texts AND (Origen OR Jerome OR Augustine OR Calvin OR Luther OR patristic OR Reformation)']
+          docs={}; apps=0
+          for q in qs:
+            for page in (4,12,24):
+              p={'q':q,'fl[]':['identifier','title','creator','year','volume','edition','series','subject','language','contributor'],'rows':50,'page':page,'output':'json'}
+              try:
+                a=requests.get(B+'/advancedsearch.php',params=p,timeout=12).json()['response']['docs']; apps+=len(a)
+                for d in a:
+                  if d.get('identifier'): docs[d['identifier']]=d
+              except Exception: pass
+          data={'appearances':apps,'unique':len(docs),'items':list(docs.values())}
+          open('gtu_discovery.json','w').write(json.dumps(data,ensure_ascii=False,indent=2))
+          print('APPEARANCES',apps,'UNIQUE',len(docs))
+          for d in list(docs.values())[:150]: print(json.dumps(d,ensure_ascii=False))
+          PY
+          python /tmp/discover.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-discovery-fastest-20260825
+          path: gtu_discovery.json
