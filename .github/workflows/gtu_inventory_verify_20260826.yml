@@ -1,0 +1,77 @@
+name: GTU candidate verification 20260826
+on:
+  push:
+    branches: [ gtu-inventory-20260826-0041 ]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify selected Internet Archive metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, urllib.request, urllib.parse, re, time
+          ids='''bibleancientnear0000gern
+foundationsofjud0001.2siga_k9f5
+neareastfoundati0000brai
+commentaryofgosp0000alva
+modernjudaismorb00alle
+comparisonofegyp0000port
+lettersofpaultoe0045vari
+priscillaauthoro0000ruth
+surveyofhebrewed0000john
+philippianscolos0000fcsy
+anglonormanrhyme0000unse
+bibliographyonju0000maxc_l5l3
+gtu_32400004001149_1901
+journal-of-semitic-studies_1960_1
+sim_journal-of-near-eastern-studies_1942-01_1_1
+sim_journal-of-near-eastern-studies_1942-04_1_2
+sim_journal-of-near-eastern-studies_1942-07_1_3
+sim_journal-of-near-eastern-studies_1942-10_1_4
+sim_journal-of-near-eastern-studies_1943-01_2_1
+sim_journal-of-near-eastern-studies_1944-01_3_1
+sim_journal-of-near-eastern-studies_1944-04_3_2
+sim_journal-of-near-eastern-studies_1944-07_3_3
+sim_journal-of-near-eastern-studies_1944-10_3_4
+sim_journal-of-near-eastern-studies_1945-01_4_1
+sim_journal-of-near-eastern-studies_1945-07_4_3'''.splitlines()
+          out=[]
+          for ident in ids:
+              try:
+                  with urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident),timeout=30) as r:
+                      d=json.load(r)
+              except Exception as e:
+                  out.append({'identifier':ident,'error':str(e)}); continue
+              m=d.get('metadata',{})
+              coll=m.get('collection',[])
+              if isinstance(coll,str): coll=[coll]
+              files=d.get('files',[])
+              pdfs=[]
+              for f in files:
+                  name=f.get('name','')
+                  if not name.lower().endswith('.pdf'): continue
+                  if f.get('private') is True or str(f.get('private','')).lower()=='true': continue
+                  if 'encrypted' in name.lower() or name.lower().endswith('.lcpdf'): continue
+                  pdfs.append({'name':name,'size':f.get('size'),'source':f.get('source'),'format':f.get('format')})
+              desc=m.get('description','')
+              if isinstance(desc,list): desc='; '.join(map(str,desc))
+              pages=None
+              for s in [desc,str(m.get('notes',''))]:
+                  mm=re.search(r'(?<!\d)(\d{2,4})\s*(?:p\.|pages\b)',s,re.I)
+                  if mm: pages=mm.group(1); break
+              out.append({
+                'identifier':ident,'title':m.get('title'),'creator':m.get('creator'),'date':m.get('date'),'year':m.get('year'),
+                'volume':m.get('volume'),'edition':m.get('edition'),'series':m.get('series'),'language':m.get('language'),
+                'contributor':m.get('contributor'),'collection':coll,'access_restricted':m.get('access-restricted-item'),
+                'printdisabled':m.get('printdisabled'),'description':desc,'pages':pages,'public_pdfs':pdfs[:5]
+              })
+              time.sleep(.15)
+          with open('gtu_verified.json','w',encoding='utf-8') as f: json.dump(out,f,ensure_ascii=False,indent=2)
+          print('VERIFIED',len(out),'GTU',sum('graduatetheologicalunion' in (x.get('collection') or []) for x in out))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-verified-20260826
+          path: gtu_verified.json
