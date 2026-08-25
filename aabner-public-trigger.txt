@@ -1,1 +1,1 @@
-trigger public AABNER bridge 2026-08-25T15:10+03:00
+trigger public AABNER bridge 2 - 2026-08-25T15:12+03:00
