@@ -1,0 +1,55 @@
+name: GTU final verify 20260825
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify selected GTU items
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,urllib.parse,urllib.request
+          ids='''encyclopediaofhe0004unse
+journalofbiblica0104vict
+journalofbiblica0106burk
+biblicalmotifsor0003alex
+shortguidetoacce0000jppo_h1d6
+palestine-exploration-quarterly_january-june-1956
+palestine-exploration-quarterly_january-june-1957
+practicalguidefo0000kost
+ancientsynagogue0000suke_e1m2
+sim_bulletin-of-the-american-schools-of-oriental-research_1950-12_120
+sim_bulletin-of-the-american-schools-of-oriental-research_1951-02_121
+gtu_32400001585011_1
+sim_journal-of-biblical-literature_1951-03_70_1
+sim_near-eastern-archaeology_1942-05_5_2
+sim_bulletin-of-the-american-schools-of-oriental-research_1946-02_101
+catholic-biblical-quarterly_1939-1948_1-10_index
+semeiaexperiment0000kati
+rationalviewofbi0000mann
+revelationcanoni0000john
+sim_journal-of-biblical-literature_1953-03_72_1'''.splitlines()
+          out=[]
+          for ident in ids:
+            md=json.load(urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident),timeout=30))
+            m=md.get('metadata',{}) or {}
+            col=m.get('collection',[]); col=[col] if isinstance(col,str) else col
+            files=md.get('files',[]) or []
+            pub=[]
+            for f in files:
+              n=f.get('name','') or ''
+              if n.lower().endswith('.pdf') and 'encrypted' not in n.lower() and not n.lower().endswith('.lcpdf') and str(f.get('private','false')).lower()!='true':
+                pub.append(n)
+            r={k:m.get(k,'') for k in ['title','creator','date','year','volume','language','subject','contributor','description','identifier','access-restricted-item','printdisabled']}
+            r['identifier']=ident; r['in_gtu']='graduatetheologicalunion' in col; r['public_pdf']=pub[0] if pub else ''; r['imagecount']=m.get('imagecount','')
+            out.append(r)
+            print(json.dumps(r,ensure_ascii=False))
+          with open('final.json','w',encoding='utf-8') as f: json.dump(out,f,ensure_ascii=False,indent=2)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-final-verify
+          path: final.json
