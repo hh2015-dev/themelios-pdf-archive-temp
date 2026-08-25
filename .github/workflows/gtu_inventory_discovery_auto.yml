@@ -8,33 +8,48 @@ jobs:
   discover:
     runs-on: ubuntu-latest
     steps:
-      - name: Mine distributed GTU corpus
+      - name: Verify final GTU items
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import json, urllib.parse, urllib.request
-          queries=[
-            ('hebrew',1),('aramaic',3),('syriac',7),('septuagint',12),('textual criticism',4),
-            ('manuscript',9),('papyri',6),('qumran',2),('rabbinic',5),('apocrypha',8),
-            ('cuneiform',11),('ugaritic',3),('archaeology',10),('new testament',13),('old testament',14),
-            ('greek',15),('calvin',6),('patristic',9),('reformation',12),('missions',15)
+          import json, urllib.request, urllib.parse
+          ids = [
+            'bookofjoshua0000drsi','dermasoretischet0000paul','theasaurusoflang0003mena','hebraischesvokab0000stra',
+            'dasalthebraische0000rund','anthologiahebrai0000hbro','historyofisraelt0003ewal','estudios-biblicos_1958_17',
+            'estudios-biblicos_1960_19','journal-of-jewish-studies_1959_10_3-4','eleventhseasonof0000unse',
+            'shulanarukh0002vari','shulanarukh0005vari_a9a6','shulanarukh0008vari',
+            'sim_journal-of-cuneiform-studies_1947_1_1','sim_journal-of-cuneiform-studies_1959_13_2',
+            'sim_journal-of-biblical-literature_1939-03_58_1',
+            'sim_bulletin-of-the-american-schools-of-oriental-research_1922-05_6',
+            'sim_bulletin-of-the-american-schools-of-oriental-research_1923-10_11','yesodehadaatveak04frie'
           ]
-          found={}
-          for term,page in queries:
-            q=f'collection:graduatetheologicalunion AND mediatype:texts AND ({term})'
-            params=[('q',q),('fl[]','identifier'),('fl[]','title'),('fl[]','creator'),('fl[]','date'),('fl[]','year'),('fl[]','volume'),('fl[]','language'),('fl[]','subject'),('fl[]','contributor'),('rows','100'),('page',str(page)),('output','json')]
-            url='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(params)
-            try:
-              with urllib.request.urlopen(url,timeout=20) as r: docs=json.load(r)['response']['docs']
-              for d in docs:
-                if d.get('identifier'): found[d['identifier']]=d
-              print(term,page,len(docs))
-            except Exception as e: print('ERR',term,page,e)
-          with open('gtu_search_candidates.json','w',encoding='utf-8') as f: json.dump(list(found.values()),f,ensure_ascii=False,indent=2)
-          print('UNIQUE_SEARCH_RESULTS',len(found))
+          out=[]
+          for ident in ids:
+            with urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident),timeout=30) as r:
+              m=json.load(r)
+            md=m.get('metadata',{})
+            coll=md.get('collection',[])
+            if isinstance(coll,str): coll=[coll]
+            files=m.get('files',[])
+            pdfs=[]
+            for f in files:
+              n=f.get('name','')
+              if n.lower().endswith('.pdf') and str(f.get('private','false')).lower()!='true' and 'encrypted' not in n.lower() and not n.lower().endswith('.lcpdf'):
+                pdfs.append(f)
+            pdf=pdfs[0]['name'] if pdfs else ''
+            out.append({
+              'identifier':ident,'in_gtu':'graduatetheologicalunion' in coll,'collection':coll,
+              'title':md.get('title',''),'creator':md.get('creator',''),'date':md.get('date',''),'year':md.get('year',''),
+              'volume':md.get('volume',''),'edition':md.get('edition',''),'series':md.get('series',''),
+              'language':md.get('language',''),'subject':md.get('subject',''),'contributor':md.get('contributor',''),
+              'mediatype':md.get('mediatype',''),'public_pdf':pdf,'pages':md.get('pages',''),
+              'access_restricted':md.get('access-restricted-item',''),'printdisabled':md.get('printdisabled','')
+            })
+          with open('gtu_verified_final.json','w',encoding='utf-8') as f: json.dump(out,f,ensure_ascii=False,indent=2)
+          print('VERIFIED',sum(1 for x in out if x['in_gtu']),'OF',len(out))
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: gtu-search-candidates
-          path: gtu_search_candidates.json
+          name: gtu-verified-final
+          path: gtu_verified_final.json
