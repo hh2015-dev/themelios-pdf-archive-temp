@@ -1,67 +1,81 @@
-name: GTU inventory mine 20260825
+name: GTU inventory verify 20260825
 on:
   pull_request:
     branches: [ main ]
 permissions:
   contents: read
 jobs:
-  mine:
+  verify:
     runs-on: ubuntu-latest
     steps:
-      - name: Mine GTU collection only
+      - name: Verify selected GTU items
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p out
-          : > out/candidates.jsonl
           python3 - <<'PY'
-          import json, urllib.parse, urllib.request, time
-          base='https://archive.org/advancedsearch.php'
-          queries=[
-            'collection:graduatetheologicalunion AND mediatype:texts',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:hebrew OR subject:hebrew)',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:aramaic OR subject:aramaic OR title:syriac OR subject:syriac)',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:greek OR subject:greek OR title:septuagint OR subject:septuagint)',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:bible OR subject:bible OR title:biblical OR subject:biblical)',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:testament OR subject:testament)',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:manuscript OR subject:manuscript OR title:papyri OR subject:papyri)',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:archaeology OR subject:archaeology OR title:assyri OR subject:assyri OR title:babylon OR subject:babylon)',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:judaism OR subject:judaism OR title:talmud OR subject:talmud OR title:rabbinic OR subject:rabbinic)',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:calvin OR creator:calvin OR title:luther OR creator:luther OR title:origen OR creator:origen OR title:augustine OR creator:augustine)',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:commentary OR subject:commentary OR title:exegesis OR subject:exegesis)',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:lexicon OR title:grammar OR title:concordance OR title:bibliography)',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (title:journal OR title:quarterly OR title:review OR title:bulletin)'
+          import json, urllib.request, urllib.parse, time
+          ids = [
+          'apocryphapseudep0001rhch_e9d0','aprocryphapseude0002unse','newtestamentapoc0000unse_u3n2','sixthbookofselec0001seve','shortofliteratur0000woeo','bibliothecajudai0102furs','catalogofhebrewb0003jiq','calvinscommentar0019calv','enarrationesinps0951augu','enarrationesinps0954augu','lavisiondematthi0000chri','newtestamentinhi0000ghcm','bentarbutyisrael0000stei','labibletraductio0006unse','labibletraductio0008unse','labibletraductio0009unse','labibletraductio0011unse','labibletraductio0014unse','labibletraductio0016unse','labibletraductio0017unse','labibletraductio0018unse','greekenglishlexi0000henr_n3b4','newtestamentfrom0000ivan','thesamaritanlitu00unse','sim_journal-of-biblical-literature_1937-03_56_1','sim_journal-of-biblical-literature_1937-06_56_2','sim_journal-of-biblical-literature_1937-09_56_3','sim_journal-of-biblical-literature_1937-12_56_4','sim_journal-of-biblical-literature_1936-03_55_1','sim_journal-of-biblical-literature_1936-09_55_3','sim_journal-of-biblical-literature_1936-12_55_4','gtu_32400008182671'
           ]
-          # broad pages deliberately spread through corpus
-          broad_pages=[1,3,7,12,20,30,40,55,70,90,120]
-          seen=set()
-          def fetch(q,page,rows=200):
-              params=[('q',q),('rows',str(rows)),('page',str(page)),('output','json'),('sort[]','identifier asc')]
-              for f in ['identifier','title','creator','year','date','language','volume','contributor','subject','mediatype']:
-                  params.append(('fl[]',f))
-              url=base+'?'+urllib.parse.urlencode(params)
-              with urllib.request.urlopen(url, timeout=60) as r:
-                  return json.load(r)
-          for qi,q in enumerate(queries):
-              pages=broad_pages if qi==0 else [1,2,4,8]
-              for page in pages:
-                  try:
-                      data=fetch(q,page)
-                  except Exception as e:
-                      print('ERR', qi,page,e, flush=True); continue
-                  docs=data.get('response',{}).get('docs',[])
-                  print('QUERY',qi,'PAGE',page,'DOCS',len(docs), flush=True)
-                  with open('out/candidates.jsonl','a',encoding='utf-8') as fh:
-                      for d in docs:
-                          ident=d.get('identifier')
-                          if not ident or ident in seen: continue
-                          seen.add(ident)
-                          fh.write(json.dumps(d,ensure_ascii=False)+'\n')
-                  time.sleep(0.15)
-          print('UNIQUE',len(seen),flush=True)
+          out=[]
+          for ident in ids:
+              try:
+                  with urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident), timeout=60) as r:
+                      data=json.load(r)
+              except Exception as e:
+                  out.append({'identifier':ident,'error':str(e)}); continue
+              m=data.get('metadata',{})
+              coll=m.get('collection',[])
+              if isinstance(coll,str): coll=[coll]
+              files=data.get('files',[])
+              public_pdfs=[]
+              for f in files:
+                  name=f.get('name','')
+                  if not name.lower().endswith('.pdf'): continue
+                  if name.lower().endswith('.lcpdf'): continue
+                  if f.get('private') is True or str(f.get('private','')).lower()=='true': continue
+                  if 'encrypted' in name.lower(): continue
+                  public_pdfs.append({'name':name,'size':f.get('size'),'source':f.get('source'),'format':f.get('format')})
+              # prefer original/text pdf over derivatives where possible
+              pdf=public_pdfs[0]['name'] if public_pdfs else ''
+              for p in public_pdfs:
+                  if p.get('format')=='Text PDF' or p['name'].lower()==ident.lower()+'.pdf':
+                      pdf=p['name']; break
+              pages=m.get('page-progression')
+              if not pages:
+                  # derive from scandata only if explicit leaf count file metadata exists
+                  pages=m.get('pages') or m.get('page_count')
+              rec={
+                'identifier':ident,
+                'in_gtu':'graduatetheologicalunion' in coll,
+                'collection':coll,
+                'title':m.get('title'),
+                'creator':m.get('creator'),
+                'date':m.get('date'),
+                'year':m.get('year'),
+                'volume':m.get('volume'),
+                'edition':m.get('edition'),
+                'series':m.get('series'),
+                'language':m.get('language'),
+                'subject':m.get('subject'),
+                'contributor':m.get('contributor'),
+                'mediatype':m.get('mediatype'),
+                'access_restricted':m.get('access-restricted-item'),
+                'printdisabled':m.get('printdisabled'),
+                'public_pdf':pdf,
+                'public_pdf_count':len(public_pdfs),
+                'item_link':'https://archive.org/details/'+ident,
+                'direct_pdf_link':('https://archive.org/download/'+ident+'/'+urllib.parse.quote(pdf)) if pdf else ''
+              }
+              out.append(rec)
+              print(ident, rec['in_gtu'], bool(pdf), rec['title'], flush=True)
+              time.sleep(0.1)
+          with open('out/verified.json','w',encoding='utf-8') as f:
+              json.dump(out,f,ensure_ascii=False,indent=2)
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: gtu-candidates-20260825
-          path: out/candidates.jsonl
+          name: gtu-verified-20260825
+          path: out/verified.json
           compression-level: 6
