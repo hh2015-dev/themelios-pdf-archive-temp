@@ -2,6 +2,8 @@ name: GTU Inventory Discovery Auto
 on:
   push:
     branches: [ gtu-inventory-auto-20260825-1843 ]
+  pull_request:
+    branches: [ main ]
 jobs:
   discover:
     runs-on: ubuntu-latest
@@ -11,7 +13,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import json, urllib.parse, urllib.request, time, random
+          import json, urllib.parse, urllib.request, time
           terms = [
             'hebrew','aramaic','syriac','semitic','septuagint','old testament','new testament',
             'biblical','bible','textual criticism','manuscript','papyri','dead sea scrolls','qumran',
@@ -40,7 +42,6 @@ jobs:
                 print('SEARCH_ERR',term,page,e)
               time.sleep(0.08)
           print('UNIQUE_SEARCH_RESULTS',len(found))
-          # metadata verify up to 700, deterministic spread by identifier hash-like ordering
           ids=sorted(found)
           if len(ids)>700:
             step=max(1,len(ids)//700)
@@ -59,22 +60,14 @@ jobs:
               pdfs=[]
               for f in files:
                 n=f.get('name','')
-                if n.lower().endswith('.pdf') and not n.lower().endswith('_text.pdf'):
-                  if str(f.get('private','false')).lower()!='true' and 'encrypted' not in n.lower() and not n.lower().endswith('.lcpdf'):
-                    pdfs.append(f)
-              if not pdfs:
-                # allow text pdf too if public
-                for f in files:
-                  n=f.get('name','')
-                  if n.lower().endswith('.pdf') and str(f.get('private','false')).lower()!='true' and 'encrypted' not in n.lower() and not n.lower().endswith('.lcpdf'):
-                    pdfs.append(f)
+                if n.lower().endswith('.pdf') and str(f.get('private','false')).lower()!='true' and 'encrypted' not in n.lower() and not n.lower().endswith('.lcpdf'):
+                  pdfs.append(f)
               pdf=pdfs[0]['name'] if pdfs else ''
-              pages=md.get('pages') or md.get('page-progression') or ''
               out.append({
                 'identifier':ident,'title':md.get('title',''),'creator':md.get('creator',''),'date':md.get('date',''),'year':md.get('year',''),
                 'volume':md.get('volume',''),'edition':md.get('edition',''),'series':md.get('series',''),'language':md.get('language',''),
                 'subject':md.get('subject',''),'contributor':md.get('contributor',''),'collection':coll,
-                'public_pdf':pdf,'pages':pages,'mediatype':md.get('mediatype',''),'description':md.get('description',''),
+                'public_pdf':pdf,'pages':md.get('pages',''),'mediatype':md.get('mediatype',''),'description':md.get('description',''),
                 'access_restricted':md.get('access-restricted-item',''), 'printdisabled':md.get('printdisabled','')
               })
             except Exception as e:
