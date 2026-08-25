@@ -1,4 +1,4 @@
-name: TEMP GTU inventory discovery 20260825
+name: TEMP GTU inventory verify 20260825
 on:
   push:
     branches: [ main ]
@@ -6,53 +6,52 @@ on:
 permissions:
   contents: read
 jobs:
-  mine:
+  verify:
     runs-on: ubuntu-latest
     steps:
-      - name: Mine exact GTU collection
+      - name: Verify selected items against Archive metadata
         shell: bash
         run: |
-          cat > /tmp/mine.py <<'PY'
+          cat > /tmp/verify.py <<'PY'
           import urllib.request, urllib.parse, json, time
-          terms = [
-            '(title:(Hebrew OR Aramaic OR Syriac OR Semitic) OR subject:(Hebrew OR Aramaic OR Syriac OR Semitic))',
-            '(title:(Greek OR Septuagint OR papyri OR papyrus) OR subject:(Greek OR Septuagint OR papyri OR papyrus))',
-            '(title:(manuscript OR manuscripts OR textual criticism) OR subject:(manuscript OR manuscripts OR textual criticism))',
-            '(title:(Qumran OR "Dead Sea" OR pseudepigrapha OR apocrypha OR rabbinic OR Talmud OR midrash) OR subject:(Qumran OR "Dead Sea" OR pseudepigrapha OR apocrypha OR rabbinic OR Talmud OR midrash))',
-            '(title:(Assyrian OR Babylonian OR Akkadian OR Ugaritic OR Canaanite OR archaeology) OR subject:(Assyrian OR Babylonian OR Akkadian OR Ugaritic OR Canaanite OR archaeology))',
-            '(title:(Genesis OR Exodus OR Leviticus OR Numbers OR Deuteronomy OR Joshua OR Judges OR Samuel OR Kings OR Isaiah OR Jeremiah OR Ezekiel OR Daniel OR Psalms OR Job OR Proverbs OR Ecclesiastes) OR subject:("Old Testament" OR "Hebrew Bible"))',
-            '(title:(Matthew OR Mark OR Luke OR John OR Acts OR Romans OR Corinthians OR Galatians OR Ephesians OR Hebrews OR Revelation) OR subject:("New Testament"))',
-            '(title:(Bible OR Biblical) AND title:(commentary OR theology OR exegesis OR interpretation OR hermeneutics))',
-            '(title:(Calvin OR Luther OR Augustine OR Origen OR Jerome OR Chrysostom OR Irenaeus OR Tertullian) OR creator:(Calvin OR Luther OR Augustine OR Origen OR Jerome OR Chrysostom OR Irenaeus OR Tertullian))',
-            '(title:(lexicon OR concordance OR grammar OR bibliography OR dictionary) AND (subject:(Bible OR Biblical OR Hebrew OR Greek OR Semitic) OR title:(Hebrew OR Greek OR Bible OR Biblical)))',
-            '(title:(Journal OR Bulletin OR Review) AND (title:(Biblical OR Semitic OR Oriental OR Near Eastern) OR subject:(Bible OR Biblical OR Semitic OR "Near East")))',
-            '(subject:("Church history" OR theology OR missions OR Reformation OR patristics OR Christianity) AND mediatype:texts)'
+          ids = [
+            'calvinscommentar0001calv_t5f8','eitherjeworgenti0000park','wisdomcanonmeani0000guth','foreshadowingsof0000harp',
+            'epistletogalatia0000hami','epistletoephesia0000john','luke0000john','mark0000john','homeliessursluct0000orig',
+            'degenesicontrama0000augu','commentairesursa0000orig_v1v4','wasdenleidenchri0000krem_b7c3','yesterdaytodayfo0000barr',
+            'forgivenessofsin0000owen','ecclesiaapostoli00budd','histoireecclesia0031euse',
+            'sim_journal-of-semitic-studies_1957-10_2_4','sim_journal-of-semitic-studies_1958-07_3_3',
+            'sim_bulletin-of-the-american-schools-of-oriental-research_1919-12_1',
+            'sim_journal-of-biblical-literature_1926_45_3-4'
           ]
-          pages=[2,5,9]
-          fields=['identifier','title','creator','year','date','subject','language','description','volume','edition','contributor','mediatype','collection']
-          seen=set(); out=[]; examined=0
-          for qi,t in enumerate(terms):
-            for page in pages:
-              q='collection:graduatetheologicalunion AND mediatype:texts AND '+t
-              params=[('q',q),('rows','100'),('page',str(page)),('output','json'),('sort[]','identifier asc')]
-              for f in fields: params.append(('fl[]',f))
-              url='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(params)
-              try:
-                with urllib.request.urlopen(url, timeout=45) as r: data=json.load(r)
-                docs=data.get('response',{}).get('docs',[]); examined += len(docs)
-                for d in docs:
-                  ident=d.get('identifier')
-                  if ident and ident not in seen:
-                    seen.add(ident); d['_query']=qi; d['_page']=page; out.append(d)
-              except Exception as e:
-                print('ERROR',qi,page,repr(e))
-              time.sleep(.2)
-          with open('gtu_candidates.json','w',encoding='utf-8') as f: json.dump({'examined':examined,'unique':len(out),'docs':out},f,ensure_ascii=False)
-          print('EXAMINED',examined,'UNIQUE',len(out))
+          out=[]
+          for ident in ids:
+            url='https://archive.org/metadata/'+urllib.parse.quote(ident)
+            try:
+              with urllib.request.urlopen(url,timeout=45) as r: j=json.load(r)
+              m=j.get('metadata',{}); files=j.get('files',[])
+              coll=m.get('collection',[])
+              if isinstance(coll,str): coll=[coll]
+              publicpdf=''
+              for f in files:
+                n=f.get('name',''); priv=str(f.get('private','false')).lower()=='true'
+                if n.lower().endswith('.pdf') and not priv and not n.lower().endswith('_text.pdf') and 'encrypted' not in n.lower() and not n.lower().endswith('.lcpdf'):
+                  publicpdf='https://archive.org/download/'+ident+'/'+urllib.parse.quote(n); break
+              pages=m.get('page-progression','')
+              out.append({
+                'identifier':ident,'title':m.get('title',''),'creator':m.get('creator',''),'date':m.get('date',''),'year':m.get('year',''),
+                'volume':m.get('volume',''),'edition':m.get('edition',''),'series':m.get('series',''),'subject':m.get('subject',''),'language':m.get('language',''),
+                'contributor':m.get('contributor',''),'description':m.get('description',''),'collection':coll,
+                'access_restricted':m.get('access-restricted-item',m.get('printdisabled','')),'public_pdf':publicpdf
+              })
+            except Exception as e:
+              out.append({'identifier':ident,'error':repr(e)})
+            time.sleep(.15)
+          with open('gtu_verified.json','w',encoding='utf-8') as f: json.dump(out,f,ensure_ascii=False,indent=2)
+          print('VERIFIED',len(out),'GTU',sum('graduatetheologicalunion' in x.get('collection',[]) for x in out),'PDF',sum(bool(x.get('public_pdf')) for x in out))
           PY
-          python /tmp/mine.py
+          python /tmp/verify.py
       - uses: actions/upload-artifact@v4
         with:
-          name: gtu-inventory-candidates-20260825
-          path: gtu_candidates.json
+          name: gtu-inventory-verified-20260825
+          path: gtu_verified.json
           compression-level: 6
