@@ -1,0 +1,34 @@
+name: GTU fast candidates 20260824
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  mine:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Query exact GTU collection
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,urllib.parse,urllib.request,re
+          queries=[
+          'collection:graduatetheologicalunion AND (title:(bible OR biblical OR testament OR gospel OR psalm OR isaiah OR jeremiah OR ezekiel OR daniel))',
+          'collection:graduatetheologicalunion AND (title:(hebrew OR aramaic OR syriac OR semitic OR greek OR septuagint OR targum OR talmud OR midrash OR mishna))',
+          'collection:graduatetheologicalunion AND (title:(qumran OR scrolls OR manuscript OR papyri OR textual OR criticism OR archaeology OR apocrypha OR pseudepigrapha OR josephus OR philo))',
+          'collection:graduatetheologicalunion AND (title:(commentary OR commentaries OR lexicon OR grammar OR concordance OR bibliography OR patristic OR augustine OR origen OR calvin OR luther))'
+          ]
+          seen={}
+          for q in queries:
+            for p in (2,5,8,12,16,20):
+              params={'q':q,'fl[]':['identifier','title','creator','year','language','subject'],'rows':'100','page':str(p),'output':'json'}
+              u='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(params,doseq=True)
+              try:d=json.load(urllib.request.urlopen(u,timeout=20))
+              except Exception:continue
+              for x in d.get('response',{}).get('docs',[]):
+                if x.get('identifier'): seen.setdefault(x['identifier'],x)
+          print('EXAMINED_UNIQUE',len(seen))
+          for i,x in enumerate(seen.values()):
+            if i>=220: break
+            print('RAW\t'+json.dumps(x,ensure_ascii=False,separators=(',',':')))
+          PY
