@@ -1,0 +1,102 @@
+name: GTU inventory discovery 20260825
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mine GTU collection only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import requests, urllib.parse, json, re, time
+          base='https://archive.org/advancedsearch.php'
+          terms=[
+            'hebrew','aramaic','syriac','semitic','akkadian','assyrian','ugaritic','coptic',
+            'septuagint','lxx','masoretic','samaritan','targum','talmud','midrash','qumran','dead sea scrolls',
+            'old testament','hebrew bible','new testament','gospel','paul','acts','romans','corinthians','hebrews','revelation',
+            'genesis','exodus','leviticus','numbers','deuteronomy','joshua','judges','samuel','kings','isaiah','jeremiah','ezekiel','daniel','psalms','job','proverbs',
+            'textual criticism','manuscript','papyri','papyrus','codex','biblical archaeology','palestine archaeology','ancient near east',
+            'josephus','philo','apocrypha','pseudepigrapha','patristic','origen','jerome','augustine','calvin','luther',
+            'lexicon','dictionary','grammar','concordance','bibliography','journal biblical literature','biblical archaeologist','semeia','bible translator'
+          ]
+          docs={}
+          examined=0
+          for term in terms:
+              q=f'collection:graduatetheologicalunion AND mediatype:texts AND ({term!r})'
+              params={'q':q,'fl[]':['identifier','title','creator','year','date','language','volume','description','subject','contributor'],'rows':60,'page':1,'output':'json','sort[]':'downloads desc'}
+              try:
+                  r=requests.get(base,params=params,timeout=30); r.raise_for_status()
+                  js=r.json(); arr=js.get('response',{}).get('docs',[]); examined += len(arr)
+                  for d in arr: docs[d.get('identifier','')]=d
+              except Exception as e:
+                  print('QUERY_ERR',term,repr(e))
+              time.sleep(0.08)
+          # broad windows by year and alphabetic-ish relevance sorts
+          for yrlo,yrhi in [(1800,1849),(1850,1899),(1900,1929),(1930,1959),(1960,1979),(1980,1999),(2000,2026)]:
+              q=f'collection:graduatetheologicalunion AND mediatype:texts AND year:[{yrlo} TO {yrhi}]'
+              for page in (2,5,9):
+                  params={'q':q,'fl[]':['identifier','title','creator','year','date','language','volume','description','subject','contributor'],'rows':100,'page':page,'output':'json','sort[]':'titleSorter asc'}
+                  try:
+                      r=requests.get(base,params=params,timeout=30); r.raise_for_status(); arr=r.json().get('response',{}).get('docs',[]); examined += len(arr)
+                      for d in arr: docs[d.get('identifier','')]=d
+                  except Exception as e: print('WINDOW_ERR',yrlo,page,repr(e))
+                  time.sleep(0.08)
+          kwsA=['bible','biblical','hebrew','aramaic','syriac','semitic','greek','septuagint','lxx','testament','gospel','paul','acts','romans','corinth','hebrews','revelation','genesis','exodus','leviticus','numbers','deuteronomy','joshua','judges','samuel','kings','isaiah','jeremiah','ezekiel','daniel','psalm','job','proverb','targum','talmud','midrash','qumran','dead sea','manuscript','papyr','codex','archaeolog','akkadian','assyri','ugarit','josephus','philo','apocryph','pseudepig','lexicon','dictionary','grammar','concordance','bibliograph','calvin','luther','origen','jerome','augustine']
+          kwsB=['theology','church history','reformation','patrist','doctrine','creed','confession','apologetic','mission','judaism','early christian','religion']
+          def text(d):
+              vals=[]
+              for k in ('title','creator','description','subject'):
+                  v=d.get(k,'')
+                  if isinstance(v,list): v=' '.join(map(str,v))
+                  vals.append(str(v))
+              return ' '.join(vals).lower()
+          ranked=[]
+          for ident,d in docs.items():
+              if not ident: continue
+              t=text(d)
+              score=sum(3 for k in kwsA if k in t)+sum(1 for k in kwsB if k in t)
+              if score<=0: continue
+              ranked.append((score,d))
+          ranked.sort(key=lambda x:(-x[0],str(x[1].get('year','')),str(x[1].get('title',''))))
+          print('EXAMINED_APPEARANCES',examined)
+          print('UNIQUE_CANDIDATES',len(docs))
+          print('RANKED',len(ranked))
+          # verify top 260 against item metadata, exact GTU membership; extract public pdf/page count if possible
+          out=[]
+          for score,d in ranked[:260]:
+              ident=d['identifier']
+              try:
+                  m=requests.get(f'https://archive.org/metadata/{urllib.parse.quote(ident)}',timeout=30).json()
+                  md=m.get('metadata',{})
+                  coll=md.get('collection',[])
+                  if isinstance(coll,str): coll=[coll]
+                  if 'graduatetheologicalunion' not in coll: continue
+                  files=m.get('files',[])
+                  public_pdf=''
+                  for f in files:
+                      name=str(f.get('name',''))
+                      if name.lower().endswith('.pdf') and not name.lower().endswith('.lcpdf') and not name.lower().endswith('_text.pdf') and str(f.get('private','false')).lower()!='true' and 'encrypted' not in name.lower():
+                          public_pdf=f'https://archive.org/download/{ident}/{urllib.parse.quote(name)}'; break
+                  # page count from metadata where explicit
+                  pages=md.get('page-progression','')
+                  page_count=md.get('pages','') or md.get('page_count','') or ''
+                  rec={k:md.get(k,d.get(k,'')) for k in ['identifier','title','creator','year','date','language','volume','description','subject','contributor','edition','series']}
+                  rec['score']=score; rec['public_pdf']=public_pdf; rec['page_count']=page_count; rec['collection_verified']=True
+                  out.append(rec)
+              except Exception as e:
+                  print('META_ERR',ident,repr(e))
+              if len(out)>=180: break
+              time.sleep(0.05)
+          print('VERIFIED_GTUs',len(out))
+          with open('gtu_candidates.json','w',encoding='utf-8') as f: json.dump({'examined':examined,'unique':len(docs),'verified':out},f,ensure_ascii=False,indent=2)
+          for r in out[:80]:
+              print('CAND',json.dumps(r,ensure_ascii=False))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-candidates-20260825
+          path: gtu_candidates.json
+          compression-level: 6
