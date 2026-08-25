@@ -1,42 +1,43 @@
-name: GTU Inventory Discovery 20260825 SearchOnly
+name: GTU Inventory Verification 20260825
 on:
   pull_request:
     branches: [ main ]
 jobs:
-  discover:
+  verify:
     runs-on: ubuntu-latest
     steps:
-      - name: Mine broad GTU corpus windows
+      - name: Verify selected GTU candidates
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import json, urllib.parse, urllib.request, time
-          from collections import OrderedDict
-          BASE='collection:graduatetheologicalunion AND mediatype:texts'
-          specs=[(3,'identifier asc'),(23,'identifier asc'),(43,'identifier asc'),(63,'identifier asc'),(83,'identifier asc'),(7,'date asc'),(27,'date asc'),(47,'date desc'),(67,'date desc'),(87,'date desc')]
-          ids=OrderedDict(); hits=0
-          for p,sort in specs:
-            params={'q':BASE,'fl[]':['identifier','title','creator','date','year','subject','language','volume','edition','series','contributor'],'rows':100,'page':p,'output':'json','sort[]':sort}
-            url='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(params,doseq=True)
+          import json, urllib.parse, urllib.request, re
+          from concurrent.futures import ThreadPoolExecutor
+          ids=['journalofbiblica0103samu','biblestudent0001vari','biblestudent0002vari','biblestudent0007vari','biblestudent0008vari','biblestudentteac0002unse','biblestudentteac0003unse','biblestudentteac0004unse','biblestudentteac0006john','biblestudentteac0013unse','biblical-repertory-and-princeton-review_1837-01_9_1','biblical-repertory-and-princeton-review_1837-04_9_2','biblical-repertory-and-princeton-review_1837-07_9_3','bibliapauperumfa0000unse_h9e1','bibletextcyclope0000revj','bibliaherbraicas0010kell','bibletranslating0000euge','biblereadinginea0000adol_u3a3','assyrianstheirne0000wigr','ancientcorinthmu0000papa']
+          def scalar(v):
+            if isinstance(v,list): return '; '.join(str(x) for x in v)
+            return '' if v is None else str(v)
+          def get(ident):
+            url='https://archive.org/metadata/'+urllib.parse.quote(ident,safe='')
+            req=urllib.request.Request(url,headers={'User-Agent':'Mozilla/5.0 GTUInventory/1.0'})
             try:
-              req=urllib.request.Request(url,headers={'User-Agent':'Mozilla/5.0 GTUInventory/1.0'})
-              with urllib.request.urlopen(req,timeout=15) as r: data=json.load(r)
-            except Exception:
-              continue
-            docs=data.get('response',{}).get('docs',[]); hits+=len(docs)
-            for d in docs:
-              ident=d.get('identifier')
-              if ident: ids.setdefault(ident,d)
-          recs=[]
-          for ident,d in ids.items():
-            x=dict(d); x['identifier']=ident; x['item_link']='https://archive.org/details/'+urllib.parse.quote(ident,safe=''); recs.append(x)
-          obj={'search_hits_examined':hits,'unique_ids_mined':len(ids),'records':recs}
-          json.dump(obj,open('gtu_search_candidates.json','w',encoding='utf-8'),ensure_ascii=False,indent=2)
-          print(json.dumps({'search_hits_examined':hits,'unique_ids_mined':len(ids)}))
+              with urllib.request.urlopen(req,timeout=20) as r: m=json.load(r)
+            except Exception as e: return {'identifier':ident,'error':str(e)}
+            md=m.get('metadata',{}) or {}; coll=md.get('collection',[])
+            if isinstance(coll,str): coll=[coll]
+            restricted=str(md.get('access-restricted-item','')).lower()=='true' or str(md.get('printdisabled','')).lower()=='true'
+            pdf=''
+            if not restricted:
+              for f in m.get('files',[]) or []:
+                n=f.get('name','')
+                if re.search(r'\.pdf$',n,re.I) and not re.search(r'(encrypted|lcpdf)',n,re.I) and str(f.get('private','false')).lower()!='true': pdf=n; break
+            return {'identifier':ident,'member':('graduatetheologicalunion' in coll),'collection':coll,'title':scalar(md.get('title')),'creator':scalar(md.get('creator')),'year':scalar(md.get('year') or md.get('date')),'volume':scalar(md.get('volume')),'edition':scalar(md.get('edition')),'series':scalar(md.get('series')),'language':scalar(md.get('language')),'subject':scalar(md.get('subject')),'contributor':scalar(md.get('contributor')),'publisher':scalar(md.get('publisher')),'description':scalar(md.get('description'))[:1200],'restricted':restricted,'direct_pdf':('https://archive.org/download/'+urllib.parse.quote(ident,safe='')+'/'+urllib.parse.quote(pdf,safe='')) if pdf else '','page_count':scalar(md.get('pages') or md.get('page_count') or md.get('imagecount') or ''),'item_link':'https://archive.org/details/'+urllib.parse.quote(ident,safe='')}
+          with ThreadPoolExecutor(max_workers=20) as ex: recs=list(ex.map(get,ids))
+          json.dump({'attempted':len(ids),'records':recs},open('gtu_verified.json','w',encoding='utf-8'),ensure_ascii=False,indent=2)
+          print(json.dumps({'attempted':len(ids),'member_verified':sum(1 for x in recs if x.get('member')),'errors':sum(1 for x in recs if x.get('error'))}))
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: gtu-search-candidates-20260825
-          path: gtu_search_candidates.json
+          name: gtu-verified-20260825
+          path: gtu_verified.json
           compression-level: 6
