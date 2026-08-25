@@ -1,72 +1,80 @@
-name: GTU inventory discovery 20260825
+name: GTU inventory verify 20260825
 on:
   pull_request:
     branches: [ main ]
 jobs:
-  discover:
+  verify:
     runs-on: ubuntu-latest
     steps:
-      - name: Mine GTU collection broadly
+      - name: Verify selected GTU items
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import json, subprocess, urllib.parse, re, unicodedata
-          queries = [
-            '(hebrew OR aramaic OR syriac OR semitic OR ugaritic)',
-            '(septuagint OR "greek testament" OR "new testament greek" OR papyri OR textual)',
-            '(qumran OR "dead sea" OR "second temple" OR pseudepigrapha OR apocrypha)',
-            '(assyrian OR babylonian OR akkadian OR archaeology OR palestine OR canaan)',
-            '(isaiah OR jeremiah OR psalms OR job OR genesis OR exodus OR deuteronomy)',
-            '(matthew OR mark OR luke OR john OR romans OR corinthians OR revelation)',
-            '(manuscript OR codex OR concordance OR lexicon OR grammar OR bibliography)',
-            '(philo OR josephus OR talmud OR mishnah OR midrash OR rabbinic)',
-            '(origen OR jerome OR augustine OR chrysostom OR ephraem OR patristic)',
-            '(calvin OR luther OR zwingli OR reformation OR commentary)',
-            '("journal of biblical literature" OR "biblical archaeologist" OR "bible translator" OR "semitic studies")',
-            '(theology OR church history OR missions OR creed OR confession OR apologetics)'
+          import json, subprocess, urllib.parse, re
+          ids = [
+            'calvinscommentar0006calv','calvinscommentar0019calv','calvinscommentar0018calv','calvinscommentar0030calv',
+            'commentairesursa0222orig','enarrationesinps0951augu','symvoleeistenana0000goud',
+            'sim_journal-of-biblical-literature_1961-03_80_1','sim_journal-of-biblical-literature_1961-09_80_3',
+            'sim_journal-of-biblical-literature_1959-03_78_1','sim_journal-of-biblical-literature_1959-09_78_3',
+            'sim_journal-of-biblical-literature_1958-06_77_2','sim_journal-of-biblical-literature_1958-09_77_3','sim_journal-of-biblical-literature_1958-12_77_4',
+            'sim_journal-of-biblical-literature_1957-12_76_4','sim_journal-of-biblical-literature_1957-09_76_3','sim_journal-of-biblical-literature_1957-03_76_1',
+            'sim_journal-of-biblical-literature_1956-09_75_3',
+            'sim_near-eastern-archaeology_1960-12_23_4','sim_near-eastern-archaeology_1955-09_18_3'
           ]
-          docs={}
-          examined=0
-          for qi,q in enumerate(queries):
-            for page in (1,3,7):
-              full=f'collection:graduatetheologicalunion AND mediatype:texts AND {q}'
-              params={
-                'q': full, 'rows':'100','page':str(page),'output':'json',
-                'fl[]':['identifier','title','creator','date','year','language','volume','edition','contributor','subject','description','format']
-              }
-              url='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(params,doseq=True)
-              try:
-                data=json.loads(subprocess.check_output(['curl','-fsSL','--retry','3',url],timeout=45))
-              except Exception:
-                continue
-              got=data.get('response',{}).get('docs',[]); examined+=len(got)
-              for d in got:
-                if d.get('identifier'): docs[d['identifier']]=d
-          A=['hebrew','aramaic','syriac','semitic','ugarit','septuagint','greek','textual','manuscript','codex','qumran','dead sea','second temple','pseudepig','apocry','assyri','babylon','akkad','archaeolog','palestine','canaan','isaiah','jeremiah','psalm','job','genesis','exodus','deuter','matthew','mark','luke','john','roman','corinth','revelation','concordance','lexicon','grammar','bibliograph','philo','josephus','talmud','mishnah','midrash','rabbin','origen','jerome','augustine','chrysostom','ephraem','calvin','luther','zwingli','biblical','bible']
-          B=['theology','church history','reformation','missions','creed','confession','apolog','patristic','judaism','christianity']
-          def text(d):
-            vals=[]
-            for k in ('title','creator','subject','description'):
-              v=d.get(k,'')
-              if isinstance(v,list): vals.extend(map(str,v))
-              else: vals.append(str(v))
-            return ' '.join(vals).lower()
-          scored=[]
-          for d in docs.values():
-            t=text(d)
-            s=sum(4 for k in A if k in t)+sum(1 for k in B if k in t)
-            scored.append((s,d.get('year') or d.get('date') or '',d))
-          scored.sort(key=lambda x:(x[0],str(x[1])), reverse=True)
           out=[]
-          for s,_,d in scored[:500]:
-            d['_score']=s; out.append(d)
-          with open('gtu_candidates.json','w',encoding='utf-8') as f: json.dump({'examined':examined,'unique':len(docs),'candidates':out},f,ensure_ascii=False,indent=2)
-          print(f'EXAMINED={examined} UNIQUE={len(docs)} OUTPUT={len(out)}')
-          for d in out[:120]:
-            print(json.dumps({'id':d.get('identifier'),'title':d.get('title'),'creator':d.get('creator'),'year':d.get('year') or d.get('date'),'volume':d.get('volume'),'edition':d.get('edition'),'score':d.get('_score')},ensure_ascii=False))
+          for iid in ids:
+            raw=subprocess.check_output(['curl','-fsSL','--retry','3',f'https://archive.org/metadata/{iid}'],timeout=60)
+            m=json.loads(raw)
+            md=m.get('metadata',{})
+            coll=md.get('collection',[])
+            if isinstance(coll,str): coll=[coll]
+            files=m.get('files',[])
+            pdfs=[]
+            for f in files:
+              name=f.get('name','')
+              if not name.lower().endswith('.pdf'): continue
+              if name.lower().endswith('.lcpdf'): continue
+              if f.get('private') in (True,'true','1'): continue
+              pdfs.append(f)
+            public_pdf=None
+            for f in pdfs:
+              name=f.get('name','')
+              if 'encrypted' in name.lower(): continue
+              public_pdf=name; break
+            pages=md.get('imagecount') or md.get('page-progression') or ''
+            if not pages:
+              for f in files:
+                if f.get('name','').endswith('_text.pdf') and f.get('size'):
+                  pass
+            row={
+              'identifier':iid,
+              'in_gtu':'graduatetheologicalunion' in coll,
+              'collection':coll,
+              'title':md.get('title',''),
+              'creator':md.get('creator',''),
+              'date':md.get('date',''),
+              'year':md.get('year',''),
+              'volume':md.get('volume',''),
+              'edition':md.get('edition',''),
+              'series':md.get('series',''),
+              'language':md.get('language',''),
+              'contributor':md.get('contributor',''),
+              'subject':md.get('subject',''),
+              'description':md.get('description',''),
+              'mediatype':md.get('mediatype',''),
+              'access_restricted':md.get('access-restricted-item',''),
+              'printdisabled':md.get('printdisabled',''),
+              'public_pdf':public_pdf,
+              'public_pdf_url': f'https://archive.org/download/{iid}/{urllib.parse.quote(public_pdf)}' if public_pdf else '',
+              'imagecount':md.get('imagecount','')
+            }
+            out.append(row)
+            print(json.dumps(row,ensure_ascii=False))
+          with open('gtu_verified.json','w',encoding='utf-8') as f: json.dump(out,f,ensure_ascii=False,indent=2)
+          print('VERIFIED',len(out),'GTU',sum(1 for x in out if x['in_gtu']))
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: gtu-candidates-20260825
-          path: gtu_candidates.json
+          name: gtu-verified-20260825
+          path: gtu_verified.json
