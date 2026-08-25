@@ -6,39 +6,55 @@ jobs:
   discover:
     runs-on: ubuntu-latest
     steps:
-      - name: Mine GTU collection broadly
+      - name: Verify exact GTU candidates
         shell: bash
         run: |
           python3 - <<'PY'
-          import requests,re,time
-          queries=[
-            'collection:graduatetheologicalunion AND mediatype:texts AND (qumran OR "dead sea" OR pseudepigrapha OR apocrypha)',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (ugarit OR akkadian OR assyrian OR babylonian OR cuneiform)',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (patristic OR origen OR jerome OR augustine OR chrysostom OR irenaeus)',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (reformation OR luther OR calvin OR zwingli OR melanchthon)',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (mission OR missions OR missiology)',
-            'collection:graduatetheologicalunion AND mediatype:texts AND ("church history" OR creed OR confession OR apologetics)',
-            'collection:graduatetheologicalunion AND mediatype:texts AND (lexicon OR concordance OR grammar OR bibliography)',
-            'collection:graduatetheologicalunion AND mediatype:texts AND ("early christian" OR "second temple" OR josephus OR philo)',
-            'collection:graduatetheologicalunion AND mediatype:texts AND ("journal of biblical literature" OR "biblical archaeologist" OR "bible translator")',
-            'collection:graduatetheologicalunion AND mediatype:texts AND ("old testament" OR "new testament")',
-          ]
-          seen={}; examined=0
-          for qi,q in enumerate(queries):
-            for page in (2,5,9,14):
-              params=[('q',q),('fl[]','identifier'),('fl[]','title'),('fl[]','creator'),('fl[]','year'),('fl[]','date'),('fl[]','language'),('fl[]','subject'),('rows','100'),('page',str(page)),('output','json')]
-              try:
-                r=requests.get('https://archive.org/advancedsearch.php',params=params,timeout=30); r.raise_for_status(); docs=r.json()['response']['docs']
-              except Exception as e:
-                print('ERR',qi,page,e); continue
-              examined+=len(docs)
-              for d in docs:
-                if d.get('identifier'): seen.setdefault(d['identifier'],d)
-              time.sleep(.08)
-          print(f'EXAMINED={examined} UNIQUE={len(seen)}')
+          import requests,re,urllib.parse
+          ids='''urexcavationsneo0009sirl
+newtestamentapoc0000unse_u3n2
+grammatikdergrie0002mays_c2m3
+dieverwendungvon0002spin
+ancientisraeliti00unse
+dietauflehredesn0000osca
+urchristlichesge0000gunt
+ekklesiaundpolis0000drth
+onpriesthood0000unse
+commentairesursa0000orig_v1v4
+lagnosevalentini0000sagn
+contrelesheresie0210iren
+geschichtederalt0001harn_l0h3
+styleoflettersof0000john
+saintjohnchrysos0022sist
+dasvermachtnisca0000brun
+huldreichzwingli0000grob
+bibliothecarefor0006unse_n8g9
+archiv-fuer-reformationsgeschichte_1937_34
+archiv-fuer-reformationsgeschichte_1952_43_1
+indextoreligious0005hele
+institutesofchri0000john_q1s5
+gtu_32400006605236
+gtu_32400006605277
+womaninearlychur00unse
+porphyrysphiloso0000john'''.splitlines()
           def clean(v):
-            if isinstance(v,list): v='; '.join(map(str,v[:4]))
-            return re.sub(r'\s+',' ',str(v or '')).strip()
-          for ident,d in list(seen.items())[:500]:
-            print('\t'.join([ident,clean(d.get('title')),clean(d.get('creator')),clean(d.get('year') or d.get('date')),clean(d.get('language'))]))
+            if isinstance(v,list): v='; '.join(map(str,v))
+            return re.sub(r'\s+',' ',str(v or '')).strip().replace('\t',' ')
+          for ident in ids:
+            try:
+              j=requests.get('https://archive.org/metadata/'+ident,timeout=30).json()
+              m=j.get('metadata',{})
+              coll=m.get('collection',[]); coll=[coll] if isinstance(coll,str) else coll
+              ingtu='graduatetheologicalunion' in coll
+              files=j.get('files',[])
+              pdf=''
+              for f in files:
+                n=f.get('name','')
+                if n.lower().endswith('.pdf') and not n.lower().endswith('_encrypted.pdf') and str(f.get('private','false')).lower()!='true':
+                  pdf=n; break
+              restricted=m.get('access-restricted-item',m.get('printdisabled',''))
+              pages=m.get('imagecount','') or m.get('page-progression','')
+              fields=[ident,str(ingtu),clean(m.get('title')),clean(m.get('creator')),clean(m.get('date') or m.get('year')),clean(m.get('volume')),clean(m.get('edition')),clean(m.get('series')),clean(m.get('contributor')),clean(m.get('language')),clean(m.get('mediatype')),clean(restricted),clean(pdf),clean(pages)]
+              print('\t'.join(fields))
+            except Exception as e: print(ident+'\tERROR\t'+str(e))
           PY
