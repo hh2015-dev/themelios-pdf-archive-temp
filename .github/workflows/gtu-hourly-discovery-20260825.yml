@@ -1,0 +1,100 @@
+name: GTU hourly discovery 20260825
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mine GTU collection only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, urllib.parse, urllib.request, re, time
+          BASE='https://archive.org/advancedsearch.php'
+          queries=[
+            'title:(Bible OR biblical OR testament OR gospel OR psalm OR Isaiah OR Jeremiah OR Genesis OR Exodus OR Deuteronomy)',
+            'title:(Hebrew OR Aramaic OR Syriac OR Semitic OR Ugaritic OR Akkadian OR Assyrian OR Babylonian)',
+            'title:(Greek OR Septuagint OR LXX OR papyri OR manuscript OR manuscripts OR textual OR criticism)',
+            'title:(Qumran OR Dead Sea OR Talmud OR Mishnah OR Midrash OR rabbinic OR Philo OR Josephus OR Apocrypha)',
+            'title:(archaeology OR Palestine OR Canaan OR Phoenician OR inscription OR epigraphy OR cuneiform)',
+            'title:(Calvin OR Luther OR Augustine OR Origen OR patristic OR Reformation OR commentary OR exegesis)',
+            'title:(Journal OR Quarterly OR Biblical Archaeologist OR Semitic Studies OR New Testament Studies OR Interpretation)',
+            'subject:(Bible OR Biblical OR Hebrew OR New Testament OR Old Testament OR Semitic OR Archaeology)',
+          ]
+          seen={}
+          for qi,sub in enumerate(queries):
+            for page in [1,2,4,7,11]:
+              q=f'collection:graduatetheologicalunion AND mediatype:texts AND ({sub})'
+              params=[('q',q),('rows','60'),('page',str(page)),('output','json'),('sort[]','identifier asc')]
+              for f in ['identifier','title','creator','year','date','volume','language','subject','contributor','description']:
+                params.append(('fl[]',f))
+              url=BASE+'?'+urllib.parse.urlencode(params)
+              try:
+                data=json.load(urllib.request.urlopen(url,timeout=30))
+              except Exception as e:
+                print('SEARCHERR',qi,page,e)
+                continue
+              for d in data.get('response',{}).get('docs',[]):
+                ident=d.get('identifier')
+                if ident: seen.setdefault(ident,d)
+              time.sleep(.15)
+          print('UNIQUE_DISCOVERED',len(seen))
+          # rank broadly but keep diversity; verify up to 260 records by metadata
+          items=list(seen.values())
+          # interleave by identifier hash to avoid top-results bias
+          items.sort(key=lambda d: (sum(ord(c) for c in d.get('identifier',''))%101, d.get('identifier','')))
+          verified=[]
+          for d in items[:320]:
+            ident=d['identifier']
+            try:
+              md=json.load(urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident),timeout=25))
+            except Exception:
+              continue
+            m=md.get('metadata',{}) or {}
+            col=m.get('collection',[])
+            if isinstance(col,str): col=[col]
+            if 'graduatetheologicalunion' not in col: continue
+            files=md.get('files',[]) or []
+            pdfs=[]
+            for f in files:
+              n=f.get('name','') or ''
+              if not n.lower().endswith('.pdf'): continue
+              if f.get('private') is True or str(f.get('private','')).lower()=='true': continue
+              if 'encrypted' in n.lower() or n.lower().endswith('.lcpdf'): continue
+              pdfs.append((n,f.get('size')))
+            # don't require public PDF for inventory, but record it if present
+            pdf=pdfs[0][0] if pdfs else ''
+            rec={
+              'identifier':ident,
+              'title':m.get('title',d.get('title','')),
+              'creator':m.get('creator',d.get('creator','')),
+              'year':m.get('year',m.get('date',d.get('year',''))),
+              'volume':m.get('volume',''),
+              'language':m.get('language',''),
+              'subject':m.get('subject',''),
+              'contributor':m.get('contributor',''),
+              'description':m.get('description',''),
+              'public_pdf':pdf,
+              'access_restricted':m.get('access-restricted-item',''),
+              'printdisabled':m.get('printdisabled',''),
+            }
+            verified.append(rec)
+            if len(verified)>=220: break
+          print('VERIFIED',len(verified))
+          with open('gtu_candidates.jsonl','w',encoding='utf-8') as f:
+            for r in verified:
+              f.write(json.dumps(r,ensure_ascii=False)+'\n')
+          # concise TSV for logs
+          for i,r in enumerate(verified):
+            cr=r['creator']
+            if isinstance(cr,list): cr='; '.join(map(str,cr))
+            subj=r['subject']
+            if isinstance(subj,list): subj='; '.join(map(str,subj[:4]))
+            print('CAND\t%03d\t%s\t%s\t%s\t%s\t%s\t%s' % (i+1,r['identifier'],str(r['year'])[:30],str(r['volume'])[:30],str(cr)[:100],str(r['title']).replace('\t',' ')[:220],str(subj).replace('\t',' ')[:140]))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-hourly-candidates
+          path: gtu_candidates.jsonl
