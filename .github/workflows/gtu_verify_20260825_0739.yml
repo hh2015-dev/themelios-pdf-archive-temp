@@ -1,0 +1,67 @@
+name: GTU verify shortlist 20260825 0739
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify GTU metadata and public PDFs
+        shell: bash
+        run: |
+          cat > /tmp/verify.py <<'PY'
+          import json, urllib.request, urllib.parse, time
+          ids='''vierurchristlich0001hart
+vierurchristlich0002hart
+melangesdelunive0001univ
+melangesdelunive0002univ
+melangesdelunive0003univ
+melangesdelunive0036univ
+melangesdelunive0037univ
+checklistofmanus0001vari
+seferyeshayahuli0000unse
+ephemerisfursemi0011lidz
+sim_near-eastern-archaeology_1939-12_2_4
+sim_near-eastern-archaeology_1940-12_3_4
+sim_near-eastern-archaeology_1941-02_4_1
+sim_near-eastern-archaeology_1942-05_5_2
+sim_near-eastern-archaeology_1942-12_5_4
+sim_journal-of-biblical-literature_1907_26_1
+sim_journal-of-biblical-literature_1907_26_2
+sim_journal-of-biblical-literature_1908_27_1
+sim_journal-of-biblical-literature_1908_27_2
+sim_journal-of-biblical-literature_1910_29_2
+sim_journal-of-biblical-literature_1911_30_1
+sim_journal-of-biblical-literature_1911_30_2
+sim_journal-of-biblical-literature_1912_31_1
+sim_journal-of-biblical-literature_1912_31_2
+sim_journal-of-biblical-literature_1912_31_3
+sim_journal-of-biblical-literature_1912_31_4
+sim_journal-of-biblical-literature_1913-04_32_1
+sim_journal-of-biblical-literature_1913-06_32_2
+sim_journal-of-biblical-literature_1913-09_32_3
+sim_journal-of-biblical-literature_1913-12_32_4'''.split()
+          out=[]
+          for ident in ids:
+            try:
+              with urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident),timeout=25) as r:m=json.load(r)
+            except Exception as e:
+              out.append({'identifier':ident,'error':str(e)}); continue
+            md=m.get('metadata',{}) or {}; coll=md.get('collection',[])
+            if isinstance(coll,str): coll=[coll]
+            files=m.get('files',[]) or []
+            pdfs=[]
+            for f in files:
+              name=str(f.get('name',''))
+              if name.lower().endswith('.pdf') and str(f.get('private','false')).lower()!='true' and not name.lower().endswith('_encrypted.pdf') and not name.lower().endswith('.lcpdf'):
+                pdfs.append(name)
+            out.append({'identifier':ident,'in_gtu':'graduatetheologicalunion' in coll,'title':md.get('title'),'creator':md.get('creator'),'date':md.get('date'),'year':md.get('year'),'volume':md.get('volume'),'edition':md.get('edition'),'series':md.get('series'),'subject':md.get('subject'),'language':md.get('language'),'contributor':md.get('contributor'),'access_restricted':md.get('access-restricted-item'),'printdisabled':md.get('printdisabled'),'public_pdfs':pdfs[:5]})
+            time.sleep(.05)
+          with open('verified.json','w',encoding='utf-8') as f: json.dump(out,f,ensure_ascii=False,indent=2)
+          print('VERIFIED',sum(1 for r in out if r.get('in_gtu')),'OF',len(out))
+          PY
+          python /tmp/verify.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-verified-shortlist
+          path: verified.json
