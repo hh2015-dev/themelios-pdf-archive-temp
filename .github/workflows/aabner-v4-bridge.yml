@@ -1,0 +1,56 @@
+name: AABNER Volume 4 bridge
+on:
+  push:
+    paths:
+      - 'aabner-v4-trigger.txt'
+jobs:
+  fetch-v4:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download 2024 full issues
+        shell: bash
+        run: |
+          python - <<'PY'
+          import re, urllib.request, urllib.parse, html, os
+          UA={'User-Agent':'Mozilla/5.0'}; base='https://aabner.org/ojs/index.php/beabs'
+          def get(u):
+            r=urllib.request.Request(u,headers=UA)
+            with urllib.request.urlopen(r,timeout=120) as x:return x.read(),x.headers.get_content_type(),x.geturl()
+          arc,_,_=get(base+'/issue/archive'); s=arc.decode('utf-8','replace')
+          urls=[]
+          for x in re.findall(r'href=["\']([^"\']*/issue/view/[^"\']+)["\']',s,re.I):
+            u=urllib.parse.urljoin(base+'/',html.unescape(x)).split('#')[0]
+            if u not in urls: urls.append(u)
+          os.makedirs('out',exist_ok=True); got=[]
+          for u in urls:
+            try:b,_,_=get(u); t=b.decode('utf-8','replace')
+            except:continue
+            plain=re.sub(r'<[^>]+>',' ',t)
+            if '2024' not in plain:continue
+            mi=re.search(r'Vol\.?\s*4\s*(?:No\.?|no\.?)\s*(\d+)',plain,re.I) or re.search(r'Volume\s*4\s*,?\s*(?:no\.?\s*)?(\d+)',plain,re.I)
+            if not mi:continue
+            ino=int(mi.group(1))
+            m=re.search(r'Full Issue.*?<a[^>]+href=["\']([^"\']+)["\']',t,re.I|re.S)
+            if not m:print('NO FULL',u);continue
+            landing=urllib.parse.urljoin(u,html.unescape(m.group(1))); b2,c2,_=get(landing); pdf=None
+            if b2.startswith(b'%PDF') or c2=='application/pdf':pdf=b2
+            else:
+              t2=b2.decode('utf-8','replace')
+              for v in re.findall(r'(?:href|src)=["\']([^"\']+)',t2,re.I):
+                cand=urllib.parse.urljoin(landing,html.unescape(v))
+                if '/issue/download/' not in cand:continue
+                try:bb,cc,_=get(cand)
+                except:continue
+                if bb.startswith(b'%PDF') or cc=='application/pdf':pdf=bb;break
+            if pdf:
+              name=f'AABNER - Volume 004 Issue {ino:02d} - 2024.pdf';open('out/'+name,'wb').write(pdf);got.append(name);print('SAVED',name,len(pdf))
+          if not got:raise SystemExit('No 2024 PDFs')
+          print('TOTAL',len(got),got)
+          PY
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: aabner-volume-004-2024
+          path: out/*.pdf
+          if-no-files-found: error
+          compression-level: 0
