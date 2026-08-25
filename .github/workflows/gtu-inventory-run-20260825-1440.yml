@@ -10,7 +10,7 @@ jobs:
         shell: bash
         run: |
           python3 - <<'PY'
-          import json, urllib.parse, urllib.request, time, re
+          import json, urllib.parse, urllib.request
           base='https://archive.org/advancedsearch.php'
           queries=[
             'collection:graduatetheologicalunion AND mediatype:texts AND (title:(hebrew OR aramaic OR syriac OR semitic OR ugaritic OR akkadian) OR subject:(hebrew OR aramaic OR syriac OR semitic OR ugaritic OR akkadian))',
@@ -23,25 +23,16 @@ jobs:
             'collection:graduatetheologicalunion AND mediatype:texts AND (title:(concordance OR lexicon OR grammar OR bibliography OR commentary) OR subject:(concordance OR lexicon OR grammar OR bibliography))',
             'collection:graduatetheologicalunion AND mediatype:texts AND (title:(journal OR bulletin OR quarterly OR review OR studies) AND (subject:(bible OR biblical OR semitic OR archaeology OR theology)))'
           ]
-          seen={}
-          examined=0
-          for qi,q in enumerate(queries):
+          seen={}; examined=0
+          for q in queries:
             for page in (2,4,6,8,10,12):
               params=[('q',q),('fl[]','identifier'),('fl[]','title'),('fl[]','creator'),('fl[]','date'),('fl[]','year'),('fl[]','language'),('fl[]','volume'),('fl[]','subject'),('fl[]','description'),('rows','100'),('page',str(page)),('output','json')]
-              url=base+'?'+urllib.parse.urlencode(params)
               try:
-                with urllib.request.urlopen(url,timeout=45) as r:
-                  data=json.load(r)
-              except Exception as e:
-                print('QUERYERR',qi,page,repr(e)); continue
-              docs=data.get('response',{}).get('docs',[])
-              examined += len(docs)
+                with urllib.request.urlopen(base+'?'+urllib.parse.urlencode(params),timeout=45) as r: data=json.load(r)
+              except Exception: continue
+              docs=data.get('response',{}).get('docs',[]); examined += len(docs)
               for d in docs:
-                ident=d.get('identifier')
-                if ident: seen[ident]=d
-          print('EXAMINED_APPEARANCES',examined)
-          print('UNIQUE_CANDIDATES',len(seen))
-          # score for academic utility and prioritize likely uncatalogued lower-frequency records
+                if d.get('identifier'): seen[d['identifier']]=d
           kwsA=['hebrew','aramaic','syriac','semit','ugarit','akkad','septuagint','lxx','greek','papy','manuscript','textual','biblical','bible','genesis','exodus','levit','numbers','deuter','joshua','judges','samuel','kings','isaiah','jeremiah','ezekiel','psalm','job','proverb','matthew','mark','luke','john','acts','romans','corinth','galat','hebrews','revelation','qumran','dead sea','apocry','pseudep','talmud','midrash','philo','josephus','archaeolog','assyri','babyl','sumer','canaan','phoen','palestine','calvin','luther','origen','augustine','jerome','chrysostom','concordance','lexicon','grammar','bibliograph','commentary']
           def text(d):
             vals=[]
@@ -52,50 +43,36 @@ jobs:
             return ' '.join(vals).lower()
           scored=[]
           for d in seen.values():
-            t=text(d)
-            score=sum(2 for k in kwsA if k in t)
+            t=text(d); score=sum(2 for k in kwsA if k in t)
             y=d.get('year') or d.get('date') or ''
             try: yy=int(str(y)[:4])
             except: yy=0
-            # diversify and favor serious scholarly titles; modest bonus for pre-1980
             if yy and yy<1980: score+=1
             if any(x in t for x in ['journal','bulletin','quarterly','review']): score+=1
             scored.append((score,d))
-          scored.sort(key=lambda x:(-x[0], str(x[1].get('year','')), x[1].get('identifier','')))
-          # verify item metadata and public PDF status for top 220
+          scored.sort(key=lambda x:(-x[0],str(x[1].get('year','')),x[1].get('identifier','')))
           out=[]
           for score,d in scored[:220]:
             ident=d['identifier']
             try:
-              with urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident),timeout=45) as r:
-                m=json.load(r)
-            except Exception as e:
-              continue
-            md=m.get('metadata',{})
-            coll=md.get('collection',[])
+              with urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident),timeout=45) as r: m=json.load(r)
+            except Exception: continue
+            md=m.get('metadata',{}); coll=md.get('collection',[])
             if isinstance(coll,str): coll=[coll]
             if 'graduatetheologicalunion' not in coll: continue
-            files=m.get('files',[])
             pdfs=[]
-            for f in files:
+            for f in m.get('files',[]):
               n=str(f.get('name',''))
-              if n.lower().endswith('.pdf') and not n.lower().endswith('_text.pdf'):
-                if str(f.get('private','false')).lower()!='true' and 'encrypted' not in n.lower() and not n.lower().endswith('.lcpdf'):
-                  pdfs.append((n,f.get('size'),f.get('source')))
-            item={
-              'identifier':ident,'title':md.get('title') or d.get('title'),'creator':md.get('creator') or d.get('creator'),
-              'date':md.get('date') or d.get('date'),'year':md.get('year') or d.get('year'),'language':md.get('language') or d.get('language'),
-              'volume':md.get('volume') or d.get('volume'),'subject':md.get('subject') or d.get('subject'),
-              'description':md.get('description') or d.get('description'),'contributor':md.get('contributor'),
-              'publisher':md.get('publisher'),'edition':md.get('edition'),'series':md.get('series'),
-              'access_restricted':md.get('access-restricted-item') or md.get('printdisabled'),
-              'public_pdfs':pdfs[:3], 'score':score
-            }
-            out.append(item)
+              if n.lower().endswith('.pdf') and not n.lower().endswith('_text.pdf') and str(f.get('private','false')).lower()!='true' and 'encrypted' not in n.lower() and not n.lower().endswith('.lcpdf'):
+                pdfs.append((n,f.get('size'),f.get('source')))
+            out.append({'identifier':ident,'title':md.get('title') or d.get('title'),'creator':md.get('creator') or d.get('creator'),'date':md.get('date') or d.get('date'),'year':md.get('year') or d.get('year'),'language':md.get('language') or d.get('language'),'volume':md.get('volume') or d.get('volume'),'subject':md.get('subject') or d.get('subject'),'description':md.get('description') or d.get('description'),'contributor':md.get('contributor'),'publisher':md.get('publisher'),'edition':md.get('edition'),'series':md.get('series'),'access_restricted':md.get('access-restricted-item') or md.get('printdisabled'),'public_pdfs':pdfs[:3],'score':score})
             if len(out)>=140: break
-          print('VERIFIED_GTU',len(out))
-          print('CANDIDATES_JSON_BEGIN')
-          for x in out:
-            print(json.dumps(x,ensure_ascii=False,separators=(',',':')))
-          print('CANDIDATES_JSON_END')
+          with open('candidates.jsonl','w',encoding='utf-8') as f:
+            for x in out: f.write(json.dumps(x,ensure_ascii=False)+'\n')
+          print('EXAMINED_APPEARANCES',examined); print('UNIQUE_CANDIDATES',len(seen)); print('VERIFIED_GTU',len(out))
           PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-candidates
+          path: candidates.jsonl
+          compression-level: 6
