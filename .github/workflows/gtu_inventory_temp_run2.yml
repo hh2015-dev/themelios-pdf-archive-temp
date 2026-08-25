@@ -1,0 +1,59 @@
+name: GTU exact collection verification temp
+on:
+  push:
+    branches: [ main ]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify GTU candidates against Archive metadata
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import requests,re,urllib.parse
+          ids='''urexcavationsneo0009sirl
+newtestamentapoc0000unse_u3n2
+grammatikdergrie0002mays_c2m3
+ancientisraeliti00unse
+dietauflehredesn0000osca
+urchristlichesge0000gunt
+ekklesiaundpolis0000drth
+onpriesthood0000unse
+commentairesursa0000orig_v1v4
+lagnosevalentini0000sagn
+contrelesheresie0210iren
+geschichtederalt0001harn_l0h3
+styleoflettersof0000john
+saintjohnchrysos0022sist
+dasvermachtnisca0000brun
+huldreichzwingli0000grob
+bibliothecarefor0006unse_n8g9
+archiv-fuer-reformationsgeschichte_1937_34
+archiv-fuer-reformationsgeschichte_1952_43_1
+indextoreligious0005hele
+institutesofchri0000john_q1s5
+gtu_32400006605236
+gtu_32400006605277
+womaninearlychur00unse
+porphyrysphiloso0000john'''.splitlines()
+          def clean(v):
+            if isinstance(v,list): v='; '.join(map(str,v))
+            return re.sub(r'\s+',' ',str(v or '')).strip().replace('\t',' ')
+          print('identifier\tingtu\ttitle\tcreator\tdate\tvolume\tedition\tseries\tcontributor\tlanguage\tmediatype\trestricted\tpdf\timagecount\tsubject')
+          for ident in ids:
+            try:
+              j=requests.get('https://archive.org/metadata/'+ident,timeout=30).json()
+              m=j.get('metadata',{})
+              coll=m.get('collection',[]); coll=[coll] if isinstance(coll,str) else coll
+              ingtu='graduatetheologicalunion' in coll
+              files=j.get('files',[])
+              pdf=''
+              for f in files:
+                n=f.get('name','')
+                if n.lower().endswith('.pdf') and not n.lower().endswith('_encrypted.pdf') and not n.lower().endswith('.lcpdf') and str(f.get('private','false')).lower()!='true':
+                  pdf=n; break
+              restricted=str(m.get('access-restricted-item',m.get('printdisabled',''))).lower()
+              fields=[ident,str(ingtu),clean(m.get('title')),clean(m.get('creator')),clean(m.get('date') or m.get('year')),clean(m.get('volume')),clean(m.get('edition')),clean(m.get('series')),clean(m.get('contributor')),clean(m.get('language')),clean(m.get('mediatype')),restricted,clean(pdf),clean(m.get('imagecount','')),clean(m.get('subject'))]
+              print('\t'.join(fields))
+            except Exception as e: print(ident+'\tERROR\t'+str(e))
+          PY
