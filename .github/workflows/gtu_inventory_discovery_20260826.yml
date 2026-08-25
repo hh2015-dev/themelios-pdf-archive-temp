@@ -6,47 +6,59 @@ jobs:
   discover:
     runs-on: ubuntu-latest
     steps:
-      - name: Query Internet Archive GTU collection only
+      - name: Verify selected GTU candidates from Internet Archive metadata
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import json, urllib.parse, urllib.request, time, csv
-          groups = [
-            '(hebrew OR aramaic OR syriac OR semitic OR akkadian OR ugaritic OR cuneiform)',
-            '(septuagint OR lxx OR papyrus OR manuscript OR textual OR masoretic OR samaritan)',
-            '(genesis OR exodus OR leviticus OR numbers OR deuteronomy OR joshua OR judges OR samuel OR kings OR isaiah OR jeremiah OR ezekiel OR daniel OR psalms OR job OR proverbs OR ecclesiastes)',
-            '(matthew OR mark OR luke OR john OR acts OR romans OR corinthians OR galatians OR ephesians OR philippians OR colossians OR hebrews OR revelation OR apocalypse)',
-            '(qumran OR dead sea OR pseudepigrapha OR apocrypha OR rabbinic OR talmud OR midrash OR josephus OR philo OR judaism)',
-            '(archaeology OR palestine OR assyria OR babylon OR ancient near east OR egypt OR phoenician OR canaan)',
-            '(calvin OR luther OR origen OR augustine OR jerome OR chrysostom OR patristic OR reformation OR exegesis OR commentary)',
-            '(concordance OR lexicon OR grammar OR bibliography OR biblical literature OR biblical archaeologist OR semitic studies OR near eastern studies)'
-          ]
-          rows=[]; seen=set(); total_hits=0
-          for gi,g in enumerate(groups):
-              for page in (1,3,7):
-                  q=f'collection:graduatetheologicalunion AND mediatype:texts AND title:{g}'
-                  params=[('q',q),('fl[]','identifier'),('fl[]','title'),('fl[]','creator'),('fl[]','year'),('fl[]','date'),('fl[]','volume'),('fl[]','language'),('fl[]','contributor'),('fl[]','description'),('rows','250'),('page',str(page)),('output','json')]
-                  url='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(params)
-                  try:
-                      with urllib.request.urlopen(url, timeout=40) as r:
-                          data=json.load(r)
-                  except Exception as e:
-                      print('QUERY_ERROR',gi,page,e)
-                      continue
-                  docs=data.get('response',{}).get('docs',[])
-                  total_hits += len(docs)
-                  for d in docs:
-                      ident=d.get('identifier')
-                      if not ident or ident in seen: continue
-                      seen.add(ident); rows.append(d)
-                  time.sleep(.2)
-          print('TOTAL_HITS',total_hits,'UNIQUE',len(rows))
-          with open('gtu_candidates.jsonl','w',encoding='utf-8') as f:
-              for d in rows: f.write(json.dumps(d,ensure_ascii=False)+'\n')
+          import json, urllib.request, urllib.parse, re, time
+          ids='''bibleancientnear0000gern
+foundationsofjud0001.2siga_k9f5
+neareastfoundati0000brai
+commentaryofgosp0000alva
+modernjudaismorb00alle
+comparisonofegyp0000port
+lettersofpaultoe0045vari
+priscillaauthoro0000ruth
+surveyofhebrewed0000john
+philippianscolos0000fcsy
+anglonormanrhyme0000unse
+bibliographyonju0000maxc_l5l3
+gtu_32400004001149_1901
+journal-of-semitic-studies_1960_1
+sim_journal-of-near-eastern-studies_1942-01_1_1
+sim_journal-of-near-eastern-studies_1942-04_1_2
+sim_journal-of-near-eastern-studies_1942-07_1_3
+sim_journal-of-near-eastern-studies_1942-10_1_4
+sim_journal-of-near-eastern-studies_1943-01_2_1
+sim_journal-of-near-eastern-studies_1944-01_3_1
+sim_journal-of-near-eastern-studies_1944-04_3_2
+sim_journal-of-near-eastern-studies_1944-07_3_3
+sim_journal-of-near-eastern-studies_1944-10_3_4
+sim_journal-of-near-eastern-studies_1945-01_4_1
+sim_journal-of-near-eastern-studies_1945-07_4_3'''.splitlines()
+          out=[]
+          for ident in ids:
+              with urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident),timeout=30) as r:
+                  d=json.load(r)
+              m=d.get('metadata',{})
+              coll=m.get('collection',[]); coll=[coll] if isinstance(coll,str) else coll
+              files=d.get('files',[]); pdfs=[]
+              for f in files:
+                  n=f.get('name','')
+                  if not n.lower().endswith('.pdf') or 'encrypted' in n.lower() or n.lower().endswith('.lcpdf'): continue
+                  if str(f.get('private','false')).lower()=='true': continue
+                  pdfs.append({'name':n,'size':f.get('size'),'format':f.get('format'),'source':f.get('source')})
+              desc=m.get('description',''); desc='; '.join(map(str,desc)) if isinstance(desc,list) else str(desc or '')
+              pages=None
+              mm=re.search(r'(?<!\d)(\d{2,4})\s*(?:p\.|pages\b)',desc,re.I)
+              if mm: pages=mm.group(1)
+              out.append({'identifier':ident,'title':m.get('title'),'creator':m.get('creator'),'date':m.get('date'),'year':m.get('year'),'volume':m.get('volume'),'edition':m.get('edition'),'series':m.get('series'),'language':m.get('language'),'contributor':m.get('contributor'),'collection':coll,'access_restricted':m.get('access-restricted-item'),'printdisabled':m.get('printdisabled'),'description':desc,'pages':pages,'public_pdfs':pdfs[:5]})
+              time.sleep(.1)
+          with open('gtu_verified.json','w',encoding='utf-8') as f: json.dump(out,f,ensure_ascii=False,indent=2)
+          print('VERIFIED',len(out),'GTU',sum('graduatetheologicalunion' in (x.get('collection') or []) for x in out))
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: gtu-candidates-20260826
-          path: gtu_candidates.jsonl
-          compression-level: 6
+          name: gtu-verified-20260826
+          path: gtu_verified.json
