@@ -7,141 +7,97 @@ on:
   workflow_dispatch:
 
 jobs:
-  fetch-founders:
+  recover-special:
     runs-on: ubuntu-latest
     steps:
-      - name: Discover, inspect and canonicalize issues 1-128
+      - name: Recover exceptional Founders Journal issues
         shell: bash
         run: |
           set -euo pipefail
-          python -m pip install --quiet pypdf requests
+          python -m pip install --quiet pypdf requests beautifulsoup4
           python - <<'PY'
-          import requests,re,json,html,io,os,time,hashlib,csv
-          from urllib.parse import quote
-          from concurrent.futures import ThreadPoolExecutor, as_completed
+          import os,re,io,html,requests
+          from urllib.parse import urljoin
+          from bs4 import BeautifulSoup
           from pypdf import PdfReader
 
-          S=requests.Session(); S.headers['User-Agent']='Mozilla/5.0'
-          candidates={}
-          probes=['FoundersJournal','Founders Journal','Founders-Journal','Founders journal issue','FoundersJournal1','Founders Journal FULL']
-          for q in probes:
-            for page in range(1,25):
-              u=f'https://founders.org/wp-json/wp/v2/media?search={quote(q)}&per_page=100&page={page}'
-              r=S.get(u,timeout=60)
-              if r.status_code==400: break
-              if r.status_code!=200: break
-              arr=r.json()
-              if not arr: break
-              for m in arr:
-                src=html.unescape(m.get('source_url',''))
-                title=html.unescape((m.get('title') or {}).get('rendered',''))
-                slug=m.get('slug','')
-                if '.pdf' not in src.lower(): continue
-                blob=' '.join([src,title,slug])
-                if re.search(r'founders[-_ ]?journal',blob,re.I):
-                  candidates[m['id']]={'id':m['id'],'source_url':src,'title':title,'slug':slug,'date':m.get('date')}
-              if page>=int(r.headers.get('X-WP-TotalPages','1')): break
-          print('CANDIDATES',len(candidates))
+          S=requests.Session(); S.headers.update({'User-Agent':'Mozilla/5.0'})
+          os.makedirs('out',exist_ok=True)
 
-          os.makedirs('raw',exist_ok=True)
-          def inspect(x):
-            url=x['source_url']
-            try:
-              rr=requests.get(url,headers={'User-Agent':'Mozilla/5.0'},timeout=180)
-              rr.raise_for_status(); data=rr.content
-              if not data.startswith(b'%PDF'): raise RuntimeError('not PDF')
-              reader=PdfReader(io.BytesIO(data))
-              text='\n'.join((p.extract_text() or '') for p in reader.pages[:3])
-              norm=re.sub(r'\s+',' ',text)
-              pats=[r'ISSUE\s*[:#-]?\s*(\d{1,3})\b',r'Issue\s*\(?\s*(\d{1,3})\s*\)?',r'FOUNDERS\s+JOURNAL\s+(\d{1,3})\b']
-              issue=None
-              for pat in pats:
-                m=re.search(pat,norm,re.I)
-                if m and 1<=int(m.group(1))<=128: issue=int(m.group(1)); break
-              # Fallback only for classic exact filenames.
-              if issue is None:
-                blob=' '.join([url,x.get('title',''),x.get('slug','')])
-                for pat in [r'FoundersJournal(\d{1,3})(?!\d)',r'Founders[-_ ]Journal[-_ ]?(\d{1,3})(?!\d)']:
-                  m=re.search(pat,blob,re.I)
-                  if m and 1<=int(m.group(1))<=128: issue=int(m.group(1)); break
-              sha=hashlib.sha256(data).hexdigest()
-              return dict(x,issue=issue,size=len(data),pages=len(reader.pages),sha256=sha,data=data,error='')
-            except Exception as e:
-              return dict(x,issue=None,size=0,pages=0,sha256='',data=b'',error=repr(e))
+          def fetch(url):
+              r=S.get(url,timeout=180,allow_redirects=True); r.raise_for_status(); return r
 
-          inspected=[]
-          with ThreadPoolExecutor(max_workers=6) as ex:
-            fs=[ex.submit(inspect,x) for x in candidates.values()]
-            for f in as_completed(fs):
-              r=f.result(); inspected.append(r)
-              print('INSPECT',r.get('issue'),r.get('size'),r.get('source_url'),r.get('error') or 'OK')
+          def pdf_info(data):
+              if not data.startswith(b'%PDF'): return None
+              r=PdfReader(io.BytesIO(data))
+              txt=' '.join((p.extract_text() or '') for p in r.pages[:4])
+              return len(r.pages), re.sub(r'\s+',' ',txt)[:4000]
 
-          # Choose the best source per internal issue number: valid PDFs, then most pages, then largest size.
-          by={}
-          for r in inspected:
-            n=r.get('issue')
-            if not n: continue
-            if n not in by or (r['pages'],r['size'])>(by[n]['pages'],by[n]['size']): by[n]=r
+          def save_direct(issue,url):
+              r=fetch(url); data=r.content; info=pdf_info(data)
+              if not info: raise RuntimeError(f'not PDF {url}')
+              pages,text=info
+              fn=f'out/Founders Journal - Issue {issue:03d}.pdf'
+              open(fn,'wb').write(data)
+              print('DIRECT',issue,'pages',pages,'bytes',len(data),'url',r.url,'text',text[:250])
 
-          for b in range(1,5): os.makedirs(f'out/batch{b}',exist_ok=True)
-          rows=[]
-          for n in range(1,129):
-            r=by.get(n)
-            if not r:
-              rows.append([n,'MISSING','','',0,0,'']); continue
-            batch=(n-1)//32+1
-            fn=f'Founders Journal - Issue {n:03d}.pdf'
-            path=f'out/batch{batch}/{fn}'
-            open(path,'wb').write(r['data'])
-            rows.append([n,'OK',r['source_url'],fn,r['size'],r['pages'],r['sha256']])
+          def recover_from_page(issue,page_urls):
+              cand=[]
+              for page in page_urls:
+                  try:
+                      r=fetch(page); soup=BeautifulSoup(r.text,'html.parser')
+                  except Exception as e:
+                      print('PAGE_FAIL',page,repr(e)); continue
+                  for a in soup.find_all('a',href=True):
+                      href=html.unescape(urljoin(r.url,a['href']))
+                      label=' '.join(a.stripped_strings)
+                      if '.pdf' in href.lower() or 'download pdf' in label.lower():
+                          cand.append(href)
+                  # also catch URLs embedded in scripts/data attrs
+                  for m in re.findall(r'https?://[^\"\'<> ]+?\.pdf(?:\?[^\"\'<> ]*)?',r.text,re.I):
+                      cand.append(html.unescape(m))
+              seen=[]
+              for u in cand:
+                  if u not in seen: seen.append(u)
+              print('CANDIDATES',issue,seen)
+              scored=[]
+              for u in seen:
+                  try:
+                      rr=fetch(u); data=rr.content; info=pdf_info(data)
+                      if not info: continue
+                      pages,text=info
+                      # A full journal should be materially larger than a cover/article PDF.
+                      score=(pages, len(data))
+                      scored.append((score,rr.url,data,text))
+                      print('PDF_CAND',issue,'pages',pages,'bytes',len(data),'url',rr.url,'text',text[:180])
+                  except Exception as e: print('PDF_FAIL',issue,u,repr(e))
+              if not scored: raise RuntimeError(f'no PDF candidates for issue {issue}')
+              scored.sort(reverse=True,key=lambda x:x[0])
+              score,url,data,text=scored[0]
+              fn=f'out/Founders Journal - Issue {issue:03d}.pdf'
+              open(fn,'wb').write(data)
+              print('CHOSEN',issue,'pages',score[0],'bytes',score[1],'url',url)
 
-          with open('founders_manifest.tsv','w',encoding='utf-8',newline='') as f:
-            w=csv.writer(f,delimiter='\t'); w.writerow(['issue','status','source_url','filename','size','pages','sha256']); w.writerows(rows)
-          with open('all_candidates.tsv','w',encoding='utf-8',newline='') as f:
-            w=csv.writer(f,delimiter='\t'); w.writerow(['issue','url','title','size','pages','sha256','error'])
-            for r in sorted(inspected,key=lambda z:(z.get('issue') or 999,z.get('source_url',''))):
-              w.writerow([r.get('issue') or '',r.get('source_url',''),r.get('title',''),r.get('size',0),r.get('pages',0),r.get('sha256',''),r.get('error','')])
-          missing=[n for n in range(1,129) if n not in by]
-          print('CANONICAL',len(by),'MISSING',missing)
+          save_direct(112,'https://founders.org/wp-content/uploads/2018/06/FoundersJournal112.pdf')
+          save_direct(113,'https://founders.org/wp-content/uploads/2018/09/FoundersJournal113.pdf')
+          recover_from_page(117,[
+              'https://founders.org/articles/introduction-to-summer-issue-2019/',
+              'https://founders.org/journal/journal-22414/'
+          ])
+          recover_from_page(118,[
+              'https://founders.org/articles/founders-journal-belated-fall-2019-edition/',
+              'https://founders.org/journal/journal-23511/'
+          ])
+          recover_from_page(119,[
+              'https://founders.org/articles/introduction-of-the-civil-magistrate-and-religious-liberty/',
+              'https://founders.org/journal/journal-23977/'
+          ])
           PY
-      - name: Upload batch 1
+      - name: Upload recovered issues
         uses: actions/upload-artifact@v4
         with:
-          name: founders-journal-001-032
-          path: out/batch1/*.pdf
-          if-no-files-found: warn
-          compression-level: 0
-          retention-days: 1
-      - name: Upload batch 2
-        uses: actions/upload-artifact@v4
-        with:
-          name: founders-journal-033-064
-          path: out/batch2/*.pdf
-          if-no-files-found: warn
-          compression-level: 0
-          retention-days: 1
-      - name: Upload batch 3
-        uses: actions/upload-artifact@v4
-        with:
-          name: founders-journal-065-096
-          path: out/batch3/*.pdf
-          if-no-files-found: warn
-          compression-level: 0
-          retention-days: 1
-      - name: Upload batch 4
-        uses: actions/upload-artifact@v4
-        with:
-          name: founders-journal-097-128
-          path: out/batch4/*.pdf
-          if-no-files-found: warn
-          compression-level: 0
-          retention-days: 1
-      - name: Upload manifests
-        uses: actions/upload-artifact@v4
-        with:
-          name: founders-journal-manifests
-          path: |
-            founders_manifest.tsv
-            all_candidates.tsv
+          name: founders-journal-special-recovery
+          path: out/*.pdf
+          if-no-files-found: error
           compression-level: 0
           retention-days: 1
