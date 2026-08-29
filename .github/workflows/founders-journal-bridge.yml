@@ -1,0 +1,30 @@
+name: Founders Journal PDF Bridge
+
+on:
+  push:
+    paths:
+      - 'founders-journal-trigger.txt'
+  workflow_dispatch:
+
+jobs:
+  fetch-founders:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Founders Journal test PDF
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          URL='https://founders.org/wp-content/uploads/2016/10/FoundersJournal90.pdf'
+          OUT='out/Founders Journal - Issue 090 - Fall 2012.pdf'
+          curl -L --fail --retry 3 --connect-timeout 20 --max-time 1200 -A 'Mozilla/5.0' "$URL" -o "$OUT"
+          test "$(head -c 4 "$OUT")" = '%PDF'
+          echo "SIZE=$(stat -c%s "$OUT") SHA256=$(sha256sum "$OUT" | cut -d' ' -f1)"
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: founders-journal-test-090
+          path: out/*.pdf
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
