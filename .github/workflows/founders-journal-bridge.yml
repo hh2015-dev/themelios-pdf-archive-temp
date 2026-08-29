@@ -7,97 +7,22 @@ on:
   workflow_dispatch:
 
 jobs:
-  recover-special:
+  recover-verified:
     runs-on: ubuntu-latest
     steps:
-      - name: Recover exceptional Founders Journal issues
+      - name: Download verified PDFs
         shell: bash
         run: |
           set -euo pipefail
-          python -m pip install --quiet pypdf requests beautifulsoup4
-          python - <<'PY'
-          import os,re,io,html,requests
-          from urllib.parse import urljoin
-          from bs4 import BeautifulSoup
-          from pypdf import PdfReader
-
-          S=requests.Session(); S.headers.update({'User-Agent':'Mozilla/5.0'})
-          os.makedirs('out',exist_ok=True)
-
-          def fetch(url):
-              r=S.get(url,timeout=180,allow_redirects=True); r.raise_for_status(); return r
-
-          def pdf_info(data):
-              if not data.startswith(b'%PDF'): return None
-              r=PdfReader(io.BytesIO(data))
-              txt=' '.join((p.extract_text() or '') for p in r.pages[:4])
-              return len(r.pages), re.sub(r'\s+',' ',txt)[:4000]
-
-          def save_direct(issue,url):
-              r=fetch(url); data=r.content; info=pdf_info(data)
-              if not info: raise RuntimeError(f'not PDF {url}')
-              pages,text=info
-              fn=f'out/Founders Journal - Issue {issue:03d}.pdf'
-              open(fn,'wb').write(data)
-              print('DIRECT',issue,'pages',pages,'bytes',len(data),'url',r.url,'text',text[:250])
-
-          def recover_from_page(issue,page_urls):
-              cand=[]
-              for page in page_urls:
-                  try:
-                      r=fetch(page); soup=BeautifulSoup(r.text,'html.parser')
-                  except Exception as e:
-                      print('PAGE_FAIL',page,repr(e)); continue
-                  for a in soup.find_all('a',href=True):
-                      href=html.unescape(urljoin(r.url,a['href']))
-                      label=' '.join(a.stripped_strings)
-                      if '.pdf' in href.lower() or 'download pdf' in label.lower():
-                          cand.append(href)
-                  # also catch URLs embedded in scripts/data attrs
-                  for m in re.findall(r'https?://[^\"\'<> ]+?\.pdf(?:\?[^\"\'<> ]*)?',r.text,re.I):
-                      cand.append(html.unescape(m))
-              seen=[]
-              for u in cand:
-                  if u not in seen: seen.append(u)
-              print('CANDIDATES',issue,seen)
-              scored=[]
-              for u in seen:
-                  try:
-                      rr=fetch(u); data=rr.content; info=pdf_info(data)
-                      if not info: continue
-                      pages,text=info
-                      # A full journal should be materially larger than a cover/article PDF.
-                      score=(pages, len(data))
-                      scored.append((score,rr.url,data,text))
-                      print('PDF_CAND',issue,'pages',pages,'bytes',len(data),'url',rr.url,'text',text[:180])
-                  except Exception as e: print('PDF_FAIL',issue,u,repr(e))
-              if not scored: raise RuntimeError(f'no PDF candidates for issue {issue}')
-              scored.sort(reverse=True,key=lambda x:x[0])
-              score,url,data,text=scored[0]
-              fn=f'out/Founders Journal - Issue {issue:03d}.pdf'
-              open(fn,'wb').write(data)
-              print('CHOSEN',issue,'pages',score[0],'bytes',score[1],'url',url)
-
-          save_direct(112,'https://founders.org/wp-content/uploads/2018/06/FoundersJournal112.pdf')
-          save_direct(113,'https://founders.org/wp-content/uploads/2018/09/FoundersJournal113.pdf')
-          recover_from_page(117,[
-              'https://founders.org/articles/introduction-to-summer-issue-2019/',
-              'https://founders.org/journal/journal-22414/'
-          ])
-          recover_from_page(118,[
-              'https://founders.org/articles/founders-journal-belated-fall-2019-edition/',
-              'https://founders.org/journal/journal-23511/'
-          ])
-          recover_from_page(119,[
-              'https://founders.org/articles/introduction-of-the-civil-magistrate-and-religious-liberty/',
-              'https://founders.org/journal/journal-23977/'
-          ])
-          PY
-      - name: Upload recovered issues
+          mkdir -p out
+          curl -L --fail --retry 3 -A 'Mozilla/5.0' 'https://founders.org/wp-content/uploads/2018/06/FoundersJournal112.pdf' -o 'out/Founders Journal - Issue 112.pdf'
+          curl -L --fail --retry 3 -A 'Mozilla/5.0' 'https://founders.org/wp-content/uploads/2018/09/FoundersJournal113.pdf' -o 'out/Founders Journal - Issue 113.pdf'
+          curl -L --fail --retry 3 -A 'Mozilla/5.0' 'https://founders.org/wp-content/uploads/2020/02/Founders-Journal-FALL-2019.pdf' -o 'out/Founders Journal - Issue 118.pdf'
+          for f in out/*.pdf; do head -c 4 "$f" | grep -q '%PDF'; done
+      - name: Upload verified issues
         uses: actions/upload-artifact@v4
         with:
-          name: founders-journal-special-recovery
+          name: founders-journal-verified-112-113-118
           path: out/*.pdf
-          if-no-files-found: error
           compression-level: 0
           retention-days: 1
