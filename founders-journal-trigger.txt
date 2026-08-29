@@ -1,1 +1,1 @@
-trigger scan newer founders journal issues 2026-08-29T20:48+03:00
+trigger newer founders journal inspection 2026-08-29T20:50+03:00
