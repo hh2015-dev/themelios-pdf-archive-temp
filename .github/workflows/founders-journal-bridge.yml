@@ -7,37 +7,34 @@ on:
   workflow_dispatch:
 
 jobs:
-  scan-newer:
+  inspect-newer:
     runs-on: ubuntu-latest
     steps:
-      - name: Scan WordPress media for newer Founders Journal PDFs
+      - name: Download and inspect newer complete PDFs
         shell: bash
         run: |
           set -euo pipefail
-          python - <<'PY'
-          import json, urllib.request, re
-          out=[]
-          for page in range(1,101):
-              url=f'https://founders.org/wp-json/wp/v2/media?media_type=application&per_page=100&page={page}'
-              try:
-                  req=urllib.request.Request(url,headers={'User-Agent':'Mozilla/5.0'})
-                  data=json.load(urllib.request.urlopen(req,timeout=30))
-              except Exception:
-                  break
-              if not data: break
-              for x in data:
-                  u=x.get('source_url','')
-                  title=x.get('title',{}).get('rendered','')
-                  if u.lower().endswith('.pdf') and ('founders' in u.lower() or 'journal' in u.lower() or 'founders' in title.lower()):
-                      out.append({'date':x.get('date'),'title':title,'url':u})
-          out.sort(key=lambda x:(x['date'] or '',x['url']))
-          with open('founders-media.json','w') as f: json.dump(out,f,indent=2)
-          for x in out:
-              if (x['date'] or '') >= '2024-01-01': print(x['date'],x['title'],x['url'])
-          PY
-      - name: Upload media manifest
+          sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils >/dev/null
+          mkdir -p out
+          urls=(
+            'https://founders.org/wp-content/uploads/2026/04/Founders-Journal-FULL-2024-Spring-COVER.pdf'
+            'https://founders.org/wp-content/uploads/2026/04/Founders-Journal-FULL-2025-FAll-.pdf'
+            'https://founders.org/wp-content/uploads/2026/04/Founders-Journal-FULL-2026-Spring.pdf'
+          )
+          names=('Spring-2024' 'Fall-2025' 'Spring-2026')
+          : > out/manifest.txt
+          for i in 0 1 2; do
+            f="out/${names[$i]}.pdf"
+            curl -L --fail --retry 3 -A 'Mozilla/5.0' "${urls[$i]}" -o "$f"
+            head -c 4 "$f" | grep -q '%PDF'
+            pdftotext -f 1 -l 6 -layout "$f" - | head -n 120 > "out/${names[$i]}.txt" || true
+            echo "===== ${names[$i]} =====" >> out/manifest.txt
+            grep -Eina 'Issue|Founders Journal|Spring|Summer|Fall|Winter|2024|2025|2026' "out/${names[$i]}.txt" | head -n 40 >> out/manifest.txt || true
+          done
+      - name: Upload inspection
         uses: actions/upload-artifact@v4
         with:
-          name: founders-journal-newer-media-scan
-          path: founders-media.json
+          name: founders-journal-newer-inspection
+          path: out/*
+          compression-level: 0
           retention-days: 1
