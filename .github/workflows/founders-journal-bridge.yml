@@ -10,156 +10,51 @@ jobs:
   fetch-founders:
     runs-on: ubuntu-latest
     steps:
-      - name: Crawl archive and download issues 1-128
+      - name: Discover Founders Journal PDFs from WordPress media index
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
-          import os,re,sys,time,html
-          from urllib.parse import urljoin
-          import requests
-          from concurrent.futures import ThreadPoolExecutor, as_completed
-
-          S=requests.Session()
-          S.headers.update({'User-Agent':'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/151 Safari/537.36'})
-          base='https://founders.org'
-          issue_pages=set()
-
-          def get(url, timeout=45):
-              r=S.get(url,timeout=timeout,allow_redirects=True)
-              r.raise_for_status(); return r
-
-          # Primary discovery: archive pages.
-          empty=0
-          for p in range(1,40):
-              u='https://founders.org/journals/' if p==1 else f'https://founders.org/journals/page/{p}/'
-              try:
-                  t=get(u).text
-              except Exception as e:
-                  print('ARCHIVE_FAIL',u,e)
-                  continue
-              links=set(re.findall(r'href=["\']([^"\']+)["\']',t,re.I))
-              found=0
-              for x in links:
-                  x=html.unescape(urljoin(base,x))
-                  if re.match(r'https://founders\.org/journal/[^/?#]+/?$',x):
-                      issue_pages.add(x); found+=1
-              print('ARCHIVE_PAGE',p,'FOUND',found,'TOTAL',len(issue_pages))
-              if found==0: empty+=1
-              else: empty=0
-              if p>3 and empty>=3: break
-
-          # Fallback discovery: WordPress sitemaps.
-          for sm in ['https://founders.org/wp-sitemap.xml','https://founders.org/sitemap_index.xml']:
-              try:
-                  txt=get(sm).text
-              except Exception as e:
-                  print('SITEMAP_FAIL',sm,e); continue
-              submaps=re.findall(r'<loc>([^<]+)</loc>',txt,re.I)
-              for loc in submaps[:200]:
-                  try: body=get(html.unescape(loc)).text if loc.endswith('.xml') else ''
-                  except Exception: continue
-                  for x in re.findall(r'<loc>([^<]+)</loc>',body,re.I):
-                      x=html.unescape(x)
-                      if '/journal/' in x:
-                          issue_pages.add(x)
-
-          print('DISCOVERED_ISSUE_PAGES',len(issue_pages))
-          records={}
-          seasons='Spring|Summer|Fall|Winter'
-          for u in sorted(issue_pages):
-              try: t=get(u).text
-              except Exception as e:
-                  print('ISSUE_PAGE_FAIL',u,e); continue
-              plain=re.sub(r'<[^>]+>',' ',t)
-              plain=html.unescape(re.sub(r'\s+',' ',plain))
-              m=re.search(r'Issue\s*(\d+)\D{0,80}?('+seasons+r')\s*(\d{4})',plain,re.I)
-              if not m:
-                  m=re.search(r'\(Issue\s*(\d+)\)\s*('+seasons+r')\s*(\d{4})',plain,re.I)
-              if not m: continue
-              n=int(m.group(1)); season=m.group(2).title(); year=m.group(3)
-              if not 1<=n<=128: continue
-              pdfs=[]
-              for x in re.findall(r'href=["\']([^"\']+)["\']',t,re.I):
-                  x=html.unescape(urljoin(base,x))
-                  if '.pdf' in x.lower() and 'founders.org' in x:
-                      pdfs.append(x)
-              # Prefer a whole-journal PDF over article PDFs.
-              pref=[x for x in pdfs if 'FoundersJournal' in x or 'Founders-Journal' in x or 'journal' in x.lower()]
-              if pref: pdfs=pref
-              if pdfs:
-                  records[n]=(season,year,pdfs[0],u)
-
-          print('RESOLVED_RECORDS',len(records))
-          print('MISSING_DISCOVERY',','.join(map(str,[n for n in range(1,129) if n not in records])))
-
-          for b in range(1,5): os.makedirs(f'out/batch{b}',exist_ok=True)
-          manifest=[]
-          def dl(item):
-              n,(season,year,url,page)=item
-              batch=(n-1)//32+1
-              fn=f'Founders Journal - Issue {n:03d} - {season} {year}.pdf'
-              path=f'out/batch{batch}/{fn}'
-              for attempt in range(4):
-                  try:
-                      r=get(url,timeout=180)
-                      data=r.content
-                      if not data.startswith(b'%PDF'):
-                          raise RuntimeError('not PDF')
-                      open(path,'wb').write(data)
-                      return n,season,year,url,page,path,len(data),None
-                  except Exception as e:
-                      if attempt==3:return n,season,year,url,page,path,0,str(e)
-                      time.sleep(2*(attempt+1))
-          with ThreadPoolExecutor(max_workers=6) as ex:
-              futs=[ex.submit(dl,it) for it in sorted(records.items())]
-              for f in as_completed(futs):
-                  rec=f.result(); manifest.append(rec); print('DOWNLOAD',rec[0],rec[6],rec[7] or 'OK')
-          manifest.sort()
-          with open('founders_manifest.tsv','w',encoding='utf-8') as f:
-              f.write('issue\tseason\tyear\tpdf_url\tissue_page\tpath\tsize\terror\n')
-              for r in manifest:f.write('\t'.join(map(str,r))+'\n')
-          failed=[r for r in manifest if r[-1]]
-          print('DOWNLOADED_OK',len(manifest)-len(failed),'FAILED',len(failed))
-          if failed:
-              print('FAILED_ISSUES',','.join(str(r[0]) for r in failed))
+          import requests,re,json,html
+          from urllib.parse import quote
+          S=requests.Session(); S.headers['User-Agent']='Mozilla/5.0'
+          candidates={}
+          probes=[
+            'FoundersJournal','Founders Journal','Founders-Journal','Founders journal issue','FoundersJournal1','Founders Journal FULL'
+          ]
+          for q in probes:
+            for page in range(1,20):
+              u=f'https://founders.org/wp-json/wp/v2/media?search={quote(q)}&per_page=100&page={page}'
+              r=S.get(u,timeout=60)
+              print('PROBE',q,page,r.status_code,r.headers.get('X-WP-Total'),r.headers.get('X-WP-TotalPages'))
+              if r.status_code==400 and 'rest_post_invalid_page_number' in r.text: break
+              if r.status_code!=200: break
+              arr=r.json()
+              if not arr: break
+              for m in arr:
+                src=html.unescape(m.get('source_url',''))
+                title=html.unescape((m.get('title') or {}).get('rendered',''))
+                slug=m.get('slug','')
+                if '.pdf' not in src.lower(): continue
+                blob=' '.join([src,title,slug])
+                if re.search(r'founders[-_ ]?journal',blob,re.I): candidates[m['id']]={'id':m['id'],'source_url':src,'title':title,'slug':slug,'date':m.get('date')}
+              if page>=int(r.headers.get('X-WP-TotalPages','1')): break
+          # Also try likely custom post endpoint to harvest attachment links.
+          endpoints=[]
+          try:
+            types=S.get('https://founders.org/wp-json/wp/v2/types',timeout=60).json()
+            for k,v in types.items():
+              if 'journal' in (k+' '+str(v.get('name',''))+' '+str(v.get('slug',''))).lower(): endpoints.append(k)
+            print('JOURNAL_TYPES',endpoints)
+          except Exception as e: print('TYPES_FAIL',repr(e))
+          open('media_candidates.json','w').write(json.dumps(list(candidates.values()),indent=2))
+          print('CANDIDATES',len(candidates))
+          for x in sorted(candidates.values(),key=lambda x:x['source_url']): print(x['source_url'])
           PY
-      - name: Upload batch 1
+      - name: Upload discovery
         uses: actions/upload-artifact@v4
         with:
-          name: founders-journal-001-032
-          path: out/batch1/*.pdf
-          if-no-files-found: warn
-          compression-level: 0
-          retention-days: 1
-      - name: Upload batch 2
-        uses: actions/upload-artifact@v4
-        with:
-          name: founders-journal-033-064
-          path: out/batch2/*.pdf
-          if-no-files-found: warn
-          compression-level: 0
-          retention-days: 1
-      - name: Upload batch 3
-        uses: actions/upload-artifact@v4
-        with:
-          name: founders-journal-065-096
-          path: out/batch3/*.pdf
-          if-no-files-found: warn
-          compression-level: 0
-          retention-days: 1
-      - name: Upload batch 4
-        uses: actions/upload-artifact@v4
-        with:
-          name: founders-journal-097-128
-          path: out/batch4/*.pdf
-          if-no-files-found: warn
-          compression-level: 0
-          retention-days: 1
-      - name: Upload manifest
-        uses: actions/upload-artifact@v4
-        with:
-          name: founders-journal-manifest
-          path: founders_manifest.tsv
+          name: founders-journal-media-discovery
+          path: media_candidates.json
           compression-level: 0
           retention-days: 1
