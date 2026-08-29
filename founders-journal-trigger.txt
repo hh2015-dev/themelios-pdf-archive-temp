@@ -1,1 +1,1 @@
-trigger verified founders journal recovery 112 113 118 2026-08-29T20:34+03:00
+trigger scan newer founders journal issues 2026-08-29T20:48+03:00
