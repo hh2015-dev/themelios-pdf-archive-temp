@@ -1,1 +1,1 @@
-trigger newer founders journal inspection 2026-08-29T20:50+03:00
+trigger verify founders journal 117 119 2026-08-29T20:55+03:00
