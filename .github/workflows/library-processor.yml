@@ -1,0 +1,57 @@
+name: Library Processor - Zero Cost
+
+on:
+  schedule:
+    - cron: '7 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: library-processor-zero-cost
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  process:
+    # HARD COST GUARD: standard Ubuntu runner only. Public repositories use it free.
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    env:
+      GDRIVE_OAUTH_JSON: ${{ secrets.GDRIVE_OAUTH_JSON }}
+      BATCH_TARGET: '60'
+      MIN_MICROBATCH: '10'
+      MAX_DOWNLOAD_MB: '180'
+      SOURCE_NAME: 'للفحص'
+      ENGLISH_LIBRARY_NAME: 'المكتبة الإنجليزية'
+      ARABIC_LIBRARY_NAME: 'المكتبة العربية'
+      SYSTEM_FOLDER_NAME: '00 - نظام إدارة الفحص والجرد'
+    steps:
+      - name: Zero-cost preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event.repository.private }}" = "true" ]; then
+            echo 'STOP: repository is private. Refusing to consume metered private-repository minutes.'
+            exit 78
+          fi
+          if [ -z "${GDRIVE_OAUTH_JSON:-}" ]; then
+            echo 'STOP: GDRIVE_OAUTH_JSON is not configured. No Drive action attempted.'
+            exit 78
+          fi
+          echo 'Cost guard OK: public repository + standard ubuntu-latest runner.'
+
+      - uses: actions/checkout@v4
+
+      - name: Install local PDF/OCR tools
+        shell: bash
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends poppler-utils tesseract-ocr tesseract-ocr-eng tesseract-ocr-ara
+          python -m pip install --disable-pip-version-check -q -r library_processor/requirements.txt
+
+      - name: Process large batch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python library_processor/processor.py
