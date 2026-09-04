@@ -1,6 +1,10 @@
 name: Library Processor - Zero Cost
 
 on:
+  push:
+    paths:
+      - 'library_processor/**'
+      - '.github/workflows/library-processor.yml'
   schedule:
     - cron: '7 * * * *'
   workflow_dispatch:
