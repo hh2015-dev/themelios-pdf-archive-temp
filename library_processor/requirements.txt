@@ -1,0 +1,5 @@
+google-api-python-client==2.181.0
+google-auth==2.40.3
+google-auth-httplib2==0.2.0
+PyMuPDF==1.26.4
+rapidfuzz==3.14.0
