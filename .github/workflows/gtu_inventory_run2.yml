@@ -1,0 +1,126 @@
+name: GTU inventory run2
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mine GTU only and verify metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, urllib.parse, urllib.request, time, re, csv
+          queries = [
+            ('A1','title:(hebrew OR aramaic OR syriac OR semitic OR akkadian OR ugaritic)',1),
+            ('A2','title:(greek OR septuagint OR papyri OR manuscript OR textual)',2),
+            ('A3','title:(bible OR biblical OR testament OR gospel OR epistle)',3),
+            ('A4','title:(genesis OR exodus OR leviticus OR numbers OR deuteronomy OR joshua OR judges)',2),
+            ('A5','title:(samuel OR kings OR chronicles OR ezra OR nehemiah OR esther OR job)',3),
+            ('A6','title:(psalms OR proverbs OR ecclesiastes OR isaiah OR jeremiah OR ezekiel OR daniel)',2),
+            ('A7','title:(hosea OR joel OR amos OR obadiah OR jonah OR micah OR nahum OR habakkuk OR zephaniah OR haggai OR zechariah OR malachi)',1),
+            ('A8','title:(matthew OR mark OR luke OR john OR acts OR romans OR corinthians OR galatians OR ephesians)',3),
+            ('A9','title:(philippians OR colossians OR thessalonians OR timothy OR titus OR philemon OR hebrews OR james OR peter OR jude OR revelation)',2),
+            ('A10','title:(qumran OR dead sea OR pseudepigrapha OR apocrypha OR rabbinic OR talmud OR mishnah OR targum)',1),
+            ('A11','title:(archaeology OR assyria OR babylon OR palestine OR canaan OR phoenician OR egypt)',4),
+            ('A12','title:(lexicon OR concordance OR grammar OR bibliography OR dictionary)',3),
+            ('A13','title:(calvin OR luther OR origen OR jerome OR augustine OR chrysostom OR ephraem)',2),
+            ('A14','subject:(Bible OR Biblical OR Hebrew OR Greek OR Syriac OR Aramaic)',5),
+            ('B1','title:(theology OR doctrine OR creed OR confession OR apologetics)',4),
+            ('B2','title:(church history OR reformation OR missions OR missionary OR patristic)',3),
+            ('L1','language:(ger OR fre OR lat OR grc OR heb OR syr OR ara)',4),
+            ('Y1','year:[1800 TO 1899]',7),
+            ('Y2','year:[1900 TO 1949]',6),
+            ('Y3','year:[1950 TO 1999]',5),
+          ]
+          all_docs={}
+          examined=0
+          for tag,extra,page in queries:
+              q=f'collection:graduatetheologicalunion AND mediatype:texts AND ({extra})'
+              params={
+                'q':q,'fl[]':['identifier','title','creator','year','date','language','subject'],
+                'rows':80,'page':page,'output':'json','sort[]':'identifier asc'
+              }
+              url='https://archive.org/advancedsearch.php?'+urllib.parse.urlencode(params,doseq=True)
+              try:
+                  with urllib.request.urlopen(url,timeout=30) as r:
+                      data=json.load(r)
+                  docs=data.get('response',{}).get('docs',[])
+                  examined += len(docs)
+                  for d in docs:
+                      d['_query_tag']=tag
+                      all_docs.setdefault(d['identifier'],d)
+              except Exception as e:
+                  print('SEARCH_ERROR',tag,repr(e))
+              time.sleep(.15)
+          # rank by academic priority terms, while preserving diversity from queries
+          A_terms=['hebrew','aramaic','syriac','semitic','akkadian','ugarit','greek','septuagint','textual','manuscript','papyri','bible','biblical','testament','gospel','genesis','exodus','leviticus','numbers','deuteronomy','joshua','judges','samuel','kings','chronicles','ezra','nehemiah','esther','job','psalm','proverb','ecclesiastes','isaiah','jeremiah','ezekiel','daniel','hosea','joel','amos','obadiah','jonah','micah','nahum','habakkuk','zephaniah','haggai','zechariah','malachi','matthew','mark','luke','john','acts','romans','corinth','galatians','ephesians','philippians','colossians','thessalonians','timothy','titus','philemon','hebrews','james','peter','jude','revelation','qumran','dead sea','pseudepigrapha','apocrypha','rabbinic','talmud','mishnah','targum','archaeolog','assyria','babylon','palestine','canaan','phoenician','lexicon','concordance','grammar','bibliograph','calvin','luther','origen','jerome','augustine','chrysostom','ephraem']
+          B_terms=['theology','doctrine','creed','confession','apologetic','church history','reformation','mission','patristic','judaism','early christian']
+          def txt(d):
+              vals=[d.get('title',''),d.get('creator',''),d.get('subject','')]
+              return ' '.join(' '.join(x) if isinstance(x,list) else str(x) for x in vals).lower()
+          def score(d):
+              t=txt(d)
+              a=sum(3 for x in A_terms if x in t)
+              b=sum(1 for x in B_terms if x in t)
+              return a+b
+          ranked=sorted(all_docs.values(),key=lambda d:(score(d),d.get('year',0) or 0),reverse=True)
+          out=[]
+          # verify first 220 distinct ranked records
+          for d in ranked[:220]:
+              ident=d['identifier']
+              try:
+                  with urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident),timeout=30) as r:
+                      m=json.load(r)
+              except Exception as e:
+                  continue
+              md=m.get('metadata',{})
+              coll=md.get('collection',[])
+              if isinstance(coll,str): coll=[coll]
+              if 'graduatetheologicalunion' not in coll: continue
+              files=m.get('files',[])
+              public_pdfs=[]
+              for f in files:
+                  n=f.get('name','')
+                  if not re.search(r'\.pdf$',n,re.I): continue
+                  if f.get('private') is True or str(f.get('private','')).lower()=='true': continue
+                  if re.search(r'(encrypted|lcpdf)',n,re.I): continue
+                  public_pdfs.append(f)
+              pdf=public_pdfs[0]['name'] if public_pdfs else ''
+              pages=md.get('imagecount') or md.get('pages') or ''
+              title=md.get('title') or d.get('title') or ''
+              creator=md.get('creator') or d.get('creator') or ''
+              year=md.get('year') or md.get('date') or d.get('year') or ''
+              volume=md.get('volume') or ''
+              edition=md.get('edition') or ''
+              series=md.get('series') or ''
+              language=md.get('language') or d.get('language') or ''
+              subject=md.get('subject') or d.get('subject') or ''
+              contributor=md.get('contributor') or 'Internet Archive'
+              if isinstance(creator,list): creator='; '.join(map(str,creator))
+              if isinstance(language,list): language='; '.join(map(str,language))
+              if isinstance(subject,list): subject='; '.join(map(str,subject[:8]))
+              if isinstance(contributor,list): contributor='; '.join(map(str,contributor))
+              if isinstance(series,list): series='; '.join(map(str,series))
+              item={
+                'identifier':ident,'title':title,'creator':creator,'year':str(year),
+                'volume':str(volume),'edition':str(edition),'series':str(series),
+                'language':str(language),'subject':str(subject),'contributor':str(contributor),
+                'public_pdf':pdf,'pages':str(pages),'score':score(d),'query_tag':d.get('_query_tag',''),
+                'access_restricted':str(md.get('access-restricted-item','')).lower()=='true',
+                'printdisabled':str(md.get('printdisabled','')).lower()=='true'
+              }
+              out.append(item)
+              time.sleep(.08)
+          with open('gtu_candidates.json','w') as f: json.dump({'examined_hits':examined,'unique_hits':len(all_docs),'verified':out},f,ensure_ascii=False,indent=2)
+          print('EXAMINED_HITS',examined)
+          print('UNIQUE_HITS',len(all_docs))
+          print('VERIFIED',len(out))
+          for x in out[:80]:
+              print(json.dumps(x,ensure_ascii=False))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-run2-candidates
+          path: gtu_candidates.json
