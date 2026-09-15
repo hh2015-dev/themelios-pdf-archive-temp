@@ -1,0 +1,39 @@
+name: GTU Inventory Discovery Temp
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mine GTU broadly
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          : > out/search.tsv
+          queries=(
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:hebrew OR title:aramaic OR title:syriac OR title:semitic)'
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:septuagint OR title:lxx OR title:greek OR title:papyr*)'
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:bible OR title:biblical OR title:testament OR title:gospel)'
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:isaiah OR title:jeremiah OR title:psalm* OR title:job OR title:genesis OR title:exodus)'
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:manuscript* OR title:textual OR title:criticism OR title:codex)'
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:qumran OR title:scroll* OR title:josephus OR title:philo OR title:mishna* OR title:talmud*)'
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:assyri* OR title:babylon* OR title:akkad* OR title:ugarit* OR title:archaeolog*)'
+            'collection:graduatetheologicalunion AND mediatype:texts AND (creator:calvin OR creator:luther OR title:patristic OR title:origen OR title:augustine OR title:jerome)'
+            'collection:graduatetheologicalunion AND mediatype:texts AND (title:theology OR title:church OR title:reformation OR title:mission*)'
+          )
+          for q in "${queries[@]}"; do
+            enc=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "$q")
+            for p in 1 3 7 12 20; do
+              curl -fsSL "https://archive.org/advancedsearch.php?q=$enc&fl[]=identifier,title,creator,date,year,volume,language&rows=100&page=$p&output=json" -o tmp.json || continue
+              jq -r '.response.docs[] | [(.identifier//""),(.title//""),((.creator//"")|if type=="array" then join("; ") else . end),((.year//.date//"")|tostring),((.volume//"")|tostring),((.language//"")|if type=="array" then join("; ") else . end)] | @tsv' tmp.json >> out/search.tsv
+            done
+          done
+          sort -u out/search.tsv > out/search_unique.tsv
+          echo "UNIQUE_SEARCH=$(wc -l < out/search_unique.tsv)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-inventory-discovery
+          path: out/search_unique.tsv
+          compression-level: 6
