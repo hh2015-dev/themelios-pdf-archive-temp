@@ -1,0 +1,55 @@
+name: GTU inventory verification 20260824
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify selected GTU items and PDF availability
+        shell: bash
+        run: |
+          set -euo pipefail
+          : > verified.jsonl
+          ids=(
+            newdocumentsillu0005hors
+            qumranyelnuevote0000casc
+            lesaffinitesqumr0000copp
+            evangiledematthi0019unse
+            deuteronomeix7en0018unse
+            josuevi1625vii6x0021unse
+            hebraischegramma0001beer
+            hebraischegramma0002beer
+            newdirectionsinb0000davi
+            graecitasbiblica0000zerw
+            deadseascrollsof0002burr
+            aramaicdocuments0000pier
+            akkadianchrestom0001fran
+            gtu_32400000610406
+            catalogueofsyria0000wwri_r6z2
+            gtu_32400002832867_2
+            moffattbibleconc0000unse
+            flaviiiosephiope0005jose
+            flaviiiosephiope0006jose
+            philoofalexandri0008radi
+            gtu_32400004571927
+            hatorahehahafaro0000unse
+            holyscripturesac0000vari
+            grundzugeundchre0003unse
+            semeiaexperiment0000dani
+          )
+          for id in "${ids[@]}"; do
+            curl -fsSL --retry 3 "https://archive.org/metadata/$id" -o meta.json || continue
+            jq --arg id "$id" -c '
+              def arr(x): if x==null then [] elif (x|type)=="array" then x else [x] end;
+              . as $root |
+              (arr(.metadata.collection) | index("graduatetheologicalunion") != null) as $isgtu |
+              ([.files[]? | select((.name|ascii_downcase|endswith(".pdf"))) | select((.private // "false") != "true") | select((.name|ascii_downcase|endswith("_text.pdf")) or ((.name|ascii_downcase|contains("encrypted"))|not)) | select((.name|ascii_downcase|endswith(".lcpdf"))|not) | .name] | map(select((ascii_downcase|contains("encrypted"))|not)) | .[0] // "") as $pdf |
+              {identifier:$id,is_gtu:$isgtu,title:(.metadata.title//""),creator:(.metadata.creator//""),year:(.metadata.year//.metadata.date//""),volume:(.metadata.volume//""),edition:(.metadata.edition//""),series:(.metadata.series//""),language:(.metadata.language//""),subject:(.metadata.subject//""),contributor:(.metadata.contributor//""),description:(.metadata.description//""),imagecount:(.metadata.imagecount//""),access_restricted:(.metadata["access-restricted-item"]//""),printdisabled:(.metadata.printdisabled//""),pdf_name:$pdf}' meta.json >> verified.jsonl
+          done
+          echo "VERIFIED_LINES=$(wc -l < verified.jsonl)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-verified-20260824
+          path: verified.jsonl
+          compression-level: 6
