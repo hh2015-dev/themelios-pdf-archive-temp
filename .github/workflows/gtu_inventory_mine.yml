@@ -1,0 +1,83 @@
+name: GTU inventory verify
+on:
+  pull_request:
+    branches: [main]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify selected GTU items
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, urllib.request, urllib.parse
+          ids = [
+            'hekainediatheken0000unse',
+            'criticatextualde0000afer',
+            'expositionofbook0002gill',
+            'semeiaexperiment0000joan',
+            'semeiaexperiment0000char_s4s1',
+            'semeiaexperiment0000mary',
+            'natureandinbible0000yehu',
+            'encyclopediaofhe0003unse',
+            'catalogofhebrewb0003jiq',
+            'exodus0000rich',
+            'gospelaccordingt0000alan',
+            'criticalevaluati00unse',
+            'newtestamentapoc0000unse_u3n2',
+            'bibleetliturgiel0000dani',
+            'sim_journal-of-biblical-literature_1946-09_65_3',
+            'sim_journal-of-biblical-literature_1951-06_70_2',
+            'sim_journal-of-biblical-literature_1954-03_73_1',
+            'sim_near-eastern-archaeology_1951-12_14_4',
+            'sim_near-eastern-archaeology_1958-09_21_3',
+            'sim_bible-translator_1950-07_1_3'
+          ]
+          out=[]
+          for ident in ids:
+            with urllib.request.urlopen('https://archive.org/metadata/'+urllib.parse.quote(ident), timeout=60) as r:
+              m=json.load(r)
+            md=m.get('metadata',{})
+            coll=md.get('collection',[])
+            if isinstance(coll,str): coll=[coll]
+            files=m.get('files',[])
+            public_pdf=None
+            for f in files:
+              name=f.get('name','')
+              if not name.lower().endswith('.pdf'): continue
+              if str(f.get('private','false')).lower()=='true': continue
+              if name.lower().endswith('encrypted.pdf') or name.lower().endswith('.lcpdf'): continue
+              public_pdf=name; break
+            rec={
+              'identifier':ident,
+              'in_gtu':'graduatetheologicalunion' in coll,
+              'collection':coll,
+              'title':md.get('title'),
+              'creator':md.get('creator'),
+              'date':md.get('date'),
+              'year':md.get('year'),
+              'volume':md.get('volume'),
+              'edition':md.get('edition'),
+              'series':md.get('series'),
+              'language':md.get('language'),
+              'subject':md.get('subject'),
+              'contributor':md.get('contributor'),
+              'description':md.get('description'),
+              'publisher':md.get('publisher'),
+              'access_restricted':md.get('access-restricted-item'),
+              'printdisabled':md.get('printdisabled'),
+              'public_pdf':public_pdf,
+              'pdf_url': ('https://archive.org/download/'+ident+'/'+urllib.parse.quote(public_pdf)) if public_pdf else None
+            }
+            out.append(rec)
+          with open('gtu_verified.json','w',encoding='utf-8') as f:
+            json.dump(out,f,ensure_ascii=False,indent=2)
+          print('VERIFIED',sum(1 for x in out if x['in_gtu']),'OF',len(out))
+          for x in out:
+            print(x['identifier'],x['in_gtu'],x['title'],x['date'] or x['year'],x['volume'],bool(x['public_pdf']))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtu-verified
+          path: gtu_verified.json
